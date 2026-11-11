@@ -30,6 +30,7 @@ In order of preference:
 
 1. **Fix the contract in the plan.** Write the exact signature, type, texture key, scene key, event name or data shape into every issue that touches it.
 2. **Move the shared foundation to an earlier epic.** The project scaffold, a shared `config.ts` of constants, and **stub files** for every module the later epic fills in. A stub exports the final signature with a trivial body, so the build passes and every later worker owns exactly one file.
+   If that foundation is almost entirely verbatim code you have already decided (types, tables, the main loop, stubs), write it yourself instead of putting it in an issue: pasting it into an issue costs you the same tokens, and a worker copying it adds cost and risk for nothing.
 3. **Give every shared file one owner.** `main.ts` (the scene list), `package.json`, `index.html` and asset manifests are where parallel workers collide. Give each to one issue, or to the foundation epic.
 4. **Merge.** Two issues that cannot be separated are one issue.
 

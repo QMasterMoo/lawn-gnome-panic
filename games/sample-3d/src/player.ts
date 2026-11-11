@@ -1,15 +1,18 @@
 // src/player.ts
 import * as THREE from 'three';
 import { ARENA_HALF, PLAYER_RADIUS, TUNING } from './config';
-import type { InputState, Obstacle, PlayerState } from './config';
+import type { InputState, Obstacle, PlayerState, PlayerStats } from './config';
 
-export function createPlayerState(): PlayerState {
-  return { position: new THREE.Vector3(0, 0, 0), velocity: new THREE.Vector3(), facing: 0, grounded: true, jumpsUsed: 0 };
+export function createPlayerState(stats: PlayerStats): PlayerState {
+  return {
+    position: new THREE.Vector3(0, 0, 0), velocity: new THREE.Vector3(), facing: 0, grounded: true, jumpsUsed: 0,
+    stamina: stats.staminaMax, staminaDelay: 0, sprinting: false, exhausted: false,
+  };
 }
 
 const CLAMP_LIMIT = ARENA_HALF - PLAYER_RADIUS - 0.3;
 
-export function updatePlayer(p: PlayerState, input: InputState, cameraYaw: number, obstacles: readonly Obstacle[], dt: number): { jumped: boolean } {
+export function updatePlayer(p: PlayerState, input: InputState, cameraYaw: number, obstacles: readonly Obstacle[], stats: PlayerStats, dt: number): { jumped: boolean } {
   // 1. Remember height and reset the jump flag.
   const prevY = p.position.y;
   let jumped = false;
@@ -27,9 +30,24 @@ export function updatePlayer(p: PlayerState, input: InputState, cameraYaw: numbe
     wz /= wLen;
   }
 
+  // 2b. Sprint and stamina.
+  const moving = Math.hypot(wx, wz) > 0.1;
+  if (p.exhausted && p.stamina >= stats.staminaMax * TUNING.staminaExhaustedResume) p.exhausted = false;
+  p.sprinting = input.sprint && moving && !p.exhausted && p.stamina > 0;
+  if (p.sprinting) {
+    p.stamina = Math.max(0, p.stamina - dt);
+    p.staminaDelay = stats.staminaRegenDelayS;
+    if (p.stamina <= 0) p.exhausted = true;
+  } else if (p.staminaDelay > 0) {
+    p.staminaDelay -= dt;
+  } else {
+    p.stamina = Math.min(stats.staminaMax, p.stamina + stats.staminaRegenPerSec * dt);
+  }
+  const speed = stats.moveSpeed * (p.sprinting ? stats.sprintMultiplier : 1);
+
   // 3. Horizontal acceleration toward the wished velocity.
-  const targetX = wx * TUNING.moveSpeed;
-  const targetZ = wz * TUNING.moveSpeed;
+  const targetX = wx * speed;
+  const targetZ = wz * speed;
   let dvx = targetX - p.velocity.x;
   let dvz = targetZ - p.velocity.z;
   const maxStep = TUNING.accel * dt * (p.grounded ? 1 : TUNING.airControl);
@@ -52,8 +70,8 @@ export function updatePlayer(p: PlayerState, input: InputState, cameraYaw: numbe
   }
 
   // 5. Jump (ground jump or air jump).
-  if (input.jump && p.jumpsUsed < TUNING.maxJumps) {
-    p.velocity.y = TUNING.jumpSpeed;
+  if (input.jump && p.jumpsUsed < stats.maxJumps) {
+    p.velocity.y = stats.jumpSpeed;
     p.jumpsUsed += 1;
     p.grounded = false;
     jumped = true;

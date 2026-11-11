@@ -1,184 +1,271 @@
-// src/mowers.ts
 import * as THREE from 'three';
-import { ARENA_HALF, COLORS, MOWER_RADIUS, TUNING, type MowerSystem, type Obstacle } from './config';
+import {
+  ARENA_HALF, MOWER_TIERS, OBSTACLES, TUNING, WAVES,
+  type EnemyView, type MowerKill, type MowerModel, type MowerSystem, type MowerTier, type Obstacle, type RegularTier, type WavePhase,
+} from './config';
+import { createMowerModel } from './mowerModels';
 
 interface Mower {
-  group: THREE.Group;
-  wheels: THREE.Mesh[];
-  engine: THREE.Mesh;
+  id: number;
+  tier: MowerTier;
   pos: THREE.Vector3;
+  radius: number;
+  hp: number;
+  maxHp: number;
   heading: number;
+  model: MowerModel;
+  slowFactor: number;
+  slowS: number;
+  flashS: number;
+  dyingS: number; // < 0 means alive
 }
 
-const WHEEL_RADIUS = 0.18;
-const SPAWN_TIMER_START = 1.5;
+/** The last target seen by update(); spawnBoss() has no target parameter. */
+const lastTarget = new THREE.Vector3();
 
-// Shared geometry and materials: they are never disposed, so every mower reuses them.
-const bodyMat = new THREE.MeshStandardMaterial({ color: COLORS.mowerBody });
-const darkMat = new THREE.MeshStandardMaterial({ color: COLORS.mowerDark });
-
-const deckGeo = new THREE.BoxGeometry(1.4, 0.3, 1.3);
-const engineGeo = new THREE.CylinderGeometry(0.3, 0.32, 0.3, 16);
-const capGeo = new THREE.BoxGeometry(0.2, 0.1, 0.2);
-const wheelGeo = new THREE.CylinderGeometry(WHEEL_RADIUS, WHEEL_RADIUS, 0.12, 16);
-wheelGeo.rotateZ(Math.PI / 2);
-const handleGeo = new THREE.BoxGeometry(0.05, 0.05, 1.0);
-const crossbarGeo = new THREE.BoxGeometry(0.95, 0.06, 0.06);
-
-/** Builds a mower facing +z with its base at y = 0 and its handle at the back (-z). */
-function buildMowerMesh(): { group: THREE.Group; wheels: THREE.Mesh[]; engine: THREE.Mesh } {
-  const group = new THREE.Group();
-  const mesh = (geo: THREE.BufferGeometry, mat: THREE.Material): THREE.Mesh => {
-    const m = new THREE.Mesh(geo, mat);
-    m.castShadow = true;
-    return m;
-  };
-
-  const deck = mesh(deckGeo, bodyMat);
-  deck.position.set(0, 0.35, 0);
-
-  const engine = mesh(engineGeo, darkMat);
-  engine.position.set(0, 0.65, 0.1);
-  const cap = mesh(capGeo, bodyMat);
-  cap.position.set(0, 0.2, 0); // local to the engine: world y 0.85 at rest
-  engine.add(cap);
-
-  const wheels: THREE.Mesh[] = [];
-  for (const wx of [-0.72, 0.72]) {
-    for (const wz of [-0.45, 0.45]) {
-      const w = mesh(wheelGeo, darkMat);
-      w.position.set(wx, 0.18, wz);
-      wheels.push(w);
-      group.add(w);
-    }
+/**
+ * A point at distance [minR, maxR] from target, on a random bearing, clamped to the lawn.
+ * Tries up to 12 times to find one clear of every obstacle; returns the last candidate if none is clear.
+ */
+function ringPoint(target: THREE.Vector3, minR: number, maxR: number, clearance: number): { x: number; z: number } {
+  const lim = ARENA_HALF - clearance - 1;
+  let x = target.x;
+  let z = target.z;
+  for (let i = 0; i < 12; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = minR + Math.random() * (maxR - minR);
+    x = Math.max(-lim, Math.min(lim, target.x + Math.cos(angle) * r));
+    z = Math.max(-lim, Math.min(lim, target.z + Math.sin(angle) * r));
+    if (OBSTACLES.every((o) => Math.hypot(o.x - x, o.z - z) > o.radius + clearance + 0.5)) break;
   }
-
-  for (const hx of [-0.45, 0.45]) {
-    const h = mesh(handleGeo, darkMat);
-    h.position.set(hx, 0.8, -0.95);
-    h.rotation.x = -0.75;
-    group.add(h);
-  }
-  const crossbar = mesh(crossbarGeo, darkMat);
-  crossbar.position.set(0, 1.12, -1.3);
-  group.add(crossbar);
-
-  group.add(deck, engine);
-  return { group, wheels, engine };
+  return { x, z };
 }
 
 export function createMowerSystem(scene: THREE.Scene): MowerSystem {
-  const mowers: Mower[] = [];
-  let timer = SPAWN_TIMER_START;
-  let t = 0;
+  let mowers: Mower[] = [];
+  let pendingKills: MowerKill[] = [];
+  let nextId = 1;
+  let spawnTimer = 1;
 
-  function spawn(): void {
-    const along = (Math.random() * 2 - 1) * (ARENA_HALF - 2);
-    const edge = (Math.random() < 0.5 ? -1 : 1) * (ARENA_HALF - 1.2);
-    const alongX = Math.random() < 0.5;
-    const x = alongX ? along : edge;
-    const z = alongX ? edge : along;
+  const alive = (): Mower[] => mowers.filter((m) => m.dyingS < 0);
 
-    const { group, wheels, engine } = buildMowerMesh();
-    const heading = Math.atan2(-x, -z); // toward the arena centre
-    group.position.set(x, 0, z);
-    group.rotation.y = heading;
-    scene.add(group);
-    mowers.push({ group, wheels, engine, pos: new THREE.Vector3(x, 0, z), heading });
+  function pickTier(mix: WavePhase['mix']): RegularTier {
+    const entries = (Object.entries(mix) as [RegularTier, number][]).filter(([, w]) => w > 0);
+    let total = 0;
+    for (const [, w] of entries) total += w;
+    if (total <= 0) return 'reel';
+    let r = Math.random() * total;
+    for (const [tier, w] of entries) {
+      r -= w;
+      if (r < 0) return tier;
+    }
+    return entries[entries.length - 1][0];
+  }
+
+  function spawn(tier: MowerTier, target: THREE.Vector3, x?: number, z?: number, heading?: number): void {
+    const def = MOWER_TIERS[tier];
+    let sx: number;
+    let sz: number;
+    if (x !== undefined && z !== undefined) {
+      sx = x;
+      sz = z;
+    } else {
+      const p = ringPoint(target, TUNING.spawnRingMin, TUNING.spawnRingMax, def.radius);
+      sx = p.x;
+      sz = p.z;
+    }
+    const model = createMowerModel(tier);
+    scene.add(model.group);
+    model.group.position.set(sx, 0, sz);
+    mowers.push({
+      id: nextId++,
+      tier,
+      pos: new THREE.Vector3(sx, 0, sz),
+      radius: def.radius,
+      hp: def.hp,
+      maxHp: def.hp,
+      heading: heading ?? Math.atan2(target.x - sx, target.z - sz),
+      model,
+      slowFactor: 1,
+      slowS: 0,
+      flashS: 0,
+      dyingS: -1,
+    });
+  }
+
+  function update(
+    dt: number,
+    elapsedS: number,
+    target: THREE.Vector3,
+    obstacles: readonly Obstacle[],
+    onMow: (x: number, z: number) => void,
+  ): MowerKill[] {
+    lastTarget.copy(target);
+
+    // 1. Spawning by wave.
+    let wave: WavePhase = WAVES[0];
+    for (const w of WAVES) if (w.fromS <= elapsedS) wave = w;
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) {
+      spawnTimer = wave.spawnEveryS;
+      if (alive().length < wave.maxAlive) spawn(pickTier(wave.mix), target);
+    }
+
+    const live = alive();
+
+    // Leash: a non-combine mower that fell far behind is moved back into the spawn ring.
+    for (const m of live) {
+      if (m.tier === 'combine') continue;
+      if (Math.hypot(m.pos.x - target.x, m.pos.z - target.z) <= TUNING.mowerLeashDist) continue;
+      const p = ringPoint(target, TUNING.spawnRingMin, TUNING.spawnRingMax, m.radius);
+      m.pos.x = p.x;
+      m.pos.z = p.z;
+      m.heading = Math.atan2(target.x - p.x, target.z - p.z);
+    }
+
+    // 2. Steering and movement.
+    for (const m of live) {
+      const def = MOWER_TIERS[m.tier];
+      m.slowS -= dt;
+      const mul = m.slowS > 0 ? m.slowFactor : 1;
+      const speed = def.speed * mul;
+      const desired = Math.atan2(target.x - m.pos.x, target.z - m.pos.z);
+      const diff = Math.atan2(Math.sin(desired - m.heading), Math.cos(desired - m.heading));
+      const maxTurn = def.turnRate * dt;
+      m.heading += Math.max(-maxTurn, Math.min(maxTurn, diff));
+      m.pos.x += Math.sin(m.heading) * speed * dt;
+      m.pos.z += Math.cos(m.heading) * speed * dt;
+    }
+
+    // 3. Obstacles (the combine plows through them).
+    for (const m of live) {
+      if (m.tier === 'combine') continue;
+      for (const o of obstacles) {
+        const dx = m.pos.x - o.x;
+        const dz = m.pos.z - o.z;
+        const d = Math.hypot(dx, dz);
+        const min = o.radius + m.radius;
+        if (d >= min) continue;
+        const nx = d < 1e-4 ? 1 : dx / d;
+        const nz = d < 1e-4 ? 0 : dz / d;
+        m.pos.x = o.x + nx * min;
+        m.pos.z = o.z + nz * min;
+      }
+    }
+
+    // 4. Separation between living mowers.
+    for (let i = 0; i < live.length; i++) {
+      for (let j = i + 1; j < live.length; j++) {
+        const a = live[i];
+        const b = live[j];
+        const dx = b.pos.x - a.pos.x;
+        const dz = b.pos.z - a.pos.z;
+        const d = Math.hypot(dx, dz);
+        const sum = a.radius + b.radius;
+        if (d >= sum) continue;
+        const overlap = sum - d;
+        const nx = d < 1e-4 ? 1 : dx / d;
+        const nz = d < 1e-4 ? 0 : dz / d;
+        if (a.tier === 'combine' || b.tier === 'combine') {
+          // The combine holds its ground; the other mower gives way in full.
+          const other = a.tier === 'combine' ? b : a;
+          const sign = a.tier === 'combine' ? 1 : -1;
+          other.pos.x += sign * nx * overlap;
+          other.pos.z += sign * nz * overlap;
+        } else {
+          a.pos.x -= nx * overlap / 2;
+          a.pos.z -= nz * overlap / 2;
+          b.pos.x += nx * overlap / 2;
+          b.pos.z += nz * overlap / 2;
+        }
+      }
+    }
+
+    // 5. Keep inside the lawn.
+    for (const m of live) {
+      const lim = ARENA_HALF - m.radius;
+      m.pos.x = Math.max(-lim, Math.min(lim, m.pos.x));
+      m.pos.z = Math.max(-lim, Math.min(lim, m.pos.z));
+    }
+
+    // 6. Visuals and 7. Mowing.
+    for (const m of live) {
+      const def = MOWER_TIERS[m.tier];
+      const speed = def.speed * (m.slowS > 0 ? m.slowFactor : 1);
+      m.flashS -= dt;
+      m.model.setFlash(m.flashS > 0);
+      m.model.group.position.set(m.pos.x, 0, m.pos.z);
+      m.model.group.rotation.y = m.heading;
+      m.model.animate(dt, speed);
+
+      onMow(m.pos.x, m.pos.z);
+      if (m.tier === 'combine') {
+        const fx = Math.sin(m.heading);
+        const fz = Math.cos(m.heading);
+        const rx = -fz; // right = (-cos h, 0, sin h)
+        const rz = fx;
+        onMow(m.pos.x + fx * 2 + rx * 1.6, m.pos.z + fz * 2 + rz * 1.6);
+        onMow(m.pos.x + fx * 2 - rx * 1.6, m.pos.z + fz * 2 - rz * 1.6);
+      }
+    }
+
+    // 8. Dying mowers shrink, spin and are removed.
+    const kept: Mower[] = [];
+    for (const m of mowers) {
+      if (m.dyingS < 0) {
+        kept.push(m);
+        continue;
+      }
+      m.dyingS -= dt;
+      m.model.group.scale.setScalar(Math.max(0.01, m.dyingS / 0.25));
+      m.model.group.rotation.y += 15 * dt;
+      if (m.dyingS <= 0) {
+        scene.remove(m.model.group);
+      } else {
+        kept.push(m);
+      }
+    }
+    mowers = kept;
+
+    // 9. Report kills since the last call.
+    return pendingKills.splice(0);
   }
 
   return {
-    update(dt: number, elapsedS: number, target: THREE.Vector3, obstacles: readonly Obstacle[], onMow: (x: number, z: number) => void) {
-      t += dt;
-      const speed = Math.min(TUNING.mowerSpeedMax, TUNING.mowerSpeedStart + TUNING.mowerSpeedRampPerSec * elapsedS);
-
-      timer -= dt;
-      if (timer <= 0 && mowers.length < TUNING.mowerMax) {
-        spawn();
-        timer = Math.max(TUNING.mowerSpawnMinS, TUNING.mowerSpawnStartS - TUNING.mowerSpawnRampPerSec * elapsedS);
-      }
-
-      for (const m of mowers) {
-        // Steer toward the target with a limited turn rate.
-        const desired = Math.atan2(target.x - m.pos.x, target.z - m.pos.z);
-        let diff = desired - m.heading;
-        diff = ((diff + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
-        const maxTurn = TUNING.mowerTurnRate * dt;
-        m.heading += Math.max(-maxTurn, Math.min(maxTurn, diff));
-
-        m.pos.x += Math.sin(m.heading) * speed * dt;
-        m.pos.z += Math.cos(m.heading) * speed * dt;
-
-        // Keep out of obstacles.
-        for (const o of obstacles) {
-          const dx = m.pos.x - o.x;
-          const dz = m.pos.z - o.z;
-          const d = Math.hypot(dx, dz);
-          const minD = o.radius + MOWER_RADIUS;
-          if (d < minD) {
-            const nx = d < 1e-4 ? 1 : dx / d;
-            const nz = d < 1e-4 ? 0 : dz / d;
-            m.pos.x = o.x + nx * minD;
-            m.pos.z = o.z + nz * minD;
-          }
-        }
-      }
-
-      // Mowers push each other apart.
-      const minPair = 2 * MOWER_RADIUS;
-      for (let i = 0; i < mowers.length; i++) {
-        for (let j = i + 1; j < mowers.length; j++) {
-          const a = mowers[i].pos;
-          const b = mowers[j].pos;
-          const dx = b.x - a.x;
-          const dz = b.z - a.z;
-          const d = Math.hypot(dx, dz);
-          if (d < minPair) {
-            const overlap = minPair - d;
-            const nx = d < 1e-4 ? 1 : dx / d;
-            const nz = d < 1e-4 ? 0 : dz / d;
-            const half = overlap / 2;
-            a.x -= nx * half;
-            a.z -= nz * half;
-            b.x += nx * half;
-            b.z += nz * half;
-          }
-        }
-      }
-
-      const lim = ARENA_HALF - MOWER_RADIUS;
-      for (const m of mowers) {
-        m.pos.x = Math.max(-lim, Math.min(lim, m.pos.x));
-        m.pos.z = Math.max(-lim, Math.min(lim, m.pos.z));
-      }
-
-      // Visuals and mowing.
-      for (const m of mowers) {
-        m.group.position.set(m.pos.x, 0, m.pos.z);
-        m.group.rotation.y = m.heading;
-        for (const w of m.wheels) {
-          w.rotation.x += (speed * dt) / WHEEL_RADIUS;
-        }
-        m.engine.position.y = 0.65 + Math.sin(t * 60) * 0.012;
-        m.group.rotation.z = Math.sin(t * 45) * 0.01;
-        onMow(m.pos.x, m.pos.z);
+    update,
+    enemies(): readonly EnemyView[] {
+      return alive();
+    },
+    damage(id: number, amount: number): void {
+      const m = alive().find((x) => x.id === id);
+      if (!m) return;
+      m.hp -= amount;
+      m.flashS = 0.08;
+      if (m.hp <= 0) {
+        m.hp = 0;
+        m.dyingS = 0.25;
+        pendingKills.push({ id: m.id, tier: m.tier, x: m.pos.x, z: m.pos.z });
       }
     },
-
-    positions: () => mowers.map((m) => m.pos),
-
-    nearestDistance(p: THREE.Vector3): number {
-      let best = Infinity;
-      for (const m of mowers) {
-        best = Math.min(best, Math.hypot(m.pos.x - p.x, m.pos.z - p.z));
-      }
-      return best;
+    slow(id: number, factor: number, seconds: number): void {
+      const m = alive().find((x) => x.id === id);
+      if (!m) return;
+      m.slowFactor = factor;
+      m.slowS = Math.max(m.slowS, seconds);
     },
-
-    reset() {
-      for (const m of mowers) scene.remove(m.group);
-      mowers.length = 0;
-      timer = SPAWN_TIMER_START;
+    spawnBoss(): void {
+      const p = ringPoint(lastTarget, TUNING.bossSpawnDist, TUNING.bossSpawnDist + 3, MOWER_TIERS.combine.radius);
+      spawn('combine', lastTarget, p.x, p.z);
+    },
+    bossHp(): { hp: number; max: number } | null {
+      const boss = alive().find((m) => m.tier === 'combine');
+      return boss ? { hp: boss.hp, max: boss.maxHp } : null;
+    },
+    reset(): void {
+      for (const m of mowers) scene.remove(m.model.group);
+      mowers = [];
+      pendingKills = [];
+      spawnTimer = 1;
     },
   };
 }

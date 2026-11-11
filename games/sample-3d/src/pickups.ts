@@ -51,9 +51,15 @@ export function createPickupSystem(scene: THREE.Scene): PickupSystem {
   let t = 0;
   let timer = 0.5;
 
-  function randomGroundPoint(): { x: number; z: number } {
-    const span = ARENA_HALF - 2;
-    return { x: (Math.random() * 2 - 1) * span, z: (Math.random() * 2 - 1) * span };
+  /** A random lawn point at distance [pickupRingMin, pickupRingMax] from the player, clamped to the lawn. */
+  function ringGroundPoint(playerFeet: THREE.Vector3): { x: number; z: number } {
+    const lim = ARENA_HALF - 2;
+    const angle = Math.random() * Math.PI * 2;
+    const r = TUNING.pickupRingMin + Math.random() * (TUNING.pickupRingMax - TUNING.pickupRingMin);
+    return {
+      x: Math.max(-lim, Math.min(lim, playerFeet.x + Math.cos(angle) * r)),
+      z: Math.max(-lim, Math.min(lim, playerFeet.z + Math.sin(angle) * r)),
+    };
   }
 
   function farFromObstacles(x: number, z: number): boolean {
@@ -67,16 +73,21 @@ export function createPickupSystem(scene: THREE.Scene): PickupSystem {
     });
   }
 
-  function spawnOne(): void {
+  function spawnOne(playerFeet: THREE.Vector3): void {
+    // Obstacles the player can reach and stand on, near enough to matter.
+    const climbable: Obstacle[] = OBSTACLES.filter((o) =>
+      o.height <= TUNING.maxClimbableHeight &&
+      Math.hypot(o.x - playerFeet.x, o.z - playerFeet.z) <= TUNING.pickupRingMax + 5,
+    );
     for (let i = 0; i < SPAWN_TRIES; i++) {
-      if (Math.random() < TUNING.pickupOnObstacleChance) {
-        const o: Obstacle = OBSTACLES[Math.floor(Math.random() * OBSTACLES.length)];
+      if (climbable.length > 0 && Math.random() < TUNING.pickupOnObstacleChance) {
+        const o = climbable[Math.floor(Math.random() * climbable.length)];
         const y = o.height + 0.5;
         if (!farFromAcorns(o.x, y, o.z)) continue;
         place(o.x, y, o.z);
         return;
       }
-      const { x, z } = randomGroundPoint();
+      const { x, z } = ringGroundPoint(playerFeet);
       if (!farFromObstacles(x, z)) continue;
       if (!farFromAcorns(x, 0.5, z)) continue;
       place(x, 0.5, z);
@@ -101,7 +112,7 @@ export function createPickupSystem(scene: THREE.Scene): PickupSystem {
       t += dt;
       timer -= dt;
       if (timer <= 0 && acorns.length < TUNING.pickupMax) {
-        spawnOne();
+        spawnOne(playerFeet);
         timer = TUNING.pickupSpawnS;
       }
 
@@ -110,6 +121,14 @@ export function createPickupSystem(scene: THREE.Scene): PickupSystem {
 
       for (let i = acorns.length - 1; i >= 0; i--) {
         const a = acorns[i];
+
+        // Leash: acorns left far behind are removed so new ones can spawn nearby.
+        if (Math.hypot(a.group.position.x - playerFeet.x, a.group.position.z - playerFeet.z) > TUNING.pickupLeashDist) {
+          removeAcorn(a);
+          acorns.splice(i, 1);
+          continue;
+        }
+
         a.group.position.y = a.baseY + Math.sin(t * 3 + a.phase) * 0.12;
         a.group.rotation.y += 2 * dt;
 

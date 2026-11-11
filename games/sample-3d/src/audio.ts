@@ -47,7 +47,7 @@ function tone(
   osc.stop(now + delay + dur);
 }
 
-function noiseBurst(): void {
+function noiseBurst(vol = 0.25): void {
   const c = ctx;
   const out = master;
   if (!c || !out) return;
@@ -61,7 +61,7 @@ function noiseBurst(): void {
   const src = c.createBufferSource();
   const gain = c.createGain();
   src.buffer = noiseBuffer;
-  gain.gain.setValueAtTime(0.25, now);
+  gain.gain.setValueAtTime(vol, now);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
   src.connect(gain);
   gain.connect(out);
@@ -69,10 +69,26 @@ function noiseBurst(): void {
   src.stop(now + 0.3);
 }
 
+/** Minimum gap between two plays of the same sound, in ms. */
+const SFX_MIN_GAP_MS: Partial<Record<SfxName, number>> = {
+  enemyHit: 60,
+  xp: 40,
+  enemyDie: 30,
+  shoot: 50,
+};
+const sfxLastPlayed: Partial<Record<SfxName, number>> = {};
+
 export function playSfx(name: SfxName): void {
   try {
     const c = ensureContext();
     if (!c) return;
+    const gap = SFX_MIN_GAP_MS[name];
+    if (gap !== undefined) {
+      const now = performance.now();
+      const last = sfxLastPlayed[name];
+      if (last !== undefined && now - last < gap) return;
+      sfxLastPlayed[name] = now;
+    }
     if (c.state === 'suspended') void c.resume();
     switch (name) {
       case 'start':
@@ -89,6 +105,52 @@ export function playSfx(name: SfxName): void {
       case 'hit':
         tone(180, 40, 0.5, 'sawtooth', 0.2);
         noiseBurst();
+        break;
+      case 'hurt':
+        tone(400, 150, 0.25, 'square', 0.12);
+        break;
+      case 'shoot':
+        tone(700, 300, 0.06, 'triangle', 0.05);
+        break;
+      case 'enemyHit':
+        tone(220, 160, 0.05, 'square', 0.04);
+        break;
+      case 'enemyDie':
+        tone(300, 60, 0.18, 'sawtooth', 0.08);
+        noiseBurst(0.08);
+        break;
+      case 'xp':
+        tone(1200 + Math.random() * 200, 1600, 0.05, 'sine', 0.04);
+        break;
+      case 'levelUp': {
+        const notes = [523, 659, 784, 1047];
+        const delays = [0, 0.08, 0.16, 0.24];
+        notes.forEach((f1, i) => tone(f1 * 0.98, f1, 0.12, 'square', 0.07, delays[i]));
+        break;
+      }
+      case 'bossWarning':
+        tone(300, 600, 0.4, 'sawtooth', 0.1, 0);
+        tone(600, 300, 0.4, 'sawtooth', 0.1, 0.4);
+        tone(300, 600, 0.4, 'sawtooth', 0.1, 0.8);
+        tone(600, 300, 0.4, 'sawtooth', 0.1, 1.2);
+        break;
+      case 'buy':
+        tone(660, 990, 0.08, 'square', 0.07);
+        tone(990, 1320, 0.1, 'square', 0.06, 0.07);
+        break;
+      case 'splash':
+        tone(900, 200, 0.2, 'sine', 0.06);
+        noiseBurst(0.06);
+        break;
+      case 'boom':
+        tone(120, 30, 0.5, 'sawtooth', 0.2);
+        noiseBurst(0.2);
+        break;
+      case 'victory':
+        tone(523, 523, 0.12, 'square', 0.07, 0);
+        tone(659, 659, 0.12, 'square', 0.07, 0.12);
+        tone(784, 784, 0.12, 'square', 0.07, 0.24);
+        tone(1047, 1047, 0.5, 'square', 0.07, 0.36);
         break;
     }
   } catch {

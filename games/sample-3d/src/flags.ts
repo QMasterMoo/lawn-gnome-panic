@@ -1,0 +1,23 @@
+import { DEFAULT_FLAGS, FLAGS_KEY, type FeatureFlags, type VisualMode } from './config';
+
+const MODES: readonly VisualMode[] = ['off', 'rtx', 'crt'];
+
+/** Feature flags live apart from the save so wiping progress keeps your settings. */
+export function loadFlags(): FeatureFlags {
+  const flags: FeatureFlags = { ...DEFAULT_FLAGS };
+  try {
+    const raw = JSON.parse(localStorage.getItem(FLAGS_KEY) ?? 'null') as Partial<FeatureFlags> | null;
+    if (raw && MODES.includes(raw.visualMode as VisualMode)) flags.visualMode = raw.visualMode as VisualMode;
+  } catch {
+    // keep defaults
+  }
+  return flags;
+}
+
+export function saveFlags(flags: FeatureFlags): void {
+  try {
+    localStorage.setItem(FLAGS_KEY, JSON.stringify(flags));
+  } catch {
+    // storage unavailable; flags last for this session only
+  }
+}
