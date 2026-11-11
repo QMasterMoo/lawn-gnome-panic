@@ -7,7 +7,8 @@ const LEG_AIR_LEFT = 0.5;
 const LEG_AIR_RIGHT = -0.3;
 const ARM_AIR = -2.4;
 
-export function createGnome(): GnomeModel {
+/** hatColor/shirtColor let bots look different from the player. */
+export function createGnome(hatColor: number = COLORS.gnomeHat, shirtColor: number = COLORS.gnomeShirt): GnomeModel {
   const object = new THREE.Group();
   const rig = new THREE.Group();
   object.add(rig);
@@ -42,7 +43,7 @@ export function createGnome(): GnomeModel {
   const makeArm = (x: number): THREE.Group => {
     const pivot = new THREE.Group();
     pivot.position.set(x, 0.62, 0);
-    const sleeve = mesh(new THREE.BoxGeometry(0.1, 0.3, 0.1), COLORS.gnomeShirt);
+    const sleeve = mesh(new THREE.BoxGeometry(0.1, 0.3, 0.1), shirtColor);
     sleeve.position.y = -0.15;
     const hand = mesh(new THREE.SphereGeometry(0.06), COLORS.gnomeSkin);
     hand.position.y = -0.32;
@@ -56,7 +57,7 @@ export function createGnome(): GnomeModel {
   const armL = makeArm(0.27);
   const armR = makeArm(-0.27);
 
-  const body = mesh(new THREE.CylinderGeometry(0.18, 0.24, 0.38, 12), COLORS.gnomeShirt);
+  const body = mesh(new THREE.CylinderGeometry(0.18, 0.24, 0.38, 12), shirtColor);
   body.position.y = 0.48;
   const belt = mesh(new THREE.CylinderGeometry(0.235, 0.235, 0.05), COLORS.mowerDark);
   belt.position.y = 0.36;
@@ -74,7 +75,7 @@ export function createGnome(): GnomeModel {
   beard.rotation.x = Math.PI;
   beard.position.set(0, 0.62, 0.07);
 
-  const hat = mesh(new THREE.ConeGeometry(0.2, 0.5, 16), COLORS.gnomeHat);
+  const hat = mesh(new THREE.ConeGeometry(0.2, 0.5, 16), hatColor);
   hat.position.set(0, 1.12, -0.02);
   hat.rotation.x = -0.15;
 

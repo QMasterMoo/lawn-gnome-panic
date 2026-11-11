@@ -11,6 +11,13 @@ export function loadFlags(): FeatureFlags {
   } catch {
     // keep defaults
   }
+  // URL override for sharing and testing, e.g. ?visual=rtx
+  try {
+    const v = new URLSearchParams(location.search).get('visual');
+    if (v && MODES.includes(v as VisualMode)) flags.visualMode = v as VisualMode;
+  } catch {
+    // no location (tests)
+  }
   return flags;
 }
 

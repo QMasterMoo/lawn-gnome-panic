@@ -1,6 +1,6 @@
-import type { LobbyCallbacks, LobbyUI, MetaSave, MetaUpgradeDef } from '../config';
+import type { GameMode, LobbyCallbacks, LobbyUI, MetaSave, MetaUpgradeDef } from '../config';
 import type { VisualMode } from '../config';
-import { META_UPGRADES, upgradeCost } from '../config';
+import { META_UPGRADES, TUNING, upgradeCost } from '../config';
 
 const CSS = `
 .lb-root {
@@ -108,6 +108,54 @@ const CSS = `
 .lb-seg-btn:hover { filter: brightness(1.25); }
 .lb-seg-btn.on { background: #ffd54f; color: #2a1400; border-color: #ffd54f; }
 .lb-vm-cap { margin-top: 8px; font-size: 12px; font-style: italic; color: #ffd9a0; text-shadow: 0 2px 0 #000; min-height: 1.2em; }
+.lb-side {
+  position: absolute; right: 24px; bottom: 132px; width: 300px; box-sizing: border-box; pointer-events: none;
+}
+.lb-party { pointer-events: auto; margin-bottom: 14px; }
+.lb-slots { display: flex; gap: 6px; }
+.lb-slot {
+  flex: 1; min-width: 0; box-sizing: border-box; font: inherit; font-size: 12px; padding: 8px 4px;
+  border-radius: 6px; text-align: center; background: rgba(20,8,50,.8); color: #e6dcff;
+  border: 2px solid rgba(255,255,255,.6);
+}
+.lb-slot.empty { pointer-events: auto; cursor: pointer; font-size: 20px; }
+.lb-slot.empty:hover { filter: brightness(1.25); }
+.lb-mode { display: flex; gap: 6px; pointer-events: auto; }
+.lb-mode-cell { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.lb-mode-btn {
+  font: inherit; font-size: 13px; padding: 10px 4px; border-radius: 6px; cursor: pointer;
+  pointer-events: auto; background: rgba(20,8,50,.8); color: #e6dcff;
+  border: 2px solid rgba(255,255,255,.6);
+}
+.lb-mode-btn:hover { filter: brightness(1.25); }
+.lb-mode-btn.on { background: #ffd54f; color: #2a1400; border-color: #ffd54f; }
+.lb-mode-cap { margin-top: 4px; font-size: 11px; font-style: italic; color: #ffd9a0; text-align: center; text-shadow: 0 2px 0 #000; }
+@media (max-width: 760px) {
+  .lb-nav { display: none; }
+  .lb-chars {
+    top: 64px; left: 8px; right: 8px; width: auto; height: auto; max-height: none;
+    display: flex; flex-direction: row; align-items: flex-start; gap: 8px;
+    overflow-x: auto; overflow-y: hidden; padding-right: 0; padding-bottom: 4px;
+  }
+  .lb-chars > .lb-h { flex: none; width: 110px; margin: 0; }
+  .lb-chars > .lb-card { flex: none; width: 140px; margin-bottom: 0; }
+  .lb-chars > .lb-vm { flex: none; width: 240px; margin-top: 0; }
+  .lb-shop {
+    top: auto; left: 8px; right: 8px; bottom: 240px; width: auto;
+    max-height: 28vh; overflow-y: auto;
+  }
+  .lb-stats { display: none; }
+  .lb-side { left: 8px; right: 8px; bottom: 90px; width: auto; }
+  .lb-play { left: 8px; right: 8px; bottom: 8px; width: auto; height: 72px; }
+  .lb-play-main { font-size: 40px; }
+}
+@media (max-height: 480px) {
+  .lb-chars > .lb-card { display: none; }
+  .lb-shop { top: 64px; bottom: auto; max-height: calc(100vh - 160px); }
+  .lb-side { left: 12px; right: auto; bottom: 12px; top: auto; width: 300px; }
+  .lb-chars { max-height: 40vh; }
+  .lb-play { height: 64px; }
+}
 `;
 
 const TIPS = [
@@ -267,9 +315,55 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   const play = h('button', 'lb-play');
   const playSub = h('div', 'lb-play-sub');
   play.append(h('div', 'lb-play-main', 'PLAY'), playSub);
-  play.onclick = () => cb.onPlay();
+  play.onclick = () => cb.onPlay(mode);
 
-  screen.append(top, chars, shop, stats, play, toast);
+  // Party panel (fake, foreshadows multiplayer) and game mode selector, stacked above PLAY
+  let mode: GameMode = 'solo';
+  let runCount = 0;
+  const side = h('div', 'lb-side');
+  const party = h('div', 'lb-party');
+  party.append(h('div', 'lb-h', 'PARTY 1/4'));
+  const slots = h('div', 'lb-slots');
+  slots.append(h('div', 'lb-slot', 'GNORMAN (you)'));
+  for (let i = 0; i < 3; i++) {
+    const empty = h('button', 'lb-slot empty', '+');
+    empty.type = 'button';
+    empty.onclick = () => showToast('Inviting friends: COMING SOON. For now, the bots are your friends.');
+    slots.appendChild(empty);
+  }
+  party.append(slots);
+
+  const modeRow = h('div', 'lb-mode');
+  const modeBtns = new Map<GameMode, HTMLButtonElement>();
+  const MODE_OPTIONS: { mode: GameMode; label: string; caption: string }[] = [
+    { mode: 'solo', label: 'SOLO', caption: '' },
+    { mode: 'royale', label: 'BATTLE ROYALE', caption: `vs ${TUNING.royaleBots} bots` },
+  ];
+  for (const opt of MODE_OPTIONS) {
+    const cell = h('div', 'lb-mode-cell');
+    const btn = h('button', 'lb-mode-btn', opt.label);
+    btn.type = 'button';
+    btn.onclick = () => setMode(opt.mode);
+    modeBtns.set(opt.mode, btn);
+    cell.append(btn, h('div', 'lb-mode-cap', opt.caption));
+    modeRow.appendChild(cell);
+  }
+  side.append(party, modeRow);
+
+  function updatePlaySub(): void {
+    playSub.textContent = mode === 'royale'
+      ? `RUN #${runCount + 1} · BATTLE ROYALE · ${TUNING.royaleBots + 1} GNOMES`
+      : `RUN #${runCount + 1} · SOLO · BACKYARD`;
+  }
+
+  function setMode(next: GameMode): void {
+    mode = next;
+    for (const [m, btn] of modeBtns) btn.classList.toggle('on', m === mode);
+    updatePlaySub();
+  }
+  setMode('solo');
+
+  screen.append(top, chars, shop, stats, side, play, toast);
 
   let visible = false;
   let tipIdx = Math.floor(Math.random() * TIPS.length);
@@ -303,13 +397,14 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
     statsLine.textContent =
       `RUNS ${save.runs} · BEST ${fmtTime(save.bestTimeS)} · ` +
       `COMBINES DEFEATED ${save.bossKills} · LIFETIME ACORNS ${save.totalAcornsEarned}`;
-    playSub.textContent = `RUN #${save.runs + 1} · SOLO · BACKYARD`;
+    runCount = save.runs;
+    updatePlaySub();
   }
 
   window.addEventListener('keydown', (e) => {
     if (!visible || e.key !== 'Enter') return;
     e.preventDefault();
-    cb.onPlay();
+    cb.onPlay(mode);
   });
 
   return {

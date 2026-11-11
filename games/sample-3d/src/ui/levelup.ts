@@ -54,6 +54,19 @@ const CSS = `
 }
 .lv-reroll:disabled { opacity: .4; cursor: not-allowed; }
 @keyframes lv-pop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@media (max-width: 760px) {
+  .lv-root { justify-content: flex-start; overflow-y: auto; }
+  .lv-title { font-size: 36px; }
+  .lv-cards { flex-direction: column; flex-wrap: nowrap; align-items: center; }
+  .lv-card {
+    width: 88vw; height: auto; min-height: 120px;
+    display: grid; grid-template-columns: auto 1fr; column-gap: 12px; align-items: center;
+  }
+  .lv-tag { grid-column: 1 / -1; justify-self: start; }
+  .lv-icon { grid-column: 1; grid-row: 2 / span 3; margin: 0; }
+  .lv-card-title, .lv-desc, .lv-blurb { text-align: left; }
+  .lv-hint { grid-column: 1 / -1; margin-top: 4px; }
+}
 `;
 
 function injectStyle(id: string, css: string): void {

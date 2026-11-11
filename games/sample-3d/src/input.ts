@@ -1,9 +1,9 @@
 // src/input.ts
-import { TUNING, type InputController, type InputState } from './config';
+import { TUNING, type InputController, type InputState, type TouchControls } from './config';
 
 const DEADZONE = 0.15;
 
-export function createInput(canvas: HTMLCanvasElement): InputController {
+export function createInput(canvas: HTMLCanvasElement, touch?: TouchControls): InputController {
   const held = new Set<string>();
   const edges = new Set<string>();
   let clicked = false;
@@ -83,6 +83,16 @@ export function createInput(canvas: HTMLCanvasElement): InputController {
         if (pad.buttons[4]?.pressed || pad.buttons[5]?.pressed || pad.buttons[10]?.pressed) sprint = true;
       } else {
         padAWasDown = false;
+      }
+
+      if (touch) {
+        const t = touch.read();
+        moveX += t.moveX;
+        moveY += t.moveY;
+        lookX += t.lookX;
+        lookY += t.lookY;
+        if (t.jump) { jump = true; start = true; }
+        if (t.sprint) sprint = true;
       }
 
       moveX = Math.max(-1, Math.min(1, moveX));

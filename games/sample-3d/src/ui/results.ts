@@ -30,6 +30,8 @@ const CSS = `
   display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 8px;
   background: #ffd54f; color: #111; font-size: 13px; font-family: 'Arial Black', Impact, sans-serif; vertical-align: middle;
 }
+.rs-place { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 14px; font-size: 72px; line-height: 1; color: #ffd54f; }
+.rs-of { font-size: 24px; color: #fff; opacity: .85; }
 .rs-acorns { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 16px; font-family: system-ui, sans-serif; }
 .rs-banked { margin-top: 6px; font-size: 36px; color: #ffd54f; }
 .rs-flavour { max-width: 560px; font-size: 16px; font-style: italic; opacity: .85; font-family: system-ui, sans-serif; }
@@ -40,6 +42,12 @@ const CSS = `
   background: linear-gradient(180deg, #ffe082, #ffb300);
 }
 .rs-footnote { margin-top: auto; font-size: 12px; opacity: .6; font-family: system-ui, sans-serif; }
+@media (max-width: 760px) {
+  .rs-root { justify-content: flex-start; overflow-y: auto; }
+  .rs-root .rs-title, .rs-victory .rs-title { font-size: 44px; }
+  .rs-place { font-size: 48px; }
+  .rs-button { width: 100%; box-sizing: border-box; }
+}
 `;
 
 function injectStyle(id: string, css: string): void {
@@ -109,19 +117,29 @@ export function createResultsUI(parent: HTMLElement): ResultsUI {
       pendingContinue = onContinue;
       flavour = FLAVOUR_LINES[Math.floor(Math.random() * FLAVOUR_LINES.length)];
 
-      root.classList.toggle('rs-victory', s.victory);
-      root.classList.toggle('rs-death', !s.victory);
+      const place = s.placement;
+      const winner = s.victory || place?.rank === 1;
+      root.classList.toggle('rs-victory', winner);
+      root.classList.toggle('rs-death', !winner);
 
       const children: HTMLElement[] = [];
 
       const titleRow = el('div', 'rs-title-row');
-      if (s.victory) {
+      if (place?.rank === 1) {
+        titleRow.append(el('h1', 'rs-title', '#1 LAST GNOME STANDING'));
+        children.push(titleRow, el('p', 'rs-line', 'Winner winner, chicken dinner. Legally distinct.'));
+      } else if (s.victory) {
         titleRow.append(el('h1', 'rs-title', 'COMBINE DEFEATED'));
         children.push(titleRow, el('p', 'rs-line', 'The lawn always grows back. That is the roguelike promise.'));
       } else {
         titleRow.append(el('h1', 'rs-title', 'YOU DIED'), el('span', 'rs-permanent', '(permanently*)'));
-        const killer = s.killedBy ? MOWER_TIERS[s.killedBy].name : 'hubris';
+        const killer = s.killedByText ?? (s.killedBy ? MOWER_TIERS[s.killedBy].name : 'hubris');
         children.push(titleRow, el('p', 'rs-line', `Killed by: ${killer}`));
+        if (place) {
+          const placeRow = el('div', 'rs-place');
+          placeRow.append(el('span', 'rs-rank', `#${place.rank}`), el('span', 'rs-of', `of ${place.total}`));
+          children.push(placeRow);
+        }
       }
 
       const stats = el('div', 'rs-stats');

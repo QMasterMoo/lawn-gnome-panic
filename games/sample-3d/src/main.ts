@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import {
   COLORS, OBSTACLES, PLAYER_RADIUS, PEDESTAL_HEIGHT, MOWER_TIERS, TUNING, WAVES,
   type GamePhase, type InputState, type MowerTier, type RunSummary, type UpgradeChoice,
-  type Weapon, type WeaponContext, type WeaponId, type MetaUpgradeId, type VisualMode, type ItemKind,
+  type Weapon, type WeaponContext, type WeaponId, type MetaUpgradeId, type VisualMode, type ItemKind, type GameMode,
   ITEM_DEFS, CHICKEN_HEAL,
 } from './config';
 import { createInput } from './input';
+import { createTouchControls } from './ui/touch';
 import { createCameraRig } from './camera';
 import { createPlayerState, updatePlayer } from './player';
 import { createGnome } from './gnome';
@@ -30,6 +31,9 @@ import { buildHouse } from './house';
 import { buildScenery } from './scenery';
 import { createItemSystem } from './items';
 import { createJuice } from './juice';
+import { createBotSystem } from './br/bots';
+import { createZone } from './br/zone';
+import { createRoyaleHud } from './ui/royaleHud';
 
 // ---------- renderer, scene, camera ----------
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -57,7 +61,8 @@ resize();
 
 // ---------- systems ----------
 const uiRoot = document.getElementById('ui') as HTMLElement;
-const input = createInput(canvas);
+const touch = createTouchControls(uiRoot);
+const input = createInput(canvas, touch);
 const rig = createCameraRig(camera);
 const world = buildWorld(scene);
 const props = OBSTACLES.map((o) => {
@@ -85,12 +90,15 @@ const pickups = createPickupSystem(scene);
 const drops = createDropSystem(scene);
 const items = createItemSystem(scene);
 const juice = createJuice(uiRoot);
+const bots = createBotSystem(scene);
+const zone = createZone(scene);
+const royaleHud = createRoyaleHud(uiRoot);
 const lobbyStage = createLobbyStage(scene);
 const hud = createHud(uiRoot);
 const levelUp = createLevelUpUI(uiRoot);
 const results = createResultsUI(uiRoot);
 const lobbyUI = createLobbyUI(uiRoot, {
-  onPlay: () => { if (phase === 'lobby') startRun(); },
+  onPlay: (mode: GameMode) => { if (phase === 'lobby') startRun(mode); },
   onBuy: (id: MetaUpgradeId) => {
     if (tryBuy(save, id)) {
       playSfx('buy');
@@ -122,6 +130,9 @@ let waveIndex = -1;
 let victoryTimer = -1;
 let killedBy: MowerTier | null = null;
 let espressoS = 0;
+let mode: GameMode = 'solo';
+let zoneDmgTimer = 0;
+let killedByText: string | null = null;
 let celebrateS = 0;
 let bestToastDone = false;
 
@@ -156,6 +167,10 @@ function clearField(): void {
   pickups.reset();
   items.reset();
   juice.reset();
+  bots.reset();
+  zone.reset();
+  zone.setVisible(false);
+  royaleHud.hide();
   world.reset();
 }
 
@@ -177,7 +192,8 @@ function goLobby(): void {
   setEngineLevel(0);
 }
 
-function startRun(): void {
+function startRun(m: GameMode = 'solo'): void {
+  mode = m;
   lobbyUI.hide();
   lobbyStage.setVisible(false);
   clearField();
@@ -188,20 +204,31 @@ function startRun(): void {
   waveIndex = -1;
   victoryTimer = -1;
   killedBy = null;
+  killedByText = null;
+  zoneDmgTimer = 0;
   espressoS = 0;
   celebrateS = 0;
   bestToastDone = save.bestTimeS <= 0;
   syncWeapons();
   rig.reset(0);
   hud.show();
-  hud.banner(`RUN #${save.runs + 1} BEGINS`, 'Death is permanent. Your upgrades are not. Very roguelike.', 3);
+  if (mode === 'royale') {
+    bots.spawn(TUNING.royaleBots, new THREE.Vector3(0, 0, 0), player.position);
+    zone.setVisible(true);
+    royaleHud.show();
+    hud.banner(`BATTLE ROYALE · ${TUNING.royaleBots + 1} GNOMES`, 'Last gnome standing wins. The bots have names. Respect them.', 3.5);
+  } else {
+    hud.banner(`RUN #${save.runs + 1} BEGINS`, 'Death is permanent. Your upgrades are not. Very roguelike.', 3);
+  }
   phase = 'playing';
   input.setPointerLockAllowed(true);
+  touch.setVisible(true);
   playSfx('start');
 }
 
 function openLevelUp(): void {
   phase = 'levelup';
+  touch.setVisible(false);
   input.setPointerLockAllowed(false);
   setEngineLevel(0);
   choices = rollChoices(run, stats.choiceCount);
@@ -221,6 +248,7 @@ function onPick(index: number): void {
   } else {
     phase = 'playing';
     input.setPointerLockAllowed(true);
+    touch.setVisible(true);
   }
 }
 
@@ -257,8 +285,11 @@ function endRun(victory: boolean): void {
     runNumber: save.runs, victory, elapsedS: run.elapsedS, kills: run.kills, level: run.level,
     acornsCollected: run.acorns, survivalBonus, bossBonus, totalEarned, newBestTime,
     killedBy: victory ? null : killedBy,
+    killedByText: victory ? null : killedByText,
+    placement: mode === 'royale' ? { rank: run.hearts > 0 ? 1 : bots.aliveCount() + 1, total: TUNING.royaleBots + 1 } : null,
   };
   hud.hide();
+  touch.setVisible(false);
   results.show(summary, goLobby);
 }
 
@@ -313,7 +344,9 @@ function tickRun(dt: number, inp: InputState): void {
   }
 
   // Mowers.
-  const kills = mowers.update(dt, run.elapsedS, player.position, OBSTACLES, (x, z) => world.markMowed(x, z));
+  const targets: THREE.Vector3[] = [player.position];
+  for (const c of bots.contestants()) if (c.alive) targets.push(c.pos);
+  const kills = mowers.update(dt, run.elapsedS, targets, OBSTACLES, (x, z) => world.markMowed(x, z));
   for (const k of kills) {
     run.kills += 1;
     const def = MOWER_TIERS[k.tier];
@@ -359,6 +392,7 @@ function tickRun(dt: number, inp: InputState): void {
   const acornGain = got.acorns + pickups.update(dt, player.position);
   if (acornGain > 0) {
     run.acorns += acornGain;
+    pendingLevelUps += addXp(run, acornGain * TUNING.acornXp * stats.xpMultiplier);
     playSfx('pickup');
   }
   for (const kind of items.update(dt, player.position)) applyItem(kind);
@@ -380,15 +414,50 @@ function tickRun(dt: number, inp: InputState): void {
     for (const e of mowers.enemies()) {
       const def = MOWER_TIERS[e.tier];
       const d = Math.hypot(e.pos.x - player.position.x, e.pos.z - player.position.z);
-      if (d < PLAYER_RADIUS + e.radius && player.position.y < def.height) {
+      // A mower may be up on an obstacle (e.pos.y > 0): you clear it only by being above its top.
+      if (d < PLAYER_RADIUS + e.radius && player.position.y < e.pos.y + def.height && player.position.y > e.pos.y - 0.6) {
         run.hearts -= def.contactDamage;
         run.invulnS = TUNING.invulnS;
         killedBy = e.tier;
+        killedByText = null;
         juice.hurt();
         juice.shake(0.5 * def.contactDamage);
         if (run.hearts > 0) playSfx('hurt');
         break;
       }
+    }
+  }
+  // Battle royale: the zone, the bots, the kill feed.
+  if (mode === 'royale') {
+    const zs = zone.update(dt, run.elapsedS);
+    const outside = zone.isOutside(player.position.x, player.position.z);
+    if (outside) {
+      zoneDmgTimer -= dt;
+      if (zoneDmgTimer <= 0) {
+        zoneDmgTimer = TUNING.zoneDamageEveryS * (zs.radius < TUNING.zoneLateRadius ? 0.5 : 1);
+        run.hearts -= 1;
+        killedBy = null;
+        killedByText = 'THE MOW ZONE';
+        juice.hurt();
+        juice.shake(0.4);
+        if (run.hearts > 0) playSfx('hurt');
+      }
+    } else {
+      zoneDmgTimer = Math.min(zoneDmgTimer, 0.5);
+    }
+    const deaths = bots.update(dt, {
+      elapsedS: run.elapsedS,
+      enemies: mowers.enemies(),
+      damageEnemy: (id, amount) => mowers.damage(id, amount),
+      zone,
+      obstacles: OBSTACLES,
+    });
+    for (const d of deaths) royaleHud.feed(d);
+    royaleHud.update({ alive: bots.aliveCount() + (run.hearts > 0 ? 1 : 0), total: TUNING.royaleBots + 1, zone: zs, playerOutside: outside });
+    if (run.hearts > 0 && bots.aliveCount() === 0) {
+      hud.banner('#1 LAST GNOME STANDING', 'Winner winner, chicken dinner. Legally distinct.', 3);
+      endRun(true);
+      return;
     }
   }
   gnome.object.visible = run.invulnS <= 0 || Math.floor(run.invulnS * 12) % 2 === 0;

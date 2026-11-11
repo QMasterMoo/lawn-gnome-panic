@@ -102,6 +102,14 @@ const CSS = `
 .hud-banner { position: absolute; top: 26vh; left: 0; right: 0; text-align: center; opacity: 0; }
 .hud-banner-title { font-size: 44px; font-weight: 900; color: #ffd54f; }
 .hud-banner-sub { font-size: 20px; color: #fff; }
+@media (max-width: 760px) {
+  .hud-health-bar { width: 200px; height: 22px; }
+  .hud-stam-bar { width: 200px; }
+  .hud-timer { font-size: 24px; }
+  .hud-stats { font-size: 16px; }
+  .hud-xp { left: 70px; height: 18px; }
+  .hud-badge { width: 48px; height: 48px; }
+}
 `;
 
 function el(tag: string, cls: string, text?: string): HTMLElement {

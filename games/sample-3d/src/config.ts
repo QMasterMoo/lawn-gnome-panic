@@ -85,6 +85,24 @@ export const TUNING = {
   levelUpCelebrateS: 1.0,    // slow-mo celebration before the cards appear
   levelUpTimeScale: 0.2,
   comboWindowS: 2.5,         // kills within this keep the combo alive
+  acornXp: 3,                // each acorn also gives XP (a green mower's pellet is 2)
+  // Battle royale (bots)
+  royaleBots: 19,            // plus you = 20 gnomes
+  royaleSpawnRadius: 60,     // bots drop near you so the fight is visible
+  zoneStartRadius: 85,       // the wall is on screen from the first second
+  zoneFinalRadius: 6,
+  zoneFirstDelayS: 20,       // before the first shrink
+  zoneHoldS: 12,             // pause between shrinks
+  zoneShrinkS: 10,           // each shrink takes this long
+  zoneShrinkFactor: 0.5,     // 85 -> 42 -> 21 -> 11 -> 6: about 2 minutes to the final circle
+  zoneDamageEveryS: 2,       // outside the zone: lose 1 heart this often (twice as often once the circle is small)
+  zoneLateRadius: 25,        // below this radius the zone hits twice as fast
+  botHearts: 3,
+  botAttackRange: 5,
+  botDpsStart: 12,
+  botDpsPer10s: 1.5,
+  mowerClimbMaxHeight: 2.8,  // mowers crawl up and over obstacles this tall or lower
+  mowerClimbSpeed: 3,        // units/s up a wall
   invulnS: 1.0,              // after taking a hit
   staminaExhaustedResume: 0.25, // fraction of max stamina needed to sprint again after running dry
   bossAtS: 240,
@@ -533,6 +551,10 @@ export interface RunSummary {
   totalEarned: number;
   newBestTime: boolean;
   killedBy: MowerTier | null;
+  /** Overrides the "Killed by" text, e.g. 'THE MOW ZONE'. */
+  killedByText: string | null;
+  /** Battle royale only: final position, 1 = winner. */
+  placement: { rank: number; total: number } | null;
 }
 
 // =====================================================================
@@ -596,6 +618,16 @@ export interface InputState {
   lookY: number;  // radians this frame, + = raise the camera
 }
 
+/** On-screen touch controls (phones/tablets). Values use the same conventions as InputState. */
+export interface TouchControls {
+  /** True once a touch has been seen (or the device has a coarse pointer). */
+  readonly active: boolean;
+  /** Read once per frame; edge flags reset after reading, look deltas too. */
+  read(): { moveX: number; moveY: number; jump: boolean; sprint: boolean; lookX: number; lookY: number };
+  /** Show the controls only during a run. */
+  setVisible(visible: boolean): void;
+}
+
 export interface InputController {
   read(dt: number): InputState;
   /** When false, the canvas never takes the pointer and any lock is released. When true, tries to lock now. */
@@ -652,8 +684,11 @@ export interface EnemyView {
 export interface MowerKill { id: number; tier: MowerTier; x: number; z: number }
 
 export interface MowerSystem {
-  /** Spawns by WAVES, steers, separates, animates. Returns the mowers that died since the last call. */
-  update(dt: number, elapsedS: number, target: THREE.Vector3, obstacles: readonly Obstacle[], onMow: (x: number, z: number) => void): MowerKill[];
+  /**
+   * Spawns by WAVES, steers each mower at its nearest target, separates, animates.
+   * targets[0] is the local player; the rest are other gnomes (bots). Returns the mowers that died since the last call.
+   */
+  update(dt: number, elapsedS: number, targets: readonly THREE.Vector3[], obstacles: readonly Obstacle[], onMow: (x: number, z: number) => void): MowerKill[];
   enemies(): readonly EnemyView[];
   damage(id: number, amount: number): void;
   slow(id: number, factor: number, seconds: number): void;
@@ -705,8 +740,10 @@ export interface LobbyStage {
   update(dt: number): void;
 }
 
+export type GameMode = 'solo' | 'royale';
+
 export interface LobbyCallbacks {
-  onPlay(): void;
+  onPlay(mode: GameMode): void;
   onBuy(id: MetaUpgradeId): void;
   onVisualMode(mode: VisualMode): void;
 }
@@ -767,6 +804,73 @@ export interface Juice {
   /** Call once per frame after the camera has been placed: projects floating text, draws edge arrows to `markers`, adds shake to camera.position. */
   update(dt: number, camera: THREE.PerspectiveCamera, markers: readonly ItemMarker[]): void;
   reset(): void;
+}
+
+// =====================================================================
+// Battle royale: bots now, networked players later (docs/design/multiplayer-royale.md)
+// =====================================================================
+
+/** Any gnome in the match, local, bot or (later) remote. */
+export interface Contestant {
+  readonly id: number;
+  readonly name: string;
+  readonly pos: THREE.Vector3;
+  readonly alive: boolean;
+}
+
+export interface KillEvent {
+  victim: string;
+  cause: string; // e.g. 'a Red Mower (the fast one)' or 'THE MOW ZONE'
+}
+
+export interface ZoneState {
+  cx: number;
+  cz: number;
+  radius: number;
+  nextRadius: number;
+  phase: 'waiting' | 'shrinking' | 'final';
+  secondsToNext: number; // until the next shrink starts (waiting) or ends (shrinking)
+}
+
+export interface ZoneSystem {
+  /** Advances the shrinking safe circle by the match clock. */
+  update(dt: number, elapsedS: number): ZoneState;
+  state(): ZoneState;
+  isOutside(x: number, z: number): boolean;
+  setVisible(visible: boolean): void;
+  reset(): void;
+}
+
+export interface BotContext {
+  elapsedS: number;
+  enemies: readonly EnemyView[];
+  damageEnemy(id: number, amount: number): void;
+  zone: ZoneSystem;
+  obstacles: readonly Obstacle[];
+}
+
+export interface BotSystem {
+  /** Spawns `count` bots with generated gamertags, scattered around `center`, none within 15 of `avoid`. */
+  spawn(count: number, center: THREE.Vector3, avoid: THREE.Vector3): void;
+  /** Runs AI, physics, damage and death. Returns the bots that died this frame. */
+  update(dt: number, ctx: BotContext): KillEvent[];
+  contestants(): readonly Contestant[];
+  aliveCount(): number;
+  reset(): void;
+}
+
+export interface RoyaleHudData {
+  alive: number;   // including the player if alive
+  total: number;
+  zone: ZoneState;
+  playerOutside: boolean;
+}
+
+export interface RoyaleHud {
+  show(): void;
+  hide(): void;
+  update(d: RoyaleHudData): void;
+  feed(e: KillEvent): void;
 }
 
 // =====================================================================
