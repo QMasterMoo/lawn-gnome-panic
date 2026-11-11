@@ -1,0 +1,8 @@
+{
+  "name": "gaming-testbed",
+  "private": true,
+  "workspaces": ["games/*", "packages/*"],
+  "scripts": {
+    "new": "node tools/new-game.mjs"
+  }
+}
