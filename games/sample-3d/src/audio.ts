@@ -1,0 +1,139 @@
+// src/audio.ts
+import type { SfxName } from './config';
+
+let ctx: AudioContext | null = null;
+let master: GainNode | null = null;
+let noiseBuffer: AudioBuffer | null = null;
+let engineGain: GainNode | null = null;
+let engineOsc1: OscillatorNode | null = null;
+let engineOsc2: OscillatorNode | null = null;
+
+function ensureContext(): AudioContext | null {
+  if (ctx) return ctx;
+  try {
+    ctx = new AudioContext();
+    master = ctx.createGain();
+    master.gain.value = 0.6;
+    master.connect(ctx.destination);
+  } catch {
+    ctx = null;
+    master = null;
+  }
+  return ctx;
+}
+
+function tone(
+  f0: number,
+  f1: number,
+  dur: number,
+  type: OscillatorType,
+  vol: number,
+  delay = 0,
+): void {
+  const c = ctx;
+  const out = master;
+  if (!c || !out) return;
+  const now = c.currentTime;
+  const osc = c.createOscillator();
+  const gain = c.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(f0, now + delay);
+  osc.frequency.exponentialRampToValueAtTime(f1, now + delay + dur);
+  gain.gain.setValueAtTime(vol, now + delay);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + delay + dur);
+  osc.connect(gain);
+  gain.connect(out);
+  osc.start(now + delay);
+  osc.stop(now + delay + dur);
+}
+
+function noiseBurst(): void {
+  const c = ctx;
+  const out = master;
+  if (!c || !out) return;
+  if (!noiseBuffer) {
+    const length = Math.floor(c.sampleRate * 0.3);
+    noiseBuffer = c.createBuffer(1, length, c.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  const now = c.currentTime;
+  const src = c.createBufferSource();
+  const gain = c.createGain();
+  src.buffer = noiseBuffer;
+  gain.gain.setValueAtTime(0.25, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+  src.connect(gain);
+  gain.connect(out);
+  src.start(now);
+  src.stop(now + 0.3);
+}
+
+export function playSfx(name: SfxName): void {
+  try {
+    const c = ensureContext();
+    if (!c) return;
+    if (c.state === 'suspended') void c.resume();
+    switch (name) {
+      case 'start':
+        tone(330, 660, 0.15, 'square', 0.08);
+        tone(495, 990, 0.15, 'square', 0.06, 0.12);
+        break;
+      case 'jump':
+        tone(300, 600, 0.12, 'triangle', 0.12);
+        break;
+      case 'pickup':
+        tone(880, 1320, 0.08, 'square', 0.07);
+        tone(1320, 1760, 0.1, 'square', 0.05, 0.06);
+        break;
+      case 'hit':
+        tone(180, 40, 0.5, 'sawtooth', 0.2);
+        noiseBurst();
+        break;
+    }
+  } catch {
+    // Audio must never break the game.
+  }
+}
+
+/** 0 = silent, 1 = a mower is right next to the player. */
+export function setEngineLevel(level: number): void {
+  try {
+    const lvl = Math.min(1, Math.max(0, level));
+    if (!engineGain) {
+      if (lvl <= 0) return;
+      const c = ensureContext();
+      const out = master;
+      if (!c || !out) return;
+      const now = c.currentTime;
+      const filter = c.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 500;
+      engineGain = c.createGain();
+      engineGain.gain.value = 0;
+      filter.connect(engineGain);
+      engineGain.connect(out);
+
+      engineOsc1 = c.createOscillator();
+      engineOsc1.type = 'sawtooth';
+      engineOsc1.frequency.value = 55;
+      engineOsc1.connect(filter);
+
+      engineOsc2 = c.createOscillator();
+      engineOsc2.type = 'square';
+      engineOsc2.frequency.value = 56.5;
+      engineOsc2.connect(filter);
+
+      engineOsc1.start(now);
+      engineOsc2.start(now);
+    }
+    const c = ctx;
+    if (!c || !engineGain || !engineOsc1 || !engineOsc2) return;
+    const now = c.currentTime;
+    engineGain.gain.setTargetAtTime(lvl * lvl * 0.12, now, 0.08);
+    engineOsc1.frequency.setTargetAtTime(50 + lvl * 35, now, 0.1);
+    engineOsc2.frequency.setTargetAtTime(50 + lvl * 35 + 1.5, now, 0.1);
+  } catch {
+    // Audio must never break the game.
+  }
+}
