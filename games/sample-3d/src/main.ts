@@ -36,6 +36,17 @@ import { createZone } from './br/zone';
 import { createRoyaleHud } from './ui/royaleHud';
 import { createViewButton } from './ui/viewButton';
 
+// ---------- no browser zoom on phones ----------
+// CSS touch-action handles most browsers; iOS Safari ignores user-scalable=no, so also cancel its
+// pinch gestures, multi-finger scaling moves and double-tap-to-zoom.
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+}
+document.addEventListener('touchmove', (e) => {
+  if (e.touches.length > 1 && (e as TouchEvent & { scale?: number }).scale !== 1) e.preventDefault();
+}, { passive: false });
+document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+
 // ---------- renderer, scene, camera ----------
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
