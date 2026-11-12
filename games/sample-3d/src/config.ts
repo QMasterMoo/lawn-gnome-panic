@@ -74,6 +74,7 @@ export const TUNING = {
   mowerLeashDist: 40,        // a mower farther than this is moved back into the spawn ring
   bossSpawnDist: 25,
   propCullDist: 200,         // props farther than this (+2x their height) are hidden
+  liteCullDist: 70,          // the same in LITE mode (heights count only up to 10)
   itemSpawnS: 25,            // rare world items (chicken dinner, shop-vac, ...)
   itemMax: 3,
   itemRingMin: 20,
@@ -877,7 +878,8 @@ export interface RoyaleHud {
 // Feature flags and visual modes
 // =====================================================================
 
-export type VisualMode = 'off' | 'rtx' | 'crt';
+/** 'lite' is the low-performance mode for older phones. */
+export type VisualMode = 'off' | 'rtx' | 'crt' | 'lite';
 
 export interface FeatureFlags {
   visualMode: VisualMode;

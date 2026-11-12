@@ -78,7 +78,9 @@ function cullProps(dt: number, focus: THREE.Vector3): void {
   cullTimer = 0.25;
   for (const p of props) {
     const d = Math.hypot(p.o.x - focus.x, p.o.z - focus.z);
-    p.obj.visible = d < TUNING.propCullDist + p.o.height * 2;
+    p.obj.visible = flags.visualMode === 'lite'
+      ? d < TUNING.liteCullDist + Math.min(p.o.height, 10) * 2
+      : d < TUNING.propCullDist + p.o.height * 2;
   }
 }
 buildHouse(scene);

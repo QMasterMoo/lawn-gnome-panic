@@ -256,11 +256,13 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
     { mode: 'off', label: 'OFF' },
     { mode: 'rtx', label: 'RTX ON' },
     { mode: 'crt', label: 'CRT' },
+    { mode: 'lite', label: 'LITE' },
   ];
   const VISUAL_CAPTIONS: Record<VisualMode, string> = {
     off: 'As the gnome intended.',
     rtx: 'Ray-traced* (*not ray-traced). Now 400% blurrier.',
     crt: "Like grandma's TV. Scanlines at no extra charge.",
+    lite: 'For phones from the before times. Fewer pixels, no shadows, same gnome.',
   };
   const vm = h('div', 'lb-vm');
   const seg = h('div', 'lb-seg');

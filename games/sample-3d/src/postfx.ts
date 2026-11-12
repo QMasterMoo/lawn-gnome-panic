@@ -296,8 +296,54 @@ export function createPostFX(renderer: THREE.WebGLRenderer, scene: THREE.Scene, 
     return b;
   }
 
+  // ---- LITE: low-performance mode for older phones ----
+  let liteActive = false;
+  const liteSaved = { pixelRatio: 1, fogNear: 0, fogFar: 0, cameraFar: 0 };
+  const liteShadowLights: THREE.Light[] = [];
+  const liteHidden: THREE.Object3D[] = [];
+  function enterLite(): void {
+    liteActive = true;
+    liteSaved.pixelRatio = renderer.getPixelRatio();
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1) * 0.75);
+    if (scene.fog instanceof THREE.Fog) {
+      liteSaved.fogNear = scene.fog.near;
+      liteSaved.fogFar = scene.fog.far;
+      scene.fog.near = 30;
+      scene.fog.far = 150;
+    }
+    liteSaved.cameraFar = camera.far;
+    camera.far = 400;
+    camera.updateProjectionMatrix();
+    scene.traverse((o) => {
+      if ((o as THREE.Light).isLight && o.castShadow) {
+        o.castShadow = false;
+        liteShadowLights.push(o as THREE.Light);
+      }
+      if ((o as THREE.Points).isPoints && o.visible) {
+        o.visible = false; // dandelion fluff
+        liteHidden.push(o);
+      }
+    });
+  }
+  function leaveLite(): void {
+    liteActive = false;
+    renderer.setPixelRatio(liteSaved.pixelRatio);
+    if (scene.fog instanceof THREE.Fog) {
+      scene.fog.near = liteSaved.fogNear;
+      scene.fog.far = liteSaved.fogFar;
+    }
+    camera.far = liteSaved.cameraFar;
+    camera.updateProjectionMatrix();
+    for (const l of liteShadowLights) l.castShadow = true;
+    for (const o of liteHidden) o.visible = true;
+    liteShadowLights.length = 0;
+    liteHidden.length = 0;
+  }
+
   return {
     setMode(next: VisualMode) {
+      if (next !== 'lite' && liteActive) leaveLite();
+      if (next === 'lite' && !liteActive) enterLite();
       mode = next;
       if (next === 'rtx' && !rtx) rtx = buildRTX();
       if (next === 'crt' && !crt) crt = buildCRT();
