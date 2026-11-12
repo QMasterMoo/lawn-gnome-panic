@@ -1,8 +1,9 @@
-import { CHARACTERS, type CharacterId, META_UPGRADES, SAVE_KEY, upgradeCost, type MetaSave, type MetaUpgradeId } from './config';
+import { SOLO_LEVELS, CHARACTERS, type CharacterId, META_UPGRADES, SAVE_KEY, upgradeCost, type MetaSave, type MetaUpgradeId } from './config';
 
 function defaultSave(): MetaSave {
   return { version: 1, acorns: 0, totalAcornsEarned: 0, runs: 0, bestTimeS: 0, bossKills: 0,
     character: 'gnorman',
+    levelsUnlocked: 1,
     upgrades: { sprintDuration: 0, sprintRecharge: 0, jumpHeight: 0, moveSpeed: 0, hearts: 0, magnet: 0, wisdom: 0, luck: 0 } };
 }
 
@@ -20,6 +21,7 @@ export function loadSave(): MetaSave {
       const v = src[key];
       if (isFiniteNumber(v)) save[key] = v;
     }
+    if (isFiniteNumber(src.levelsUnlocked)) save.levelsUnlocked = Math.min(SOLO_LEVELS.length, Math.max(1, Math.floor(src.levelsUnlocked)));
     if (typeof src.character === 'string' && src.character in CHARACTERS) save.character = src.character as CharacterId;
     const upgrades = src.upgrades;
     if (upgrades && typeof upgrades === 'object') {

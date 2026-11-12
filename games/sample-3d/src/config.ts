@@ -133,7 +133,7 @@ export interface LevelDef {
   bossAtS: number;       // seconds into the level when the boss fight starts
 }
 
-/** Solo is three levels, about 20 minutes. Clearing level 3's boss wins the run. */
+/** Solo levels, picked in the lobby. Each is its own run that is won by beating its boss fight; beating one unlocks the next. */
 export const SOLO_LEVELS: readonly LevelDef[] = [
   { name: 'LEVEL 1: THE FRONT LAWN', sub: 'Mow or be mowed.', speedMult: 1, hpMult: 1, spawnMult: 1, maxAliveMult: 1, bossCount: 1, bossHpMult: 1, bossAtS: 300 },
   { name: 'LEVEL 2: MOW HARDER', sub: 'Same mowers. Faster, tougher, and more of them. They are upset.', speedMult: 1.15, hpMult: 1.7, spawnMult: 0.8, maxAliveMult: 1.3, bossCount: 2, bossHpMult: 1.3, bossAtS: 330 },
@@ -379,6 +379,7 @@ export const LOCKED_CHARACTER_NAMES: readonly string[] = ['GNOAH', 'SIR GNOMESAL
 export interface MetaSave {
   version: 1;
   character: CharacterId;    // the selected character
+  levelsUnlocked: number;    // solo levels available in the lobby (1..SOLO_LEVELS.length)
   acorns: number;            // bankable currency
   totalAcornsEarned: number;
   runs: number;              // completed runs (deaths + victories)
@@ -645,7 +646,11 @@ export interface RunSummary {
   killedBy: MowerTier | null;
   /** Overrides the "Killed by" text, e.g. 'THE MOW ZONE'. */
   killedByText: string | null;
-  /** Solo: levels cleared (bosses defeated), 0..3. */
+  /** Solo: the level played (1-based), else null. */
+  soloLevel: number | null;
+  /** Solo victory that unlocked a new level: its number, else null. */
+  unlockedLevel: number | null;
+  /** Boss fights won this run (0 or 1). */
   levelsCleared: number;
   /** Battle royale only: final position, 1 = winner. */
   placement: { rank: number; total: number } | null;
@@ -855,7 +860,8 @@ export interface LobbyStage {
 export type GameMode = 'solo' | 'royale';
 
 export interface LobbyCallbacks {
-  onPlay(mode: GameMode): void;
+  /** level: 1-based solo level (ignored for royale). */
+  onPlay(mode: GameMode, level: number): void;
   onBuy(id: MetaUpgradeId): void;
   onVisualMode(mode: VisualMode): void;
   onSelectCharacter(id: CharacterId): void;

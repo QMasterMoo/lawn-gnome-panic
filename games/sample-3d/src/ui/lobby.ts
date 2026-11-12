@@ -1,7 +1,7 @@
 import type { CharacterId } from '../config';
 import type { GameMode, LobbyCallbacks, LobbyUI, MetaSave, MetaUpgradeDef } from '../config';
 import type { VisualMode } from '../config';
-import { CHARACTERS, CHARACTER_ORDER, LOCKED_CHARACTER_NAMES, META_UPGRADES, TUNING, upgradeCost } from '../config';
+import { CHARACTERS, CHARACTER_ORDER, LOCKED_CHARACTER_NAMES, META_UPGRADES, SOLO_LEVELS, TUNING, upgradeCost } from '../config';
 
 const CSS = `
 .lb-root {
@@ -148,6 +148,15 @@ const CSS = `
 .lb-mode-btn:hover { filter: brightness(1.25); }
 .lb-mode-btn.on { background: #ffd54f; color: #2a1400; border-color: #ffd54f; }
 .lb-mode-cap { margin-top: 4px; font-size: 11px; font-style: italic; color: #ffd9a0; text-align: center; text-shadow: 0 2px 0 #000; }
+.lb-mode-btn.locked, .lb-mode-btn.locked:hover {
+  background: rgba(20,8,50,.5); color: #8f88aa; border-color: rgba(255,255,255,.25);
+  filter: grayscale(1); cursor: not-allowed;
+}
+.lb-level-wrap { margin-bottom: 8px; pointer-events: auto; }
+.lb-level-cap {
+  margin-top: 4px; font-size: 11px; font-style: italic; color: #ffd9a0; text-align: center; text-shadow: 0 2px 0 #000;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 @media (max-width: 760px) {
   .lb-nav { display: none; }
   .lb-chars {
@@ -352,7 +361,7 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   const play = h('button', 'lb-play');
   const playSub = h('div', 'lb-play-sub');
   play.append(h('div', 'lb-play-main', 'PLAY'), playSub);
-  play.onclick = () => cb.onPlay(mode);
+  play.onclick = () => cb.onPlay(mode, level);
 
   // Party panel (fake, foreshadows multiplayer) and game mode selector, stacked above PLAY
   let mode: GameMode = 'solo';
@@ -393,17 +402,85 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
     cell.append(btn, h('div', 'lb-mode-cap', opt.caption));
     modeRow.appendChild(cell);
   }
-  side.append(party, modeRow);
+  // Solo level picker, directly above the mode row (shown in SOLO only)
+  let level = 1;                          // 1-based solo level
+  let unlocked = 1;                       // solo levels the save has unlocked
+  let seenUnlocked: number | null = null; // levelsUnlocked at the last render
+  const levelWrap = h('div', 'lb-level-wrap');
+  const levelRow = h('div', 'lb-mode');
+  const levelBtns: HTMLButtonElement[] = [];
+  SOLO_LEVELS.forEach((_def, i) => {
+    const cell = h('div', 'lb-mode-cell');
+    const btn = h('button', 'lb-mode-btn', `LV ${i + 1}`);
+    btn.type = 'button';
+    btn.onclick = () => {
+      if (i + 1 > unlocked) {
+        showToast(`Beat Level ${i} to unlock.`);
+        return;
+      }
+      setLevel(i + 1);
+    };
+    levelBtns.push(btn);
+    cell.appendChild(btn);
+    levelRow.appendChild(cell);
+  });
+  const levelCap = h('div', 'lb-level-cap');
+  levelWrap.append(levelRow, levelCap);
+
+  function applyLevels(): void {
+    levelBtns.forEach((btn, i) => {
+      const locked = i + 1 > unlocked;
+      btn.classList.toggle('locked', locked);
+      btn.classList.toggle('on', !locked && i + 1 === level);
+      btn.textContent = `${locked ? '\u{1F512} ' : ''}LV ${i + 1}`;
+    });
+    const def = SOLO_LEVELS[level - 1];
+    const name = def.name.slice(def.name.indexOf(':') + 2);
+    levelCap.textContent = `${name} · Boss: ${def.bossCount} combine${def.bossCount === 1 ? '' : 's'}`;
+  }
+
+  function setLevel(n: number): void {
+    level = n;
+    applyLevels();
+    updatePlaySub();
+  }
+
+  /** Re-reads the unlock count. A newly unlocked level is selected; a selection that is now locked falls back to the highest unlocked. */
+  function syncLevels(save: MetaSave): void {
+    const count = Math.min(Math.max(save.levelsUnlocked, 1), SOLO_LEVELS.length);
+    const prev = seenUnlocked;
+    seenUnlocked = count;
+    unlocked = count;
+    if (prev !== null && count > prev) level = count;
+    if (level > unlocked) level = unlocked;
+    applyLevels();
+  }
+
+  side.append(party, levelWrap, modeRow);
 
   function updatePlaySub(): void {
     playSub.textContent = mode === 'royale'
       ? `RUN #${runCount + 1} · BATTLE ROYALE · ${TUNING.royaleBots + 1} GNOMES`
-      : `RUN #${runCount + 1} · SOLO · BACKYARD`;
+      : `RUN #${runCount + 1} · SOLO · LEVEL ${level}`;
   }
+
+  // The shop ends just above the party/level/mode panel, whatever its height: fixed offsets kept
+  // overlapping every time that panel grew. Phone layouts position both in CSS instead.
+  const fitShop = (): void => {
+    if (window.innerWidth <= 760 || window.innerHeight <= 480) {
+      shop.style.bottom = '';
+      return;
+    }
+    const top = side.getBoundingClientRect().top;
+    if (top > 0) shop.style.bottom = `${Math.ceil(window.innerHeight - top + 12)}px`;
+  };
+  window.addEventListener('resize', fitShop);
 
   function setMode(next: GameMode): void {
     mode = next;
     for (const [m, btn] of modeBtns) btn.classList.toggle('on', m === mode);
+    levelWrap.style.display = mode === 'solo' ? '' : 'none';
+    requestAnimationFrame(fitShop);
     updatePlaySub();
   }
   setMode('solo');
@@ -442,6 +519,7 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
     statsLine.textContent =
       `RUNS ${save.runs} · BEST ${fmtTime(save.bestTimeS)} · ` +
       `COMBINES DEFEATED ${save.bossKills} · LIFETIME ACORNS ${save.totalAcornsEarned}`;
+    syncLevels(save);
     runCount = save.runs;
     updatePlaySub();
   }
@@ -449,7 +527,7 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   window.addEventListener('keydown', (e) => {
     if (!visible || e.key !== 'Enter') return;
     e.preventDefault();
-    cb.onPlay(mode);
+    cb.onPlay(mode, level);
   });
 
   return {
@@ -464,6 +542,7 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
       tip.textContent = TIPS[tipIdx];
       visible = true;
       screen.style.display = '';
+      requestAnimationFrame(fitShop);
       window.clearInterval(tipTimer);
       tipTimer = window.setInterval(() => {
         tipIdx = (tipIdx + 1) % TIPS.length;

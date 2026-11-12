@@ -211,7 +211,7 @@ const hud = createHud(uiRoot);
 const levelUp = createLevelUpUI(uiRoot);
 const results = createResultsUI(uiRoot);
 const lobbyCallbacks: LobbyCallbacks = {
-  onPlay: (mode: GameMode) => { if (phase === 'lobby') startRun(mode); },
+  onPlay: (mode: GameMode, level: number) => { if (phase === 'lobby') startRun(mode, level); },
   onBuy: (id: MetaUpgradeId) => {
     if (tryBuy(save, id)) {
       playSfx('buy');
@@ -325,7 +325,7 @@ function goLobby(): void {
   setEngineLevel(0);
 }
 
-function startRun(m: GameMode = 'solo'): void {
+function startRun(m: GameMode = 'solo', level = 1): void {
   mode = m;
   dayNight.setTime(TUNING.dayStartT);
   lastDayPhase = dayNight.state().phase;
@@ -338,13 +338,13 @@ function startRun(m: GameMode = 'solo'): void {
   pendingLevelUps = 0;
   waveIndex = -1;
   victoryTimer = -1;
-  levelIdx = 0;
+  levelIdx = Math.min(SOLO_LEVELS.length, Math.max(1, Math.min(level, save.levelsUnlocked))) - 1;
   levelStartS = 0;
   levelBossSpawned = false;
   bossDone = false;
   levelsCleared = 0;
   levelBannerAt = -1;
-  mowers.setDifficulty(mode === 'solo' ? SOLO_LEVELS[0] : { speedMult: 1, hpMult: 1, spawnMult: 1, maxAliveMult: 1 });
+  mowers.setDifficulty(mode === 'solo' ? SOLO_LEVELS[levelIdx] : { speedMult: 1, hpMult: 1, spawnMult: 1, maxAliveMult: 1 });
   killedBy = null;
   killedByText = null;
   zoneDmgTimer = 0;
@@ -364,7 +364,7 @@ function startRun(m: GameMode = 'solo'): void {
     royaleHud.show();
     hud.banner(`BATTLE ROYALE · ${TUNING.royaleBots + 1} GNOMES`, 'Last gnome standing wins. The bots have names. Respect them.', 3.5);
   } else {
-    hud.banner(`RUN #${save.runs + 1} · ${SOLO_LEVELS[0].name}`, `Three levels. Three boss fights. Death is permanent; your upgrades are not.`, 4);
+    hud.banner(`RUN #${save.runs + 1} · ${SOLO_LEVELS[levelIdx].name}`, SOLO_LEVELS[levelIdx].sub, 4);
   }
   phase = 'playing';
   input.setPointerLockAllowed(true);
@@ -433,6 +433,12 @@ function endRun(victory: boolean): void {
   save.totalAcornsEarned += totalEarned;
   if (newBestTime) save.bestTimeS = Math.floor(run.elapsedS);
   save.bossKills += levelsCleared;
+  // Solo victory unlocks the next level (picked in the lobby).
+  let unlockedLevel: number | null = null;
+  if (victory && mode === 'solo' && levelIdx + 2 <= SOLO_LEVELS.length && save.levelsUnlocked < levelIdx + 2) {
+    save.levelsUnlocked = levelIdx + 2;
+    unlockedLevel = save.levelsUnlocked;
+  }
   writeSave(save);
 
   const summary: RunSummary = {
@@ -441,6 +447,8 @@ function endRun(victory: boolean): void {
     killedBy: victory ? null : killedBy,
     killedByText: victory ? null : killedByText,
     levelsCleared,
+    soloLevel: mode === 'solo' ? levelIdx + 1 : null,
+    unlockedLevel,
     placement: mode === 'royale' ? { rank: run.hearts > 0 ? 1 : bots.aliveCount() + 1, total: TUNING.royaleBots + 1 } : null,
   };
   hud.hide();
@@ -453,30 +461,20 @@ function endRun(victory: boolean): void {
 function clearLevel(): void {
   levelsCleared += 1;
   levelBossSpawned = false;
+  bossDone = true;
   if (mode !== 'solo') {
-    bossDone = true;
     hud.banner('COMBINE DEFEATED', 'The lawn is safe. For now. (It is never safe.)', 3);
     return;
   }
-  if (levelIdx >= SOLO_LEVELS.length - 1) {
-    run.bossDefeated = true;
-    victoryTimer = TUNING.victoryDelayS;
-    hud.banner('THE COMBINES ARE DEFEATED', 'Three levels. One gnome. The lawn is yours (until it grows back).', 3);
-    return;
-  }
-  const cleared = levelIdx + 1;
-  levelIdx += 1;
-  const next = SOLO_LEVELS[levelIdx];
-  run.hearts = Math.min(stats.maxHearts, run.hearts + TUNING.levelClearHeal);
-  run.acorns += TUNING.levelClearAcorns;
-  mowers.setDifficulty(next);
-  mowers.holdSpawns(TUNING.levelBreatherS);
-  levelStartS = run.elapsedS + TUNING.levelBreatherS;
-  waveIndex = -1;
-  levelBannerAt = run.elapsedS + 3.2;
-  hud.banner(`LEVEL ${cleared} CLEAR!`, `+${TUNING.levelClearHeal} hearts · +${TUNING.levelClearAcorns} acorns · Catch your breath.`, 3);
-  playSfx('victory');
-  juice.shake(1);
+  // Solo: beating the level's boss fight wins the run.
+  run.bossDefeated = true;
+  victoryTimer = TUNING.victoryDelayS;
+  const last = levelIdx >= SOLO_LEVELS.length - 1;
+  hud.banner(
+    last ? 'THE COMBINES ARE DEFEATED' : `LEVEL ${levelIdx + 1} CLEAR!`,
+    last ? 'Three combines. One gnome. The lawn is yours (until it grows back).' : `Level ${levelIdx + 2} is now unlocked in the lobby.`,
+    3,
+  );
 }
 
 function applyItem(kind: ItemKind): void {
