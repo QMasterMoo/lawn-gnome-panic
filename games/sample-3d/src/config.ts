@@ -647,9 +647,14 @@ export interface PlayerState {
   exhausted: boolean;      // ran dry; cannot sprint until stamina recovers
 }
 
+export type CameraView = 'third' | 'first' | 'top';
+export const CAMERA_VIEWS: readonly CameraView[] = ['third', 'first', 'top'];
+
 export interface CameraRig {
   yaw: number;
   pitch: number;
+  /** Which perspective to render; switching snaps the camera. */
+  view: CameraView;
   update(target: THREE.Vector3, input: InputState, dt: number): void;
   reset(yaw: number): void;
 }
@@ -883,9 +888,10 @@ export type VisualMode = 'off' | 'rtx' | 'crt' | 'lite';
 
 export interface FeatureFlags {
   visualMode: VisualMode;
+  view: CameraView;
 }
 
-export const DEFAULT_FLAGS: FeatureFlags = { visualMode: 'off' };
+export const DEFAULT_FLAGS: FeatureFlags = { visualMode: 'off', view: 'third' };
 export const FLAGS_KEY = 'sample-3d.flags.v1';
 
 export interface PostFX {

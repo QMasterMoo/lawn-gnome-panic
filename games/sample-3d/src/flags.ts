@@ -1,4 +1,4 @@
-import { DEFAULT_FLAGS, FLAGS_KEY, type FeatureFlags, type VisualMode } from './config';
+import { CAMERA_VIEWS, DEFAULT_FLAGS, FLAGS_KEY, type CameraView, type FeatureFlags, type VisualMode } from './config';
 
 const MODES: readonly VisualMode[] = ['off', 'rtx', 'crt', 'lite'];
 
@@ -24,6 +24,7 @@ export function loadFlags(): FeatureFlags {
       flags.visualMode = raw.visualMode as VisualMode;
       saved = true;
     }
+    if (raw && CAMERA_VIEWS.includes(raw.view as CameraView)) flags.view = raw.view as CameraView;
   } catch {
     // keep defaults
   }

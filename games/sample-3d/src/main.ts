@@ -3,7 +3,7 @@ import {
   COLORS, OBSTACLES, PLAYER_RADIUS, PEDESTAL_HEIGHT, MOWER_TIERS, TUNING, WAVES,
   type GamePhase, type InputState, type MowerTier, type RunSummary, type UpgradeChoice,
   type Weapon, type WeaponContext, type WeaponId, type MetaUpgradeId, type VisualMode, type ItemKind, type GameMode,
-  ITEM_DEFS, CHICKEN_HEAL,
+  ITEM_DEFS, CHICKEN_HEAL, CAMERA_VIEWS,
 } from './config';
 import { createInput } from './input';
 import { createTouchControls } from './ui/touch';
@@ -34,6 +34,7 @@ import { createJuice } from './juice';
 import { createBotSystem } from './br/bots';
 import { createZone } from './br/zone';
 import { createRoyaleHud } from './ui/royaleHud';
+import { createViewButton } from './ui/viewButton';
 
 // ---------- renderer, scene, camera ----------
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -95,6 +96,22 @@ const juice = createJuice(uiRoot);
 const bots = createBotSystem(scene);
 const zone = createZone(scene);
 const royaleHud = createRoyaleHud(uiRoot);
+const viewBtn = createViewButton(uiRoot, cycleView);
+const VIEW_NAMES = { third: 'THIRD PERSON', first: 'FIRST PERSON', top: 'TOP-DOWN' } as const;
+
+/** P or the top-right button: third person -> first person -> top-down. */
+function cycleView(): void {
+  if (phase !== 'playing') return;
+  const next = CAMERA_VIEWS[(CAMERA_VIEWS.indexOf(rig.view) + 1) % CAMERA_VIEWS.length];
+  rig.view = next;
+  flags.view = next;
+  saveFlags(flags);
+  viewBtn.setView(next);
+  juice.toast(`VIEW: ${VIEW_NAMES[next]}`, 'Press P or tap the camera button to switch.', '#ffffff');
+}
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyP' && !e.repeat) cycleView();
+});
 const lobbyStage = createLobbyStage(scene);
 const hud = createHud(uiRoot);
 const levelUp = createLevelUpUI(uiRoot);
@@ -212,7 +229,10 @@ function startRun(m: GameMode = 'solo'): void {
   celebrateS = 0;
   bestToastDone = save.bestTimeS <= 0;
   syncWeapons();
+  rig.view = flags.view;
   rig.reset(0);
+  viewBtn.setView(flags.view);
+  viewBtn.show();
   hud.show();
   if (mode === 'royale') {
     bots.spawn(TUNING.royaleBots, new THREE.Vector3(0, 0, 0), player.position);
@@ -230,6 +250,7 @@ function startRun(m: GameMode = 'solo'): void {
 
 function openLevelUp(): void {
   phase = 'levelup';
+  viewBtn.hide();
   touch.setVisible(false);
   input.setPointerLockAllowed(false);
   setEngineLevel(0);
@@ -251,6 +272,7 @@ function onPick(index: number): void {
     phase = 'playing';
     input.setPointerLockAllowed(true);
     touch.setVisible(true);
+    viewBtn.show();
   }
 }
 
@@ -263,6 +285,8 @@ function onReroll(): void {
 
 function endRun(victory: boolean): void {
   phase = 'results';
+  viewBtn.hide();
+  rig.view = 'third'; // see your gnome's fate on the results screen
   input.setPointerLockAllowed(false);
   setEngineLevel(0);
   gnome.object.visible = true;
@@ -462,7 +486,8 @@ function tickRun(dt: number, inp: InputState): void {
       return;
     }
   }
-  gnome.object.visible = run.invulnS <= 0 || Math.floor(run.invulnS * 12) % 2 === 0;
+  // In first person you are the camera, so your own gnome is hidden.
+  gnome.object.visible = rig.view !== 'first' && (run.invulnS <= 0 || Math.floor(run.invulnS * 12) % 2 === 0);
 
   // Engine drone from the nearest mower.
   let nearest = Infinity;
