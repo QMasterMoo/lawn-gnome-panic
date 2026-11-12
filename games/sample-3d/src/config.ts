@@ -670,6 +670,8 @@ export interface World {
   /** focus = the player's feet; the sun's shadow camera follows it. */
   update(dt: number, focus: THREE.Vector3): void;
   reset(): void;
+  /** Half-size of the shadowed area around the focus. */
+  setShadowRange(halfExtent: number): void;
 }
 
 export interface PickupSystem {

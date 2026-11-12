@@ -20,7 +20,8 @@ export function createCameraRig(camera: THREE.PerspectiveCamera): CameraRig {
         rig.pitch = rig.view === 'first' ? 0 : TUNING.cameraPitchDefault;
         snap = true;
       }
-      rig.yaw -= input.lookX;
+      // Top-down is fixed: no turning, so the map never spins under you.
+      if (rig.view !== 'top') rig.yaw -= input.lookX;
       const sy = Math.sin(rig.yaw);
       const cy = Math.cos(rig.yaw);
 

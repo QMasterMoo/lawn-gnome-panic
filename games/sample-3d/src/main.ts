@@ -46,7 +46,8 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(COLORS.sky);
 scene.fog = new THREE.Fog(COLORS.sky, 60, 380);
-const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 2600);
+// near 0.3 (not 0.1): far better depth precision, which stops overlays flickering when seen from high above.
+const camera = new THREE.PerspectiveCamera(60, 1, 0.3, 2600);
 const postfx = createPostFX(renderer, scene, camera);
 
 function resize(): void {
@@ -557,6 +558,7 @@ renderer.setAnimationLoop(() => {
   juice.update(dt, camera, phase === 'playing' ? items.active() : []);
   cullProps(dt, player.position);
   gnome.update(player, dt);
+  world.setShadowRange(phase === 'playing' && rig.view === 'top' ? 80 : 35);
   world.update(dt, player.position);
   scenery.update(dt, player.position);
   postfx.render(dt);

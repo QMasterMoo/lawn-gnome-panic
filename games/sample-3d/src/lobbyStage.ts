@@ -73,7 +73,8 @@ export function createLobbyStage(scene: THREE.Scene): LobbyStage {
     };
     placeSparkle(s);
     sparkles.push(s);
-    group.add(mesh);
+    // Sparkles disabled: next to the lobby camera they read as big white diamonds. Re-enable with group.add(mesh).
+    void mesh;
   }
 
   scene.add(group);

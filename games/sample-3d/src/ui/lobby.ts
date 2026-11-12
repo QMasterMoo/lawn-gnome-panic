@@ -32,7 +32,8 @@ const CSS = `
 .lb-sub { font-size: 12px; font-style: italic; color: #d8c8ff; margin-bottom: 12px; text-shadow: 0 2px 0 #000; }
 .lb-chars {
   position: absolute; top: 80px; left: 24px; width: 230px; box-sizing: border-box;
-  max-height: calc(100vh - 220px); overflow-y: auto; pointer-events: auto; padding-right: 4px;
+  max-height: calc(100vh - 220px); overflow-y: auto; pointer-events: auto; padding: 12px 10px 12px 12px;
+  background: rgba(14, 6, 40, .55); border: 1px solid rgba(255,255,255,.15); border-radius: 12px;
 }
 .lb-card {
   position: relative; box-sizing: border-box; padding: 10px; margin-bottom: 10px; border-radius: 10px;
@@ -50,7 +51,14 @@ const CSS = `
 .lb-soon { font-size: 12px; letter-spacing: 2px; text-align: center; }
 .lb-shop {
   position: absolute; top: 80px; right: 24px; width: 360px; box-sizing: border-box;
-  max-height: calc(100vh - 220px); overflow-y: auto; pointer-events: auto; padding-right: 4px;
+  /* Ends above the party / mode / PLAY cluster in the bottom-right corner, so they never overlap. */
+  bottom: 330px; overflow-y: auto; pointer-events: auto; padding: 12px 10px 12px 12px;
+  background: rgba(14, 6, 40, .55); border: 1px solid rgba(255,255,255,.15); border-radius: 12px;
+}
+.lb-side-panel { background: rgba(14, 6, 40, .55); border: 1px solid rgba(255,255,255,.15); border-radius: 12px; padding: 10px; }
+@media (min-width: 761px) and (max-height: 820px) {
+  .lb-party { display: none; }
+  .lb-shop { bottom: 240px; }
 }
 .lb-row {
   box-sizing: border-box; padding: 12px; margin-bottom: 10px; border-radius: 10px;
@@ -322,7 +330,7 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   // Party panel (fake, foreshadows multiplayer) and game mode selector, stacked above PLAY
   let mode: GameMode = 'solo';
   let runCount = 0;
-  const side = h('div', 'lb-side');
+  const side = h('div', 'lb-side lb-side-panel');
   const party = h('div', 'lb-party');
   party.append(h('div', 'lb-h', 'PARTY 1/4'));
   const slots = h('div', 'lb-slots');

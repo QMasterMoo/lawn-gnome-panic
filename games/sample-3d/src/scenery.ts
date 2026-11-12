@@ -283,7 +283,9 @@ export function buildScenery(scene: THREE.Scene): Scenery {
     }),
   );
   motes.frustumCulled = false;
-  scene.add(motes);
+  // Dandelion fluff disabled: nearly static points read as dust on the screen, worst in top-down.
+  // The update below still runs on it (60 points, negligible); re-add to the scene to bring it back.
+  void motes;
 
   let time = 0;
 

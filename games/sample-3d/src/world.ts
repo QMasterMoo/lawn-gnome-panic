@@ -49,6 +49,8 @@ export function buildWorld(scene: THREE.Scene): World {
   sc.far = 160;
   sc.updateProjectionMatrix();
   sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.03; // avoids shadow acne when the frustum is stretched for top-down
+  let shadowRange = 35;
   scene.add(sun, sun.target);
 
   // Lawn base: a tiled grass texture with speckles.
@@ -87,10 +89,11 @@ export function buildWorld(scene: THREE.Scene): World {
   stripeTex.repeat.set(1, LAWN_SIZE / (STRIPE_WIDTH * 2));
   const stripes = new THREE.Mesh(
     new THREE.PlaneGeometry(LAWN_SIZE, LAWN_SIZE),
-    new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 1, transparent: true, depthWrite: false }),
+    new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 1, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
   );
   stripes.rotation.x = -Math.PI / 2;
-  stripes.position.y = 0.005;
+  stripes.position.y = 0.02;
+  stripes.renderOrder = 1;
   stripes.receiveShadow = true; // overlays must darken in shadow like the lawn under them
   scene.add(stripes);
 
@@ -103,13 +106,14 @@ export function buildWorld(scene: THREE.Scene): World {
     opacity: 0.4,
     depthWrite: false,
     polygonOffset: true,
-    polygonOffsetFactor: -1,
-    polygonOffsetUnits: -1,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
   });
   const mowed = new THREE.InstancedMesh(mowGeo, mowMat, MOW_CAPACITY);
   mowed.receiveShadow = true;
   mowed.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  mowed.position.y = 0.01;
+  mowed.position.y = 0.04;
+  mowed.renderOrder = 2;
   mowed.frustumCulled = false; // the count changes at runtime; a cached bounding sphere would go stale
   mowed.count = 0;
   scene.add(mowed);
@@ -236,5 +240,17 @@ export function buildWorld(scene: THREE.Scene): World {
     mowed.count = 0;
   };
 
-  return { markMowed, update, reset };
+  /** Half-size of the area around the player that gets shadows (wider in top-down). */
+  const setShadowRange = (halfExtent: number): void => {
+    if (halfExtent === shadowRange) return;
+    shadowRange = halfExtent;
+    sc.left = -halfExtent;
+    sc.bottom = -halfExtent;
+    sc.right = halfExtent;
+    sc.top = halfExtent;
+    sc.far = 160 + halfExtent;
+    sc.updateProjectionMatrix();
+  };
+
+  return { markMowed, update, reset, setShadowRange };
 }
