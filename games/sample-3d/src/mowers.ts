@@ -5,6 +5,7 @@ import {
   type MowerDifficulty,
 } from './config';
 import { createMowerModel } from './mowerModels';
+import { heightAt } from './terrain';
 
 interface Mower {
   id: number;
@@ -99,16 +100,17 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
       sx = p.x;
       sz = p.z;
     }
+    const sy = heightAt(sx, sz);
     const model = createMowerModel(tier);
     model.setNight(night01);
     model.group.rotation.order = 'YXZ';
     scene.add(model.group);
-    model.group.position.set(sx, 0, sz);
+    model.group.position.set(sx, sy, sz);
     const hp = tier === 'combine' ? def.hp * bossHpMult : def.hp * diff.hpMult;
     mowers.push({
       id: nextId++,
       tier,
-      pos: new THREE.Vector3(sx, 0, sz),
+      pos: new THREE.Vector3(sx, sy, sz),
       radius: def.radius,
       hp,
       maxHp: hp,
@@ -163,7 +165,7 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
         const p = ringPoint(player, TUNING.spawnRingMin, TUNING.spawnRingMax, m.radius);
         m.pos.x = p.x;
         m.pos.z = p.z;
-        m.pos.y = 0;
+        m.pos.y = heightAt(p.x, p.z);
         m.vy = 0;
         m.climbing = false;
         m.heading = Math.atan2(player.x - p.x, player.z - p.z);
@@ -187,13 +189,19 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
       m.pos.z += Math.cos(m.heading) * speed * dt;
     }
 
-    // 3. Obstacles (the combine plows through them at y = 0).
+    // 3. Obstacles. Ground is terrain: a mower's surface starts at heightAt, and an obstacle's top is heightAt(o) + o.height.
     // Tall ones block as before. Climbable ones (height <= mowerClimbMaxHeight) are crawled up and over.
+    // The combine plows through obstacles and only follows the terrain.
+    const tops = obstacles.map((o) => heightAt(o.x, o.z) + o.height);
     for (const m of live) {
-      if (m.tier === 'combine') continue;
-      let surface = 0; // highest climbable top the mower's centre is over
-      let climbTop = -1; // highest top of a climbable side the mower is touching and still below
-      for (const o of obstacles) {
+      if (m.tier === 'combine') {
+        m.pos.y = heightAt(m.pos.x, m.pos.z);
+        continue;
+      }
+      let surface = heightAt(m.pos.x, m.pos.z); // the ground, or the highest climbable top the mower's centre is over
+      let climbTop = -Infinity; // highest top of a climbable side the mower is touching and still below
+      for (let i = 0; i < obstacles.length; i++) {
+        const o = obstacles[i];
         const dx = m.pos.x - o.x;
         const dz = m.pos.z - o.z;
         const d = Math.hypot(dx, dz);
@@ -206,27 +214,41 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
           m.pos.z = o.z + nz * min;
           continue;
         }
+        const top = tops[i];
         // On top: supported out to the lip (+60% of its body), so it does not fall and re-climb at the edge.
-        if (d < o.radius || (d < o.radius + m.radius * 0.6 && m.pos.y >= o.height - 0.1)) {
-          surface = Math.max(surface, o.height);
-        } else if (d < o.radius + m.radius && m.pos.y < o.height - 0.05) {
-          climbTop = Math.max(climbTop, o.height);
+        if (d < o.radius || (d < o.radius + m.radius * 0.6 && m.pos.y >= top - 0.1)) {
+          surface = Math.max(surface, top);
+        } else if (d < o.radius + m.radius && m.pos.y < top - 0.05) {
+          climbTop = Math.max(climbTop, top);
         }
       }
 
-      m.climbing = climbTop > 0;
+      m.climbing = Number.isFinite(climbTop);
       if (m.climbing) {
         m.pos.y = Math.min(climbTop, m.pos.y + TUNING.mowerClimbSpeed * dt);
         m.vy = 0;
-      } else if (m.pos.y > surface + 0.01) {
+      } else if (m.pos.y > surface + 0.6) {
+        // Well above the surface (e.g. driven off an obstacle top): fall under gravity.
         m.vy -= TUNING.gravity * dt;
         m.pos.y = Math.max(surface, m.pos.y + m.vy * dt);
       } else {
+        // On or near the ground (driving downhill does not bounce).
         m.pos.y = surface;
         m.vy = 0;
       }
 
-      const targetPitch = m.climbing ? -1.2 : m.vy < 0 ? 0.5 : 0;
+      let targetPitch: number;
+      if (m.climbing) {
+        targetPitch = -1.2;
+      } else if (m.vy < 0) {
+        targetPitch = 0.5;
+      } else {
+        // Ground pitch: the slope along the heading.
+        const fx = Math.sin(m.heading);
+        const fz = Math.cos(m.heading);
+        const dh = heightAt(m.pos.x + fx, m.pos.z + fz) - heightAt(m.pos.x - fx, m.pos.z - fz);
+        targetPitch = -Math.atan2(dh, 2);
+      }
       m.pitch += (targetPitch - m.pitch) * (1 - Math.exp(-10 * dt));
     }
 

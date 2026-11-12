@@ -1,6 +1,7 @@
+import type { CharacterId } from '../config';
 import type { GameMode, LobbyCallbacks, LobbyUI, MetaSave, MetaUpgradeDef } from '../config';
 import type { VisualMode } from '../config';
-import { META_UPGRADES, TUNING, upgradeCost } from '../config';
+import { CHARACTERS, CHARACTER_ORDER, LOCKED_CHARACTER_NAMES, META_UPGRADES, TUNING, upgradeCost } from '../config';
 
 const CSS = `
 .lb-root {
@@ -44,6 +45,15 @@ const CSS = `
               linear-gradient(135deg, #ffe14d, #ff9800) border-box;
 }
 .lb-card.locked { background: rgba(30,30,40,.8); filter: grayscale(1) brightness(.6); cursor: pointer; }
+.lb-card.pick { cursor: pointer; }
+.lb-card.pick:hover { filter: brightness(1.25); }
+.lb-sel-tag {
+  display: none; position: absolute; top: 6px; right: 6px; font-size: 9px; letter-spacing: 1px;
+  background: #ffd54a; color: #2a1400; padding: 2px 6px; border-radius: 4px;
+}
+.lb-card.sel .lb-sel-tag { display: block; }
+.lb-swatches { display: flex; gap: 6px; margin-top: 8px; }
+.lb-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(255,255,255,.8); }
 .lb-name { font-size: 16px; text-transform: uppercase; text-shadow: 0 2px 0 #000; }
 .lb-rarity { font-size: 11px; color: #ffd54a; letter-spacing: 1px; margin-top: 4px; }
 .lb-flavour { font-size: 12px; font-style: italic; color: #cbbdf0; margin-top: 6px; }
@@ -178,7 +188,6 @@ const TIPS = [
 ];
 
 const NAV = ['PLAY', 'LOCKER', 'ITEM SHOP', 'BATTLE PASS', 'CAREER'];
-const LOCKED_GNOMES = ['GNOAH', 'GNANCY', 'SIR GNOMESALOT'];
 const TIP_INTERVAL_MS = 6000;
 const TOAST_MS = 1800;
 
@@ -194,6 +203,13 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: s
   if (cls) e.className = cls;
   if (text !== undefined) e.textContent = text;
   return e;
+}
+
+/** A small colour dot for the character card's swatch row. */
+function swatch(color: number): HTMLSpanElement {
+  const dot = h('span', 'lb-dot');
+  dot.style.background = `#${color.toString(16).padStart(6, '0')}`;
+  return dot;
 }
 
 function injectStyle(): void {
@@ -245,14 +261,25 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   // Character column
   const chars = h('div', 'lb-chars');
   chars.appendChild(h('div', 'lb-h', 'CHOOSE YOUR GNOME'));
-  const selected = h('div', 'lb-card sel');
-  selected.append(
-    h('div', 'lb-name', 'GNORMAN'),
-    h('div', 'lb-rarity', 'LEGENDARY (ALLEGEDLY)'),
-    h('div', 'lb-flavour', 'Pointy hat. Strong beard. Weak to mowers.'),
-  );
-  chars.appendChild(selected);
-  for (const name of LOCKED_GNOMES) {
+  const charCards = new Map<CharacterId, HTMLDivElement>();
+  for (const id of CHARACTER_ORDER) {
+    const def = CHARACTERS[id];
+    const card = h('div', 'lb-card pick');
+    const swatches = h('div', 'lb-swatches');
+    swatches.appendChild(swatch(def.look.hat));
+    if (def.look.hair) swatches.appendChild(swatch(def.look.hair.color));
+    card.append(
+      h('div', 'lb-sel-tag', 'SELECTED'),
+      h('div', 'lb-name', def.name),
+      h('div', 'lb-rarity', def.rarity),
+      h('div', 'lb-flavour', def.flavour),
+      swatches,
+    );
+    card.onclick = () => cb.onSelectCharacter(id);
+    charCards.set(id, card);
+    chars.appendChild(card);
+  }
+  for (const name of LOCKED_CHARACTER_NAMES) {
     const card = h('div', 'lb-card locked');
     card.append(h('div', 'lb-q', '?'), h('div', 'lb-name', name), h('div', 'lb-soon', 'COMING SOON'));
     card.onclick = () => showToast('COMING SOON™. This is a roguelike, not a promise.');
@@ -334,7 +361,8 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   const party = h('div', 'lb-party');
   party.append(h('div', 'lb-h', 'PARTY 1/4'));
   const slots = h('div', 'lb-slots');
-  slots.append(h('div', 'lb-slot', 'GNORMAN (you)'));
+  const partySlot = h('div', 'lb-slot');
+  slots.append(partySlot);
   for (let i = 0; i < 3; i++) {
     const empty = h('button', 'lb-slot empty', '+');
     empty.type = 'button';
@@ -342,6 +370,13 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
     slots.appendChild(empty);
   }
   party.append(slots);
+
+  /** Marks the chosen card (gold border + SELECTED tag) and names the party slot. */
+  function applyCharacter(id: CharacterId): void {
+    for (const [cid, card] of charCards) card.classList.toggle('sel', cid === id);
+    partySlot.textContent = `${CHARACTERS[id].name} (you)`;
+  }
+  applyCharacter(CHARACTER_ORDER[0]);
 
   const modeRow = h('div', 'lb-mode');
   const modeBtns = new Map<GameMode, HTMLButtonElement>();
@@ -418,6 +453,9 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   });
 
   return {
+    setCharacter(id: CharacterId) {
+      applyCharacter(id);
+    },
     setVisualMode(mode: VisualMode) {
       applyVisualMode(mode);
     },

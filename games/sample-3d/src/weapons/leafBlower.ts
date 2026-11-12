@@ -71,11 +71,12 @@ export function createLeafBlower(scene: THREE.Scene): Weapon {
 
       // Fan: flat, centred on the gnome, aimed along facing.
       // Euler 'YXZ' applies the in-plane z spin first, then the flatten, then the yaw.
-      fan.position.set(px, 0.05, pz);
+      const gy = ctx.player.y;
+      fan.position.set(px, gy + 0.05, pz);
       fan.rotation.set(-Math.PI / 2, a - Math.PI / 2, 0, 'YXZ');
 
       // Handle at the player's hip, pointing along facing.
-      handle.position.set(px + fx * 0.3, 0.85, pz + fz * 0.3);
+      handle.position.set(px + fx * 0.3, gy + 0.85, pz + fz * 0.3);
       handle.rotation.set(0, a, 0);
 
       // Leaves drift forward and wrap back to the gnome at range.
@@ -86,7 +87,7 @@ export function createLeafBlower(scene: THREE.Scene): Weapon {
         leafFrac[i] = (leafFrac[i] + (ctx.dt * LEAF_SPEED) / L.range) % 1;
         const s = leafFrac[i] * L.range;
         const lat = leafLat[i] * halfWidth;
-        dummy.position.set(px + fx * s + rx * lat, 0.25, pz + fz * s + rz * lat);
+        dummy.position.set(px + fx * s + rx * lat, gy + 0.25, pz + fz * s + rz * lat);
         dummy.rotation.set(-Math.PI / 2, a - Math.PI / 2, leafSpin[i], 'YXZ');
         dummy.updateMatrix();
         leaves.setMatrixAt(i, dummy.matrix);

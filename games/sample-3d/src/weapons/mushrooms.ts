@@ -9,6 +9,7 @@ interface Mine {
   cap: THREE.Mesh;
   x: number;
   z: number;
+  groundY: number;
   armS: number;
   phase: number;
 }
@@ -34,9 +35,9 @@ function disposeGroup(group: THREE.Object3D): void {
   });
 }
 
-function buildMine(scene: THREE.Scene, x: number, z: number, armS: number, phase: number): Mine {
+function buildMine(scene: THREE.Scene, x: number, z: number, groundY: number, armS: number, phase: number): Mine {
   const group = new THREE.Group();
-  group.position.set(x, 0, z);
+  group.position.set(x, groundY, z);
 
   const stem = new THREE.Mesh(
     new THREE.CylinderGeometry(0.08, 0.1, 0.18),
@@ -69,10 +70,10 @@ function buildMine(scene: THREE.Scene, x: number, z: number, armS: number, phase
   }
 
   scene.add(group);
-  return { group, cap, x, z, armS, phase };
+  return { group, cap, x, z, groundY, armS, phase };
 }
 
-function makeBlast(scene: THREE.Scene, x: number, z: number, blastRadius: number): Effect {
+function makeBlast(scene: THREE.Scene, x: number, z: number, groundY: number, blastRadius: number): Effect {
   const material = new THREE.MeshBasicMaterial({
     color: 0xff9800,
     transparent: true,
@@ -80,7 +81,7 @@ function makeBlast(scene: THREE.Scene, x: number, z: number, blastRadius: number
     depthWrite: false,
   });
   const sphere = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), material);
-  sphere.position.set(x, 0.3, z);
+  sphere.position.set(x, groundY + 0.3, z);
   const group = new THREE.Group();
   group.add(sphere);
   scene.add(group);
@@ -138,7 +139,7 @@ export function createMushrooms(scene: THREE.Scene): Weapon {
       if (timer <= 0) {
         timer = L.cooldownS * ctx.stats.cooldownMult;
         if (mines.length < L.maxMines) {
-          mines.push(buildMine(scene, ctx.player.x, ctx.player.z, L.armS, Math.random() * Math.PI * 2));
+          mines.push(buildMine(scene, ctx.player.x, ctx.player.z, ctx.player.y, L.armS, Math.random() * Math.PI * 2));
         }
       }
 
@@ -152,7 +153,7 @@ export function createMushrooms(scene: THREE.Scene): Weapon {
         }
 
         m.cap.scale.setScalar(1);
-        m.group.position.y = 0.02 + Math.sin(time * 3 + m.phase) * 0.02;
+        m.group.position.y = m.groundY + 0.02 + Math.sin(time * 3 + m.phase) * 0.02;
 
         const armedByEnemy = ctx.enemies.some((e) => dist2D(m, e.pos) < L.triggerRadius + e.radius);
         if (!armedByEnemy) continue;
@@ -165,7 +166,7 @@ export function createMushrooms(scene: THREE.Scene): Weapon {
         ctx.playSfx('boom');
         removeMine(m);
         mines.splice(i, 1);
-        effects.push(makeBlast(scene, m.x, m.z, L.blastRadius));
+        effects.push(makeBlast(scene, m.x, m.z, m.groundY, L.blastRadius));
       }
     },
     dispose() {

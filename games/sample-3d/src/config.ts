@@ -329,8 +329,56 @@ export function upgradeCost(def: MetaUpgradeDef, level: number): number {
   return Math.round(def.baseCost * Math.pow(def.costGrowth, level));
 }
 
+// =====================================================================
+// Characters
+// =====================================================================
+
+/** How a gnome looks. The player's character and the bots are all built from one of these. */
+export interface GnomeLook {
+  hat: number;
+  shirt: number;
+  pants: number;
+  skin: number;
+  boots: number;
+  beard: number | null;                                  // beard colour, or null for none
+  hair: { color: number; style: 'pigtails' } | null;     // hair showing under the hat
+  freckles: boolean;
+  dress: boolean;                                        // a flared skirt over the legs
+  glasses: boolean;                                      // round glasses
+}
+
+export type CharacterId = 'gnorman' | 'gnancy';
+
+export interface CharacterDef {
+  id: CharacterId;
+  name: string;
+  rarity: string;
+  flavour: string;
+  look: GnomeLook;
+  /** Weapons owned at the start of a run (level). Characters will differ here later. */
+  startingWeapons: Partial<Record<WeaponId, number>>;
+}
+
+export const CHARACTERS: Record<CharacterId, CharacterDef> = {
+  gnorman: {
+    id: 'gnorman', name: 'GNORMAN', rarity: 'LEGENDARY (ALLEGEDLY)', flavour: 'Pointy hat. Strong beard. Weak to mowers.',
+    look: { hat: 0xd93636, shirt: 0x2f64c9, pants: 0x6b4a2e, skin: 0xf1c27d, boots: 0x222222, beard: 0xf4f4f4, hair: null, freckles: false, dress: false, glasses: false },
+    startingWeapons: { slingshot: 1 },
+  },
+  gnancy: {
+    id: 'gnancy', name: 'GNANCY', rarity: 'EPIC (SELF-APPOINTED)', flavour: 'Orange-red pigtails. Freckles. Has read every mower manual and hated them all.',
+    look: { hat: 0x7e57c2, shirt: 0x2e8b57, pants: 0x5d4037, skin: 0xf8dcc8, boots: 0x6d4c41, beard: null, hair: { color: 0xe2571e, style: 'pigtails' }, freckles: true, dress: true, glasses: true },
+    startingWeapons: { slingshot: 1 },
+  },
+};
+
+/** Lobby order. Names not in CHARACTERS are shown as locked "COMING SOON" cards. */
+export const CHARACTER_ORDER: readonly CharacterId[] = ['gnorman', 'gnancy'];
+export const LOCKED_CHARACTER_NAMES: readonly string[] = ['GNOAH', 'SIR GNOMESALOT'];
+
 export interface MetaSave {
   version: 1;
+  character: CharacterId;    // the selected character
   acorns: number;            // bankable currency
   totalAcornsEarned: number;
   runs: number;              // completed runs (deaths + victories)
@@ -810,6 +858,7 @@ export interface LobbyCallbacks {
   onPlay(mode: GameMode): void;
   onBuy(id: MetaUpgradeId): void;
   onVisualMode(mode: VisualMode): void;
+  onSelectCharacter(id: CharacterId): void;
 }
 
 export interface LobbyUI {
@@ -818,6 +867,8 @@ export interface LobbyUI {
   hide(): void;
   /** Highlights the current visual mode in the toggle. */
   setVisualMode(mode: VisualMode): void;
+  /** Highlights the selected character card. */
+  setCharacter(id: CharacterId): void;
 }
 
 // =====================================================================

@@ -1,3 +1,4 @@
+import { heightAt } from './terrain';
 // src/player.ts
 import * as THREE from 'three';
 import { ARENA_HALF, PLAYER_RADIUS, TUNING } from './config';
@@ -82,14 +83,16 @@ export function updatePlayer(p: PlayerState, input: InputState, cameraYaw: numbe
   p.position.addScaledVector(p.velocity, dt);
 
   // 7. Obstacles: stand on top, or get pushed out of the sides.
-  let groundHeight = 0;
+  // The lawn has hills: the floor is the terrain, and obstacle tops sit on the terrain under them.
+  let groundHeight = heightAt(p.position.x, p.position.z);
   for (const o of obstacles) {
     const ox = p.position.x - o.x;
     const oz = p.position.z - o.z;
     const d = Math.hypot(ox, oz);
-    if (d < o.radius && prevY >= o.height - 0.05) {
-      groundHeight = Math.max(groundHeight, o.height);
-    } else if (d < o.radius + PLAYER_RADIUS && p.position.y < o.height) {
+    const top = heightAt(o.x, o.z) + o.height;
+    if (d < o.radius && prevY >= top - 0.05) {
+      groundHeight = Math.max(groundHeight, top);
+    } else if (d < o.radius + PLAYER_RADIUS && p.position.y < top) {
       let nx = 1;
       let nz = 0;
       if (d >= 1e-4) {
@@ -108,7 +111,9 @@ export function updatePlayer(p: PlayerState, input: InputState, cameraYaw: numbe
   }
 
   // 8. Ground contact.
-  if (p.position.y <= groundHeight && p.velocity.y <= 0) {
+  // Snap down slopes too (within a small step), so walking downhill is not a series of tiny falls.
+  const onSlope = p.grounded && p.position.y - groundHeight < 0.6;
+  if ((p.position.y <= groundHeight || onSlope) && p.velocity.y <= 0) {
     p.position.y = groundHeight;
     p.velocity.y = 0;
     p.grounded = true;

@@ -2,6 +2,7 @@ import type { DayNightState } from './config';
 // src/world.ts
 import * as THREE from 'three';
 import { ARENA_HALF, COLORS, type World } from './config';
+import { heightAt, normalAt } from './terrain';
 
 const LAWN_SIZE = ARENA_HALF * 2;
 const TILE_PX = 256;
@@ -27,6 +28,17 @@ function shadowed<T extends THREE.Mesh>(m: T): T {
   m.castShadow = true;
   m.receiveShadow = true;
   return m;
+}
+
+/** Displaces a PlaneGeometry (before it is rotated flat) to the terrain; `lift` is added on top. */
+function displacePlane(geo: THREE.PlaneGeometry, lift: number): void {
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    // Local (x, y) maps to world (x, -y) after the -PI/2 rotation about X.
+    pos.setZ(i, heightAt(pos.getX(i), -pos.getY(i)) + lift);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
 }
 
 function make2d(w: number, h: number): CanvasRenderingContext2D {
@@ -75,8 +87,10 @@ export function buildWorld(scene: THREE.Scene): World {
   grassTex.colorSpace = THREE.SRGBColorSpace;
   grassTex.anisotropy = 8;
 
+  const lawnGeo = new THREE.PlaneGeometry(LAWN_SIZE, LAWN_SIZE, 200, 200);
+  displacePlane(lawnGeo, 0);
   const lawn = new THREE.Mesh(
-    new THREE.PlaneGeometry(LAWN_SIZE, LAWN_SIZE),
+    lawnGeo,
     new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 }),
   );
   lawn.rotation.x = -Math.PI / 2;
@@ -92,12 +106,13 @@ export function buildWorld(scene: THREE.Scene): World {
   stripeTex.wrapS = THREE.RepeatWrapping;
   stripeTex.wrapT = THREE.RepeatWrapping;
   stripeTex.repeat.set(1, LAWN_SIZE / (STRIPE_WIDTH * 2));
+  const stripeGeo = new THREE.PlaneGeometry(LAWN_SIZE, LAWN_SIZE, 200, 200);
+  displacePlane(stripeGeo, 0.02); // 0.02 above the lawn surface, baked into the vertices
   const stripes = new THREE.Mesh(
-    new THREE.PlaneGeometry(LAWN_SIZE, LAWN_SIZE),
+    stripeGeo,
     new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 1, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
   );
   stripes.rotation.x = -Math.PI / 2;
-  stripes.position.y = 0.02;
   stripes.renderOrder = 1;
   stripes.receiveShadow = true; // overlays must darken in shadow like the lawn under them
   scene.add(stripes);
@@ -117,7 +132,7 @@ export function buildWorld(scene: THREE.Scene): World {
   const mowed = new THREE.InstancedMesh(mowGeo, mowMat, MOW_CAPACITY);
   mowed.receiveShadow = true;
   mowed.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  mowed.position.y = 0.04;
+  // Each decal's own y (terrain height + 0.04) is written in markMowed; the mesh itself sits at 0.
   mowed.renderOrder = 2;
   mowed.frustumCulled = false; // the count changes at runtime; a cached bounding sphere would go stale
   mowed.count = 0;
@@ -132,6 +147,8 @@ export function buildWorld(scene: THREE.Scene): World {
   const tmpQuat = new THREE.Quaternion();
   const tmpScale = new THREE.Vector3(0.32, 0.32, 0.32);
   const yAxis = new THREE.Vector3(0, 1, 0);
+  const tmpNormal = new THREE.Vector3();
+  const tmpSpin = new THREE.Quaternion();
 
   const markMowed = (x: number, z: number): void => {
     const cx = Math.round(x / MOW_CELL);
@@ -146,8 +163,13 @@ export function buildWorld(scene: THREE.Scene): World {
     cellAt[slot] = key;
     mowedCells.add(key);
 
-    tmpPos.set(cx * MOW_CELL, 0, cz * MOW_CELL);
-    tmpQuat.setFromAxisAngle(yAxis, (Math.random() - 0.5) * 0.6);
+    const wx = cx * MOW_CELL;
+    const wz = cz * MOW_CELL;
+    tmpPos.set(wx, heightAt(wx, wz) + 0.04, wz);
+    // Lay the flat decal on the slope, then spin it randomly about its own normal (Y).
+    tmpQuat.setFromUnitVectors(yAxis, normalAt(wx, wz, tmpNormal));
+    tmpSpin.setFromAxisAngle(yAxis, (Math.random() - 0.5) * 0.6);
+    tmpQuat.multiply(tmpSpin);
     tmpMatrix.compose(tmpPos, tmpQuat, tmpScale);
     mowed.setMatrixAt(slot, tmpMatrix);
     mowed.instanceMatrix.needsUpdate = true;
@@ -167,38 +189,53 @@ export function buildWorld(scene: THREE.Scene): World {
     { alongX: false, v: ARENA_HALF + 0.5 }, // east
     { alongX: true, v: ARENA_HALF + 0.5 }, // south
   ];
+  // Rails are cut into one short piece per picket gap so each piece can sit on the ground.
+  // The south side runs along X; the west and east sides run along Z.
+  const gapCount = picketCount - 1;
+  const railsX = shadowed(new THREE.InstancedMesh(new THREE.BoxGeometry(PICKET_SPACING, 0.35, 0.3), fenceMat, RAIL_HEIGHTS.length * gapCount));
+  const railsZ = shadowed(new THREE.InstancedMesh(new THREE.BoxGeometry(0.3, 0.35, PICKET_SPACING), fenceMat, RAIL_HEIGHTS.length * 2 * gapCount));
+  let railIndexX = 0;
+  let railIndexZ = 0;
   let picketIndex = 0;
   for (const side of fenceSides) {
     const rotY = side.alongX ? 0 : Math.PI / 2;
+    const groundY: number[] = [];
     for (let i = 0; i < picketCount; i++) {
       const t = -ARENA_HALF + i * PICKET_SPACING;
       const x = side.alongX ? t : side.v;
       const z = side.alongX ? side.v : t;
+      const gy = heightAt(x, z);
+      groundY.push(gy);
       tmpQuat.setFromAxisAngle(yAxis, rotY);
-      tmpPos.set(x, PICKET_BODY_Y, z);
+      tmpPos.set(x, gy + PICKET_BODY_Y, z);
       tmpMatrix.compose(tmpPos, tmpQuat, new THREE.Vector3(1, 1, 1));
       picketBodies.setMatrixAt(picketIndex, tmpMatrix);
-      tmpPos.set(x, PICKET_TIP_Y, z);
+      tmpPos.set(x, gy + PICKET_TIP_Y, z);
       tmpMatrix.compose(tmpPos, tmpQuat, new THREE.Vector3(1, 1, 1));
       picketTips.setMatrixAt(picketIndex, tmpMatrix);
       picketIndex++;
     }
-    for (const y of RAIL_HEIGHTS) {
-      const rail = shadowed(
-        new THREE.Mesh(
-          side.alongX ? new THREE.BoxGeometry(LAWN_SIZE, 0.35, 0.3) : new THREE.BoxGeometry(0.3, 0.35, LAWN_SIZE),
-          fenceMat,
-        ),
-      );
-      rail.position.set(side.alongX ? 0 : side.v, y, side.alongX ? side.v : 0);
-      scene.add(rail);
+    for (let i = 0; i < gapCount; i++) {
+      const t = -ARENA_HALF + (i + 0.5) * PICKET_SPACING;
+      const x = side.alongX ? t : side.v;
+      const z = side.alongX ? side.v : t;
+      const gapGround = (groundY[i] + groundY[i + 1]) / 2;
+      for (const y of RAIL_HEIGHTS) {
+        tmpQuat.identity();
+        tmpPos.set(x, gapGround + y, z);
+        tmpMatrix.compose(tmpPos, tmpQuat, new THREE.Vector3(1, 1, 1));
+        if (side.alongX) railsX.setMatrixAt(railIndexX++, tmpMatrix);
+        else railsZ.setMatrixAt(railIndexZ++, tmpMatrix);
+      }
     }
   }
   picketBodies.instanceMatrix.needsUpdate = true;
   picketTips.instanceMatrix.needsUpdate = true;
+  railsX.instanceMatrix.needsUpdate = true;
+  railsZ.instanceMatrix.needsUpdate = true;
   shadowed(picketBodies);
   shadowed(picketTips);
-  scene.add(picketBodies, picketTips);
+  scene.add(picketBodies, picketTips, railsX, railsZ);
 
   // North edging: a row of bricks along the full width, every third one darker.
   const brickCount = Math.floor(LAWN_SIZE / PICKET_SPACING) + 1;
@@ -213,7 +250,8 @@ export function buildWorld(scene: THREE.Scene): World {
   const brickDark = new THREE.Color(0x8b4513);
   for (let i = 0; i < brickCount; i++) {
     tmpQuat.identity();
-    tmpPos.set(-ARENA_HALF + i * 2.2, 0.55, BRICK_Z);
+    const bx = -ARENA_HALF + i * 2.2;
+    tmpPos.set(bx, heightAt(bx, BRICK_Z) + 0.55, BRICK_Z);
     tmpMatrix.compose(tmpPos, tmpQuat, new THREE.Vector3(1, 1, 1));
     bricks.setMatrixAt(i, tmpMatrix);
     bricks.setColorAt(i, i % 3 === 0 ? brickDark : brickLight);
@@ -222,15 +260,22 @@ export function buildWorld(scene: THREE.Scene): World {
   if (bricks.instanceColor) bricks.instanceColor.needsUpdate = true;
   scene.add(bricks);
 
-  // Ground beyond the lawn.
-  const outer = new THREE.Mesh(
-    new THREE.PlaneGeometry(6000, 6000),
-    new THREE.MeshStandardMaterial({ color: 0x3f7f2b }),
-  );
-  outer.rotation.x = -Math.PI / 2;
-  outer.position.y = -0.02;
-  outer.receiveShadow = true;
-  scene.add(outer);
+  // Ground beyond the lawn: four strips around it, NOT one big sheet under it. A sheet under the
+  // lawn pokes up through every terrain dip below y = 0 and looks like a flat green pond.
+  const outerMat = new THREE.MeshStandardMaterial({ color: 0x3f7f2b });
+  const FAR = 3000;
+  const H = ARENA_HALF;
+  const strip = (w: number, d: number, x: number, z: number): void => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), outerMat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, -0.02, z);
+    m.receiveShadow = true;
+    scene.add(m);
+  };
+  strip(2 * FAR, FAR - H, 0, (H + FAR) / 2);   // south
+  strip(2 * FAR, FAR - H, 0, -(H + FAR) / 2);  // north
+  strip(FAR - H, 2 * H, (H + FAR) / 2, 0);     // east
+  strip(FAR - H, 2 * H, -(H + FAR) / 2, 0);    // west
 
   const update = (_dt: number, focus: THREE.Vector3): void => {
     sun.target.position.set(focus.x, 0, focus.z);

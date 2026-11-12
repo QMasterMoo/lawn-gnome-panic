@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { STORM_OF_DAGGERS_LEVELS } from '../config';
 import type { StormOfDaggersLevel, Weapon, WeaponContext } from '../config';
+import { heightAt } from '../terrain';
 
 const CAST_RANGE = 12;      // a cast needs some enemy this close to the gnome
 const CAST_OFFSET = 4;      // cloud centre, units in front of the gnome
@@ -18,6 +19,7 @@ interface Cloud {
   handles: THREE.InstancedMesh;
   cx: number;
   cz: number;
+  groundY: number;   // terrain height at the cloud centre
   radius: number;
   durationS: number;
   tickS: number;
@@ -52,7 +54,7 @@ function placeTrowels(cloud: Cloud, dummy: THREE.Object3D): void {
     const r = cloud.radius * (0.3 + 0.7 * cloud.fracs[i]);
     const x = cloud.cx + Math.cos(a) * r;
     const z = cloud.cz + Math.sin(a) * r;
-    const y = BOB_MID + BOB_AMP * Math.sin(BOB_RATE * cloud.age + i);
+    const y = cloud.groundY + BOB_MID + BOB_AMP * Math.sin(BOB_RATE * cloud.age + i);
     const yaw = -a; // blade long axis runs along the orbit tangent
 
     dummy.position.set(x, y, z);
@@ -73,7 +75,7 @@ function placeTrowels(cloud: Cloud, dummy: THREE.Object3D): void {
   cloud.handles.instanceMatrix.needsUpdate = true;
 }
 
-function makeCloud(scene: THREE.Scene, cx: number, cz: number, L: StormOfDaggersLevel, dummy: THREE.Object3D): Cloud {
+function makeCloud(scene: THREE.Scene, cx: number, cz: number, groundY: number, L: StormOfDaggersLevel, dummy: THREE.Object3D): Cloud {
   const group = new THREE.Group();
 
   const bladeGeo = new THREE.BoxGeometry(0.12, 0.02, 0.22);
@@ -97,7 +99,7 @@ function makeCloud(scene: THREE.Scene, cx: number, cz: number, L: StormOfDaggers
   });
   const ring = new THREE.Mesh(ringGeo, ringMat);
   ring.rotation.x = -Math.PI / 2;
-  ring.position.set(cx, 0.05, cz);
+  ring.position.set(cx, groundY + 0.05, cz);
 
   group.add(blades, handles, ring);
   scene.add(group);
@@ -111,6 +113,7 @@ function makeCloud(scene: THREE.Scene, cx: number, cz: number, L: StormOfDaggers
     handles,
     cx,
     cz,
+    groundY,
     radius: L.radius,
     durationS: L.durationS,
     tickS: L.tickS,
@@ -172,7 +175,7 @@ export function createStormOfDaggers(scene: THREE.Scene): Weapon {
 
       const cx = ctx.player.x + Math.sin(ctx.facing) * CAST_OFFSET;
       const cz = ctx.player.z + Math.cos(ctx.facing) * CAST_OFFSET;
-      clouds.push(makeCloud(scene, cx, cz, L, dummy));
+      clouds.push(makeCloud(scene, cx, cz, heightAt(cx, cz), L, dummy));
       ctx.playSfx('shoot');
       timer = L.cooldownS * ctx.stats.cooldownMult;
     },

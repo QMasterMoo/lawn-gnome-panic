@@ -1,10 +1,11 @@
+import { CHARACTERS } from './config';
 import { PASSIVE_DEFS, WEAPON_DEFS, type MetaSave, type PassiveId, type PlayerStats, type RunState, type UpgradeChoice, type WeaponId } from './config';
 import { computeStats } from './stats';
 /** A fresh run: level 1, slingshot level 1, full hearts, rerolls from stats. */
 export function createRun(save: MetaSave): RunState {
   const s = computeStats(save, null);
   return { level: 1, xp: 0, xpToNext: xpToNext(1), hearts: s.maxHearts, invulnS: 0, kills: 0, acorns: 0, elapsedS: 0,
-    weapons: { slingshot: 1 }, passives: {}, rerollsLeft: s.rerolls, bossSpawned: false, bossDefeated: false };
+    weapons: { ...CHARACTERS[save.character].startingWeapons }, passives: {}, rerollsLeft: s.rerolls, bossSpawned: false, bossDefeated: false };
 }
 /** XP needed to go from `level` to `level + 1`. */
 export function xpToNext(level: number): number { return Math.round(5 + 4 * level * Math.sqrt(level)); }

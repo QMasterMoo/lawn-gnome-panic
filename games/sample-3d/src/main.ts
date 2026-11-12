@@ -1,15 +1,16 @@
+import { heightAt } from './terrain';
 import * as THREE from 'three';
 import {
   COLORS, OBSTACLES, PLAYER_RADIUS, PEDESTAL_HEIGHT, MOWER_TIERS, TUNING, WAVES,
   type GamePhase, type InputState, type MowerTier, type RunSummary, type UpgradeChoice,
   type Weapon, type WeaponContext, type WeaponId, type MetaUpgradeId, type VisualMode, type ItemKind, type GameMode,
-  ITEM_DEFS, CHICKEN_HEAL, CAMERA_VIEWS, SOLO_LEVELS,
+  ITEM_DEFS, CHICKEN_HEAL, CAMERA_VIEWS, SOLO_LEVELS, CHARACTERS, type CharacterId, type LobbyCallbacks,
 } from './config';
 import { createInput } from './input';
 import { createTouchControls } from './ui/touch';
 import { createCameraRig } from './camera';
 import { createPlayerState, updatePlayer } from './player';
-import { createGnome } from './gnome';
+import { createGnomeModel } from './gnome';
 import { buildWorld } from './world';
 import { createMowerSystem } from './mowers';
 import { createPickupSystem } from './pickups';
@@ -103,7 +104,22 @@ const houseLights = buildHouse(scene);
 const dayNight = createDayNight();
 let lastDayPhase = dayNight.state().phase;
 const scenery = buildScenery(scene);
-const gnome = createGnome();
+let gnome = createGnomeModel(CHARACTERS.gnorman.look);
+
+/** Swaps the player's model to a character's look (lobby selection). */
+function setPlayerCharacter(id: CharacterId): void {
+  scene.remove(gnome.object);
+  gnome.object.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (mesh.isMesh) {
+      mesh.geometry.dispose();
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of mats) m.dispose();
+    }
+  });
+  gnome = createGnomeModel(CHARACTERS[id].look);
+  scene.add(gnome.object);
+}
 scene.add(gnome.object);
 const mowers = createMowerSystem(scene);
 const pickups = createPickupSystem(scene);
@@ -194,13 +210,22 @@ const lobbyStage = createLobbyStage(scene);
 const hud = createHud(uiRoot);
 const levelUp = createLevelUpUI(uiRoot);
 const results = createResultsUI(uiRoot);
-const lobbyUI = createLobbyUI(uiRoot, {
+const lobbyCallbacks: LobbyCallbacks = {
   onPlay: (mode: GameMode) => { if (phase === 'lobby') startRun(mode); },
   onBuy: (id: MetaUpgradeId) => {
     if (tryBuy(save, id)) {
       playSfx('buy');
       lobbyUI.refresh(save);
     }
+  },
+  onSelectCharacter: (id: CharacterId) => {
+    if (phase !== 'lobby' || save.character === id) return;
+    save.character = id;
+    writeSave(save);
+    setPlayerCharacter(id);
+    lobbyUI.setCharacter(id);
+    lobbyUI.refresh(save);
+    playSfx('buy');
   },
   onVisualMode: (mode: VisualMode) => {
     flags.visualMode = mode;
@@ -209,13 +234,16 @@ const lobbyUI = createLobbyUI(uiRoot, {
     lobbyUI.setVisualMode(mode);
     playSfx('buy');
   },
-});
+};
+const lobbyUI = createLobbyUI(uiRoot, lobbyCallbacks);
 
 // ---------- state ----------
 const save = loadSave();
 const flags = loadFlags();
 postfx.setMode(flags.visualMode);
 lobbyUI.setVisualMode(flags.visualMode);
+setPlayerCharacter(save.character);
+lobbyUI.setCharacter(save.character);
 let phase: GamePhase = 'lobby';
 let run = createRun(save);
 let stats = computeStats(save, null);
@@ -549,7 +577,7 @@ function tickRun(dt: number, inp: InputState): void {
     stats,
     damage: (id, amount) => {
       const e = enemiesNow.find((m) => m.id === id);
-      if (e && e.hp > 0) juice.damageNumber(e.pos.x, 1.3, e.pos.z, amount);
+      if (e && e.hp > 0) juice.damageNumber(e.pos.x, e.pos.y + 1.3, e.pos.z, amount);
       mowers.damage(id, amount);
       playSfx('enemyHit');
     },
@@ -685,6 +713,9 @@ goLobby();
 // Test hooks for headless smoke tests and screenshots: ?autostart=solo|royale skips the lobby; &pause pauses after 1.5 s.
 {
   const params = new URLSearchParams(location.search);
+  // &character=gnancy picks a character (also works on the lobby screen).
+  const ch = params.get('character');
+  if (ch && ch in CHARACTERS && ch !== save.character) lobbyCallbacks.onSelectCharacter(ch as CharacterId);
   const auto = params.get('autostart');
   if (auto === 'solo' || auto === 'royale') {
     startRun(auto);
@@ -695,6 +726,9 @@ goLobby();
       mowers.setDifficulty(SOLO_LEVELS[levelIdx]);
     }
     if (auto === 'solo' && params.has('boss')) levelStartS = -SOLO_LEVELS[levelIdx].bossAtS;
+    // &at=x,z drops the gnome at that point on the terrain (for looking at hills).
+    const at = (params.get('at') ?? '').split(',').map(Number);
+    if (at.length === 2 && at.every(Number.isFinite)) player.position.set(at[0], heightAt(at[0], at[1]), at[1]);
     if (params.has('pause')) setTimeout(() => pauseGame(), 1500);
   }
   // &time=0..1 jumps the clock (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight).

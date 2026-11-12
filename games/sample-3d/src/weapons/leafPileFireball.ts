@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { LEAF_PILE_FIREBALL_LEVELS } from '../config';
 import type { EnemyView, LeafPileFireballLevel, Weapon, WeaponContext } from '../config';
+import { heightAt } from '../terrain';
 
 const RETRY_S = 0.2;
 const FLIGHT_S = 0.35;
@@ -17,6 +18,8 @@ interface Flight {
   startZ: number;
   impactX: number;
   impactZ: number;
+  startY: number;    // terrain height under the throw
+  impactY: number;   // terrain height under the impact point
   age: number;
   stats: LeafPileFireballLevel;
 }
@@ -38,9 +41,9 @@ function dist2D(a: { x: number; z: number }, b: { x: number; z: number }): numbe
   return Math.hypot(a.x - b.x, a.z - b.z);
 }
 
-function makeImpact(scene: THREE.Scene, x: number, z: number, blastRadius: number): ImpactFx {
+function makeImpact(scene: THREE.Scene, x: number, z: number, groundY: number, blastRadius: number): ImpactFx {
   const group = new THREE.Group();
-  group.position.set(x, 0, z);
+  group.position.set(x, groundY, z);
 
   const discGeometry = new THREE.CircleGeometry(blastRadius, 24);
   const discMaterial = new THREE.MeshBasicMaterial({
@@ -125,7 +128,7 @@ export function createLeafPileFireball(scene: THREE.Scene): Weapon {
       }
     }
     ctx.playSfx('boom');
-    impacts.push(makeImpact(scene, f.impactX, f.impactZ, L.blastRadius));
+    impacts.push(makeImpact(scene, f.impactX, f.impactZ, f.impactY, L.blastRadius));
   }
 
   return {
@@ -138,9 +141,11 @@ export function createLeafPileFireball(scene: THREE.Scene): Weapon {
       if (flight) {
         flight.age += ctx.dt;
         const k = Math.min(flight.age / FLIGHT_S, 1);
+        const startH = flight.startY + BAG_START_Y;
+        const endH = flight.impactY + BAG_IMPACT_Y;
         bag.position.set(
           flight.startX + (flight.impactX - flight.startX) * k,
-          BAG_START_Y + (BAG_IMPACT_Y - BAG_START_Y) * k + FLIGHT_PEAK * Math.sin(Math.PI * k),
+          startH + (endH - startH) * k + FLIGHT_PEAK * Math.sin(Math.PI * k),
           flight.startZ + (flight.impactZ - flight.startZ) * k,
         );
         if (k >= 1) {
@@ -183,10 +188,12 @@ export function createLeafPileFireball(scene: THREE.Scene): Weapon {
         startZ: ctx.player.z,
         impactX: target.pos.x,
         impactZ: target.pos.z,
+        startY: ctx.player.y,
+        impactY: heightAt(target.pos.x, target.pos.z),
         age: 0,
         stats: L,
       };
-      bag.position.set(ctx.player.x, BAG_START_Y, ctx.player.z);
+      bag.position.set(ctx.player.x, ctx.player.y + BAG_START_Y, ctx.player.z);
       bag.visible = true;
       timer = L.cooldownS * ctx.stats.cooldownMult;
     },

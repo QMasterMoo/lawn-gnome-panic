@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { COLORS, type Obstacle } from './config';
+import { heightAt } from './terrain';
 
 // Each prop is built from primitives that are transformed into place and merged into one mesh per
 // material. Materials are shared module-wide, so the whole yard uses only a few dozen of them.
@@ -50,7 +51,10 @@ class Kit {
   private parts = new Map<THREE.Material, THREE.BufferGeometry[]>();
 
   constructor(o: Obstacle) {
-    this.root.position.set(o.x, 0, o.z);
+    // Sunk slightly so slopes do not show a gap under one side.
+    // Sunk 0.15 so slopes show no gap underneath, and stretched by the same amount so the walkable top stays at heightAt + o.height.
+    this.root.position.set(o.x, heightAt(o.x, o.z) - 0.15, o.z);
+    this.root.scale.y = (o.height + 0.15) / o.height;
   }
 
   /** Takes ownership of `geo`, places it with `m`, and queues it under `material`. */
@@ -78,7 +82,7 @@ class Kit {
   }
 }
 
-/** The mesh for one obstacle, positioned at (o.x, 0, o.z). Collision is the cylinder in `o`; the mesh may be any shape that roughly fills it. */
+/** The mesh for one obstacle, positioned on the terrain at (o.x, heightAt(o.x, o.z) - 0.15, o.z). Collision is the cylinder in `o`; the mesh may be any shape that roughly fills it. */
 export function buildProp(o: Obstacle): THREE.Object3D {
   const k = new Kit(o);
   switch (o.kind) {

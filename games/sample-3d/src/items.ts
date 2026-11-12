@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ARENA_HALF, ITEM_DEFS, OBSTACLES, TUNING } from './config';
 import type { ItemKind, ItemMarker, ItemSystem } from './config';
+import { heightAt } from './terrain';
 
 /** Rare world items with glowing beacons. */
 
@@ -154,8 +155,9 @@ export function createItemSystem(scene: THREE.Scene): ItemSystem {
     const kind = pickKind();
     const def = ITEM_DEFS[kind];
 
+    const groundY = heightAt(spot.x, spot.z);
     const group = new THREE.Group();
-    group.position.set(spot.x, 0, spot.z);
+    group.position.set(spot.x, groundY, spot.z);
 
     const beaconMat = new THREE.MeshBasicMaterial({
       color: def.color, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending,
@@ -177,7 +179,7 @@ export function createItemSystem(scene: THREE.Scene): ItemSystem {
     group.add(beacon, ring, model);
     scene.add(group);
     items.push({
-      kind, group, pos: new THREE.Vector3(spot.x, 0, spot.z), t: 0,
+      kind, group, pos: new THREE.Vector3(spot.x, groundY, spot.z), t: 0,
       beacon, beaconMat, ring, model, steam,
     });
     return true;
@@ -219,7 +221,7 @@ export function createItemSystem(scene: THREE.Scene): ItemSystem {
       it.t += dt;
       animate(it, dt);
       const d = Math.hypot(it.pos.x - playerFeet.x, it.pos.z - playerFeet.z);
-      if (d < 1.6 && playerFeet.y < 3) {
+      if (d < 1.6 && Math.abs(playerFeet.y - it.pos.y) < 3) {
         collected.push(it.kind);
         removeItem(i);
       } else if (d > TUNING.itemLeashDist) {

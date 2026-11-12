@@ -1,6 +1,7 @@
 // src/pickups.ts
 import * as THREE from 'three';
 import { ARENA_HALF, COLORS, OBSTACLES, TUNING, type Obstacle, type PickupSystem } from './config';
+import { heightAt } from './terrain';
 
 // Shared geometries and materials for every acorn.
 const nutGeometry = new THREE.SphereGeometry(0.2, 16, 12);
@@ -82,15 +83,16 @@ export function createPickupSystem(scene: THREE.Scene): PickupSystem {
     for (let i = 0; i < SPAWN_TRIES; i++) {
       if (climbable.length > 0 && Math.random() < TUNING.pickupOnObstacleChance) {
         const o = climbable[Math.floor(Math.random() * climbable.length)];
-        const y = o.height + 0.5;
+        const y = heightAt(o.x, o.z) + o.height + 0.5;
         if (!farFromAcorns(o.x, y, o.z)) continue;
         place(o.x, y, o.z);
         return;
       }
       const { x, z } = ringGroundPoint(playerFeet);
       if (!farFromObstacles(x, z)) continue;
-      if (!farFromAcorns(x, 0.5, z)) continue;
-      place(x, 0.5, z);
+      const groundY = heightAt(x, z) + 0.5;
+      if (!farFromAcorns(x, groundY, z)) continue;
+      place(x, groundY, z);
       return;
     }
     // No free spot found within the try budget: skip this spawn.

@@ -1,3 +1,4 @@
+import { heightAt } from './terrain';
 // src/camera.ts
 import * as THREE from 'three';
 import { TUNING, type CameraRig, type CameraView, type InputState } from './config';
@@ -44,7 +45,7 @@ export function createCameraRig(camera: THREE.PerspectiveCamera): CameraRig {
         const d = TUNING.cameraDistance;
         const cp = Math.cos(rig.pitch);
         desired.set(target.x - sy * cp * d, target.y + 1 + Math.sin(rig.pitch) * d, target.z - cy * cp * d);
-        desired.y = Math.max(desired.y, 0.5);
+        desired.y = Math.max(desired.y, heightAt(desired.x, desired.z) + 0.6); // never inside a hill
       }
 
       if (snap) {

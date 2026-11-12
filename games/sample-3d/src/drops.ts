@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { COLORS } from './config';
 import type { DropSystem } from './config';
+import { heightAt } from './terrain';
 
 interface Drop {
   kind: 'xp' | 'acorn';
@@ -15,7 +16,7 @@ interface Drop {
   phase: number;
 }
 
-const GROUND_Y = 0.3;
+const REST_OFFSET = 0.3; // resting height above the terrain
 const MAX_DROPS = 300;
 
 export function createDropSystem(scene: THREE.Scene): DropSystem {
@@ -70,7 +71,7 @@ export function createDropSystem(scene: THREE.Scene): DropSystem {
         return;
       }
     }
-    addDrop('xp', makeXpMesh(value), value, x, GROUND_Y, z, 3);
+    addDrop('xp', makeXpMesh(value), value, x, heightAt(x, z) + REST_OFFSET, z, 3);
   }
 
   return {
@@ -94,7 +95,9 @@ export function createDropSystem(scene: THREE.Scene): DropSystem {
       for (let i = 0; i < count; i++) {
         const a = Math.random() * Math.PI * 2;
         const r = Math.sqrt(Math.random()) * radius;
-        addDrop('acorn', makeAcornMesh(), 1, x + Math.cos(a) * r, GROUND_Y, z + Math.sin(a) * r,
+        const dx = x + Math.cos(a) * r;
+        const dz = z + Math.sin(a) * r;
+        addDrop('acorn', makeAcornMesh(), 1, dx, heightAt(dx, dz) + REST_OFFSET, dz,
           4 + Math.random() * 2);
       }
     },
@@ -111,11 +114,13 @@ export function createDropSystem(scene: THREE.Scene): DropSystem {
         const d = drops[i];
 
         // Pop out of the ground; magnetized drops fly straight to the player instead.
+        // The resting height follows the terrain under the drop (magnetised drops skip this).
+        const ground = d.magnet ? 0 : heightAt(d.x, d.z) + REST_OFFSET;
         if (!d.magnet) {
           d.y += d.vy * dt;
           d.vy -= 20 * dt;
-          if (d.y <= GROUND_Y) {
-            d.y = GROUND_Y;
+          if (d.y <= ground) {
+            d.y = ground;
             d.vy = 0;
           }
         }
@@ -140,7 +145,7 @@ export function createDropSystem(scene: THREE.Scene): DropSystem {
           }
         }
 
-        const bob = !d.magnet && d.y <= GROUND_Y ? Math.sin(time * 4 + d.phase) * 0.05 : 0;
+        const bob = !d.magnet && d.y <= ground ? Math.sin(time * 4 + d.phase) * 0.05 : 0;
         d.mesh.position.set(d.x, d.y + bob, d.z);
 
         dx = tx - d.x;

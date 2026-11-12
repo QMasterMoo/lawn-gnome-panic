@@ -80,9 +80,10 @@ export function createZone(scene: THREE.Scene): ZoneSystem {
 
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(0.985, 1, 128),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.6, transparent: true, fog: false }),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.6, transparent: true, fog: false, depthTest: false }),
   );
   ring.rotation.x = -Math.PI / 2;
+  ring.renderOrder = 5;
   group.add(ring);
 
   let repeatRadius = -1;

@@ -33,7 +33,7 @@ function removeEffect(scene: THREE.Scene, effect: Effect): void {
   disposeGroup(effect.group);
 }
 
-function makePulse(scene: THREE.Scene, x: number, z: number, radius: number): Effect {
+function makePulse(scene: THREE.Scene, x: number, z: number, groundY: number, radius: number): Effect {
   const material = new THREE.MeshBasicMaterial({
     color: COLORS.water,
     transparent: true,
@@ -43,7 +43,7 @@ function makePulse(scene: THREE.Scene, x: number, z: number, radius: number): Ef
   });
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 48), material);
   ring.rotation.x = -Math.PI / 2;
-  ring.position.set(x, 0.06, z);
+  ring.position.set(x, groundY + 0.06, z);
   const group = new THREE.Group();
   group.add(ring);
   scene.add(group);
@@ -62,7 +62,7 @@ function makePulse(scene: THREE.Scene, x: number, z: number, radius: number): Ef
   };
 }
 
-function makeDroplets(scene: THREE.Scene, x: number, z: number): Effect {
+function makeDroplets(scene: THREE.Scene, x: number, z: number, groundY: number): Effect {
   const material = new THREE.MeshBasicMaterial({ color: COLORS.water });
   const geometry = new THREE.SphereGeometry(0.06, 8, 6);
   const group = new THREE.Group();
@@ -73,7 +73,7 @@ function makeDroplets(scene: THREE.Scene, x: number, z: number): Effect {
     const angle = (i / DROPLET_COUNT) * Math.PI * 2;
     const speed = 5 + Math.random() * 3;
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(x, 0.4, z);
+    mesh.position.set(x, groundY + 0.4, z);
     group.add(mesh);
     drops.push({ mesh, vx: Math.cos(angle) * speed, vy: 3, vz: Math.sin(angle) * speed });
   }
@@ -128,8 +128,8 @@ export function createSprinkler(scene: THREE.Scene): Weapon {
         ctx.slow(e.id, L.slowFactor, L.slowS);
       }
       ctx.playSfx('splash');
-      effects.push(makePulse(scene, ctx.player.x, ctx.player.z, L.radius));
-      effects.push(makeDroplets(scene, ctx.player.x, ctx.player.z));
+      effects.push(makePulse(scene, ctx.player.x, ctx.player.z, ctx.player.y, L.radius));
+      effects.push(makeDroplets(scene, ctx.player.x, ctx.player.z, ctx.player.y));
       timer = L.cooldownS * ctx.stats.cooldownMult;
     },
     dispose() {
