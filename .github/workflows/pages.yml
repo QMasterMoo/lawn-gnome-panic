@@ -25,6 +25,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run site
+        env:
+          # wss://<your-fly-app>.fly.dev/ws, set under Settings > Secrets and variables > Actions > Variables.
+          VITE_MP_URL: ${{ vars.VITE_MP_URL }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

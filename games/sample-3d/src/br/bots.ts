@@ -80,7 +80,7 @@ function findSpawnSpot(center: THREE.Vector3, avoid: THREE.Vector3): { x: number
 }
 
 /** Name tag: a dark rounded pill with white bold text, drawn to a canvas texture. */
-function createNameTag(name: string): THREE.Sprite {
+export function createNameTag(name: string): THREE.Sprite {
   const w = 256;
   const h = 48;
   const r = 12;

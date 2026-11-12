@@ -39,6 +39,11 @@ import { createRoyaleHud } from './ui/royaleHud';
 import { createViewButton } from './ui/viewButton';
 import { createPauseButton } from './ui/pauseButton';
 import { createPauseUI } from './ui/pause';
+import { createNetClient, serverUrl } from './net/client';
+import { createPuppetSystem } from './net/puppets';
+import { generateGamertags } from './br/names';
+import { MAX_PLAYERS, NET_SEND_HZ, type GameMsg, type KillSnap, type PlayerInfo, type ServerMsg } from './net/protocol';
+import type { KillEvent, MowerKill, NetClient } from './config';
 
 // ---------- no browser zoom on phones ----------
 // CSS touch-action handles most browsers; iOS Safari ignores user-scalable=no, so also cancel its
@@ -132,6 +137,7 @@ const royaleHud = createRoyaleHud(uiRoot);
 const viewBtn = createViewButton(uiRoot, cycleView);
 const pauseBtn = createPauseButton(uiRoot, () => pauseGame());
 const pauseUI = createPauseUI(uiRoot);
+const puppets = createPuppetSystem(scene);
 
 let pausedAt = 0;
 function pauseGame(): void {
@@ -153,7 +159,7 @@ function pauseGame(): void {
     maxHearts: stats.maxHearts,
     kills: run.kills,
     acorns: run.acorns,
-    gnomesLeft: mode === 'royale' ? bots.aliveCount() + 1 : null,
+    gnomesLeft: online ? online.alive : mode === 'royale' ? bots.aliveCount() + 1 : null,
     weapons: run.weapons,
     passives: run.passives,
     stats,
@@ -173,6 +179,10 @@ function resumeGame(): void {
 
 function quitRun(): void {
   if (phase !== 'paused') return;
+  if (online) {
+    finishOnline('GIVING UP (it happens)');
+    return;
+  }
   pauseUI.hide();
   phase = 'playing';
   killedBy = null;
@@ -233,6 +243,11 @@ const lobbyCallbacks: LobbyCallbacks = {
     postfx.setMode(mode);
     lobbyUI.setVisualMode(mode);
     playSfx('buy');
+  },
+  onFindMatch: (code: string | null) => { void findMatch(code); },
+  onLeaveMatch: () => {
+    net?.leave();
+    lobbyUI.setMatchStatus(null);
   },
 };
 const lobbyUI = createLobbyUI(uiRoot, lobbyCallbacks);
@@ -303,12 +318,17 @@ function clearField(): void {
   zone.reset();
   zone.setVisible(false);
   royaleHud.hide();
+  puppets.reset();
   world.reset();
 }
 
 // ---------- phases ----------
 function goLobby(): void {
   phase = 'lobby';
+  if (online) {
+    net?.leave();
+    online = null;
+  }
   dayNight.setTime(TUNING.lobbyTimeT);
   clearField();
   stats = computeStats(save, null);
@@ -358,7 +378,24 @@ function startRun(m: GameMode = 'solo', level = 1): void {
   viewBtn.show();
   pauseBtn.show();
   hud.show();
-  if (mode === 'royale') {
+  if (mode === 'royale' && online) {
+    // Players stand on a ring in join order; the host fills the rest of the 20 with bots.
+    const idx = Math.max(0, online.order.indexOf(online.me));
+    const a = (idx / online.order.length) * Math.PI * 2;
+    const sx = Math.sin(a) * TUNING.onlineSpawnRing;
+    const sz = Math.cos(a) * TUNING.onlineSpawnRing;
+    player.position.set(sx, heightAt(sx, sz), sz);
+    player.facing = a + Math.PI;
+    rig.reset(player.facing);
+    zone.reset(online.seed);
+    const botCount = Math.max(0, MAX_PLAYERS - online.order.length);
+    if (online.isHost) bots.spawn(botCount, new THREE.Vector3(0, 0, 0), player.position);
+    else mowers.setPuppet(true);
+    zone.setVisible(true);
+    royaleHud.show();
+    const humans = online.order.length;
+    hud.banner(`ONLINE ROYALE · ${humans} HUMAN${humans === 1 ? '' : 'S'} + ${botCount} BOTS`, online.isHost ? 'You are hosting. Please do not close the tab.' : 'Last gnome standing wins. Some of these gnomes are people.', 4);
+  } else if (mode === 'royale') {
     bots.spawn(TUNING.royaleBots, new THREE.Vector3(0, 0, 0), player.position);
     zone.setVisible(true);
     royaleHud.show();
@@ -412,6 +449,8 @@ function onReroll(): void {
 
 function endRun(victory: boolean): void {
   phase = 'results';
+  levelUp.hide();
+  pauseUI.hide();
   viewBtn.hide();
   pauseBtn.hide();
   rig.view = 'third'; // see your gnome's fate on the results screen
@@ -449,7 +488,7 @@ function endRun(victory: boolean): void {
     levelsCleared,
     soloLevel: mode === 'solo' ? levelIdx + 1 : null,
     unlockedLevel,
-    placement: mode === 'royale' ? { rank: run.hearts > 0 ? 1 : bots.aliveCount() + 1, total: TUNING.royaleBots + 1 } : null,
+    placement: online ? { rank: victory ? 1 : online.placement || online.alive, total: online.total } : mode === 'royale' ? { rank: run.hearts > 0 ? 1 : bots.aliveCount() + 1, total: TUNING.royaleBots + 1 } : null,
   };
   hud.hide();
   touch.setVisible(false);
@@ -491,7 +530,7 @@ function applyItem(kind: ItemKind): void {
     case 'weedKiller':
       for (const e of mowers.enemies()) {
         if (Math.hypot(e.pos.x - player.position.x, e.pos.z - player.position.z) < TUNING.nukeRadius) {
-          mowers.damage(e.id, e.tier === 'combine' ? TUNING.nukeBossDamage : 1e6);
+          damageMower(e.id, e.tier === 'combine' ? TUNING.nukeBossDamage : 1e6);
         }
       }
       juice.shake(1.2);
@@ -508,6 +547,9 @@ function applyItem(kind: ItemKind): void {
 
 function tickRun(dt: number, inp: InputState): void {
   run.elapsedS += dt;
+  // Online: sim = this browser runs the world (host); sp = my gnome is dead and I am watching.
+  const sim = !online || online.isHost;
+  const sp = online?.spectating ?? false;
 
   // Day and night: banners at the turns, bonus XP in the dark.
   const dn = dayNight.update(dt);
@@ -518,8 +560,10 @@ function tickRun(dt: number, inp: InputState): void {
   }
   const nightXp = dn.night01 > 0.5 ? TUNING.nightXpMult : 1;
 
-  const { jumped } = updatePlayer(player, inp, rig.yaw, OBSTACLES, stats, dt);
-  if (jumped) playSfx('jump');
+  if (!sp) {
+    const { jumped } = updatePlayer(player, inp, rig.yaw, OBSTACLES, stats, dt);
+    if (jumped) playSfx('jump');
+  }
 
   // Waves and bosses. Solo replays the waves each level with harder mowers; royale is a single level.
   const L = mode === 'solo' ? SOLO_LEVELS[levelIdx] : null;
@@ -534,7 +578,7 @@ function tickRun(dt: number, inp: InputState): void {
     levelBannerAt = -1;
     hud.banner(L.name, L.sub, 4);
   }
-  if (!levelBossSpawned && !bossDone && levelTime >= (L ? L.bossAtS : TUNING.bossAtS)) {
+  if (sim && !levelBossSpawned && !bossDone && levelTime >= (L ? L.bossAtS : TUNING.bossAtS)) {
     levelBossSpawned = true;
     run.bossSpawned = true;
     const count = L ? L.bossCount : 1;
@@ -547,9 +591,23 @@ function tickRun(dt: number, inp: InputState): void {
 
   // Mowers.
   const targets: THREE.Vector3[] = [player.position];
+  if (online?.isHost) {
+    const others = puppets.living('p');
+    if (sp && others.length > 0) targets[0] = others[0]; // nobody chases a dead host
+    targets.push(...others);
+  }
   for (const c of bots.contestants()) if (c.alive) targets.push(c.pos);
-  const kills = mowers.update(dt, levelTime, targets, OBSTACLES, (x, z) => world.markMowed(x, z));
+  let kills: MowerKill[] = mowers.update(dt, levelTime, targets, OBSTACLES, (x, z) => world.markMowed(x, z));
+  if (online) {
+    if (online.isHost) for (const k of kills) online.kills.push([r2(k.x), r2(k.z), k.tier, k.by ?? -1]);
+    else kills = online.netKills.splice(0);
+  }
   for (const k of kills) {
+    // Online, drops go only to the gnome that landed the killing blow.
+    if (online && k.by !== online.me) {
+      juice.kill(k.x, k.z);
+      continue;
+    }
     run.kills += 1;
     const def = MOWER_TIERS[k.tier];
     drops.spawnXp(k.x, k.z, def.xp);
@@ -576,13 +634,17 @@ function tickRun(dt: number, inp: InputState): void {
     damage: (id, amount) => {
       const e = enemiesNow.find((m) => m.id === id);
       if (e && e.hp > 0) juice.damageNumber(e.pos.x, e.pos.y + 1.3, e.pos.z, amount);
-      mowers.damage(id, amount);
+      damageMower(id, amount);
       playSfx('enemyHit');
     },
-    slow: (id, factor, seconds) => mowers.slow(id, factor, seconds),
+    slow: (id, factor, seconds) => slowMower(id, factor, seconds),
     playSfx,
   };
-  for (const w of weapons.values()) w.update(ctx);
+  if (!sp) for (const w of weapons.values()) w.update(ctx);
+  if (sp) {
+    tickRoyale(dt, sim, sp);
+    return;
+  }
 
   // Pickups.
   const got = drops.update(dt, player.position, stats.magnetRadius);
@@ -628,39 +690,7 @@ function tickRun(dt: number, inp: InputState): void {
       }
     }
   }
-  // Battle royale: the zone, the bots, the kill feed.
-  if (mode === 'royale') {
-    const zs = zone.update(dt, run.elapsedS);
-    const outside = zone.isOutside(player.position.x, player.position.z);
-    if (outside) {
-      zoneDmgTimer -= dt;
-      if (zoneDmgTimer <= 0) {
-        zoneDmgTimer = TUNING.zoneDamageEveryS * (zs.radius < TUNING.zoneLateRadius ? 0.5 : 1);
-        run.hearts -= 1;
-        killedBy = null;
-        killedByText = 'THE MOW ZONE';
-        juice.hurt();
-        juice.shake(0.4);
-        if (run.hearts > 0) playSfx('hurt');
-      }
-    } else {
-      zoneDmgTimer = Math.min(zoneDmgTimer, 0.5);
-    }
-    const deaths = bots.update(dt, {
-      elapsedS: run.elapsedS,
-      enemies: mowers.enemies(),
-      damageEnemy: (id, amount) => mowers.damage(id, amount),
-      zone,
-      obstacles: OBSTACLES,
-    });
-    for (const d of deaths) royaleHud.feed(d);
-    royaleHud.update({ alive: bots.aliveCount() + (run.hearts > 0 ? 1 : 0), total: TUNING.royaleBots + 1, zone: zs, playerOutside: outside });
-    if (run.hearts > 0 && bots.aliveCount() === 0) {
-      hud.banner('#1 LAST GNOME STANDING', 'Winner winner, chicken dinner. Legally distinct.', 3);
-      endRun(true);
-      return;
-    }
-  }
+  if (mode === 'royale' && tickRoyale(dt, sim, sp)) return;
   // In first person you are the camera, so your own gnome is hidden.
   gnome.object.visible = rig.view !== 'first' && (run.invulnS <= 0 || Math.floor(run.invulnS * 12) % 2 === 0);
 
@@ -688,7 +718,8 @@ function tickRun(dt: number, inp: InputState): void {
   });
 
   if (run.hearts <= 0) {
-    endRun(false);
+    if (online) becomeSpectator();
+    else endRun(false);
     return;
   }
   if (victoryTimer > 0) {
@@ -698,10 +729,337 @@ function tickRun(dt: number, inp: InputState): void {
       return;
     }
   }
-  if (pendingLevelUps > 0 && celebrateS <= 0) {
+  if (pendingLevelUps > 0 && celebrateS <= 0 && !sp) {
     celebrateS = TUNING.levelUpCelebrateS;
     juice.levelUp(run.level);
     playSfx('levelUp');
+  }
+}
+
+
+/** Battle royale: the zone, the bots, the kill feed, the alive count. Returns true if the run ended. */
+function tickRoyale(dt: number, sim: boolean, sp: boolean): boolean {
+  const zs = zone.update(dt, run.elapsedS);
+  const outside = !sp && zone.isOutside(player.position.x, player.position.z);
+  if (outside) {
+    zoneDmgTimer -= dt;
+    if (zoneDmgTimer <= 0) {
+      zoneDmgTimer = TUNING.zoneDamageEveryS * (zs.radius < TUNING.zoneLateRadius ? 0.5 : 1);
+      run.hearts -= 1;
+      killedBy = null;
+      killedByText = 'THE MOW ZONE';
+      juice.hurt();
+      juice.shake(0.4);
+      if (run.hearts > 0) playSfx('hurt');
+    }
+  } else {
+    zoneDmgTimer = Math.min(zoneDmgTimer, 0.5);
+  }
+  if (sim) {
+    const deaths = bots.update(dt, {
+      elapsedS: run.elapsedS,
+      enemies: mowers.enemies(),
+      damageEnemy: (id, amount) => mowers.damage(id, amount, online ? -1 : undefined),
+      zone,
+      obstacles: OBSTACLES,
+    });
+    for (const d of deaths) {
+      royaleHud.feed(d);
+      online?.feed.push(d);
+    }
+  }
+  if (!online) {
+    royaleHud.update({ alive: bots.aliveCount() + (run.hearts > 0 ? 1 : 0), total: TUNING.royaleBots + 1, zone: zs, playerOutside: outside });
+    if (run.hearts > 0 && bots.aliveCount() === 0) {
+      hud.banner('#1 LAST GNOME STANDING', 'Winner winner, chicken dinner. Legally distinct.', 3);
+      endRun(true);
+      return true;
+    }
+    return false;
+  }
+  if (online.isHost) {
+    let humans = run.hearts > 0 && !sp ? 1 : 0;
+    for (const a of online.humansAlive.values()) if (a) humans++;
+    online.alive = bots.aliveCount() + humans;
+  }
+  royaleHud.update({ alive: online.alive, total: online.total, zone: zs, playerOutside: outside });
+  if (online.isHost && online.alive <= 1) {
+    hostEndMatch();
+    return true;
+  }
+  return false;
+}
+
+// ---------- online ----------
+interface OnlineMatch {
+  me: number;
+  hostId: number;
+  isHost: boolean;
+  seed: number;
+  order: number[];                      // player ids in join order (spawn ring slots)
+  players: Map<number, PlayerInfo>;
+  humansAlive: Map<number, boolean>;    // other players; the host counts these
+  total: number;
+  alive: number;                        // host: computed each tick; clients: from the last snap
+  sendTimer: number;
+  kills: KillSnap[];                    // host: queued for the next snap
+  feed: KillEvent[];                    // host: queued for the next snap
+  hits: [number, number, number, number][]; // client: queued for the host
+  netKills: MowerKill[];                // client: kills from snaps, consumed by tickRun
+  spectating: boolean;
+  placement: number;
+  over: boolean;
+}
+
+let net: NetClient | null = null;
+let online: OnlineMatch | null = null;
+const myTag = generateGamertags(1)[0];
+const r2 = (v: number): number => Math.round(v * 100) / 100;
+
+async function findMatch(code: string | null): Promise<void> {
+  if (phase !== 'lobby') return;
+  const url = serverUrl();
+  if (!url) {
+    lobbyUI.setMatchStatus(null);
+    juice.toast('ONLINE IS OFF', 'This build has no matchmaking server (VITE_MP_URL).', '#ff8a80');
+    return;
+  }
+  lobbyUI.setMatchStatus('CONNECTING TO THE LAWN...');
+  try {
+    if (!net) {
+      net = createNetClient(url, { name: myTag, character: save.character });
+      net.onMessage(onServerMsg);
+      net.onClose(onNetClose);
+    }
+    await net.connect();
+    net.queue(code, save.character);
+  } catch {
+    lobbyUI.setMatchStatus(null);
+    juice.toast('NO SERVER', 'The matchmaking server did not answer. It may be waking up: try again.', '#ff8a80');
+  }
+}
+
+/** Mower damage from my weapons: applied here when I run the world, else sent to the host (puppets only flash). */
+function damageMower(id: number, amount: number): void {
+  if (online && !online.isHost) {
+    online.hits.push([id, amount, 1, 0]);
+    mowers.damage(id, amount);
+  } else {
+    mowers.damage(id, amount, online ? online.me : undefined);
+  }
+}
+
+function slowMower(id: number, factor: number, seconds: number): void {
+  if (online && !online.isHost) online.hits.push([id, 0, factor, seconds]);
+  else mowers.slow(id, factor, seconds);
+}
+
+function startOnline(m: Extract<ServerMsg, { t: 'match' }>): void {
+  const players = new Map<number, PlayerInfo>();
+  const humansAlive = new Map<number, boolean>();
+  for (const p of m.players) {
+    players.set(p.id, p);
+    if (p.id !== m.you) humansAlive.set(p.id, true);
+  }
+  online = {
+    me: m.you, hostId: m.hostId, isHost: m.hostId === m.you, seed: m.seed,
+    order: m.players.map((p) => p.id), players, humansAlive,
+    total: MAX_PLAYERS, alive: MAX_PLAYERS, sendTimer: 0,
+    kills: [], feed: [], hits: [], netKills: [],
+    spectating: false, placement: 0, over: false,
+  };
+  startRun('royale', 1);
+}
+
+function onServerMsg(m: ServerMsg): void {
+  switch (m.t) {
+    case 'queued':
+      if (phase === 'lobby') {
+        const n = m.players;
+        lobbyUI.setMatchStatus(`${n} GNOME${n === 1 ? '' : 'S'} FOUND · STARTS IN ${m.startsInS}s${m.code ? ` · CODE ${m.code}` : ''}`);
+      }
+      break;
+    case 'match':
+      if (phase !== 'lobby') {
+        net?.leave();
+        break;
+      }
+      lobbyUI.setMatchStatus(null);
+      startOnline(m);
+      break;
+    case 'relay':
+      onGameMsg(m.from, m.d);
+      break;
+    case 'left':
+      if (online) {
+        puppets.remove('p' + m.id);
+        if (online.humansAlive.get(m.id)) {
+          online.humansAlive.set(m.id, false);
+          const ev = { victim: online.players.get(m.id)?.name ?? '???', cause: 'THE EXIT BUTTON' };
+          if (online.isHost) online.feed.push(ev);
+          royaleHud.feed(ev);
+        }
+      }
+      break;
+    case 'ended':
+      if (online) finishOnline(m.reason);
+      else if (phase === 'lobby') {
+        lobbyUI.setMatchStatus(null);
+        juice.toast('MATCHMAKING STOPPED', m.reason, '#ff8a80');
+      }
+      break;
+    case 'error':
+      juice.toast('THE SERVER SAYS NO', m.message, '#ff8a80');
+      if (phase === 'lobby') lobbyUI.setMatchStatus(null);
+      break;
+    default:
+      break;
+  }
+}
+
+function onNetClose(): void {
+  if (online) finishOnline('LOST CONNECTION TO THE LAWN');
+  else if (phase === 'lobby') lobbyUI.setMatchStatus(null);
+}
+
+function onGameMsg(from: number, d: GameMsg): void {
+  if (!online || online.over) return;
+  switch (d.k) {
+    case 'me': {
+      const p = online.players.get(from);
+      if (!p) return;
+      puppets.set({
+        key: 'p' + from, name: p.name, x: d.x, y: d.y, z: d.z, facing: d.facing, alive: d.alive,
+        character: p.character in CHARACTERS ? (p.character as CharacterId) : 'gnorman',
+      });
+      if (!d.alive && online.humansAlive.get(from)) online.humansAlive.set(from, false);
+      break;
+    }
+    case 'hits':
+      if (!online.isHost) return;
+      for (const [id, amount, factor, seconds] of d.list) {
+        if (amount > 0) mowers.damage(id, amount, from);
+        if (seconds > 0) mowers.slow(id, factor, seconds);
+      }
+      break;
+    case 'died': {
+      if (!online.isHost || online.humansAlive.get(from) === undefined) return;
+      online.humansAlive.set(from, false);
+      const ev = { victim: online.players.get(from)?.name ?? '???', cause: d.cause };
+      royaleHud.feed(ev);
+      online.feed.push(ev);
+      break;
+    }
+    case 'snap': {
+      if (online.isHost) return;
+      run.elapsedS = d.t;
+      mowers.applySnapshot(d.mowers);
+      const seen = new Set<string>();
+      for (const [id, name, x, y, z, alive] of d.bots) {
+        const key = 'b' + id;
+        seen.add(key);
+        puppets.set({ key, name, x, y, z, facing: null, alive: alive === 1, character: null });
+      }
+      for (const key of puppets.keys()) if (key.startsWith('b') && !seen.has(key)) puppets.remove(key);
+      for (const [x, z, tier, by] of d.kills) {
+        if (tier in MOWER_TIERS) online.netKills.push({ id: 0, tier: tier as MowerTier, x, z, by });
+      }
+      for (const f of d.feed) royaleHud.feed(f);
+      online.alive = d.alive;
+      online.total = d.total;
+      break;
+    }
+    case 'over':
+      onOver(d.winner, d.winnerName);
+      break;
+    default:
+      break;
+  }
+}
+
+/** My gnome died online: the match goes on, so watch instead of ending the run. */
+function becomeSpectator(): void {
+  if (!online || online.spectating) return;
+  online.spectating = true;
+  // Host: alive was just counted without me. Client: the last snap still counted me.
+  online.placement = online.isHost ? online.alive + 1 : online.alive;
+  const cause = killedByText ?? (killedBy ? MOWER_TIERS[killedBy].name : 'a lawn mower');
+  if (online.isHost) {
+    const ev = { victim: myTag, cause };
+    royaleHud.feed(ev);
+    online.feed.push(ev);
+  } else {
+    net?.send(online.hostId, { k: 'died', cause });
+  }
+  gnome.setDead(true);
+  playSfx('hit');
+  hud.banner(`YOU PLACED #${online.placement}`, 'Spectating. The match goes on without you, as matches do. (Esc to leave.)', 4);
+}
+
+/** Host: one gnome (or none) left. */
+function hostEndMatch(): void {
+  if (!online || online.over) return;
+  let winner = -1;
+  let winnerName = 'NOBODY (the mowers win)';
+  if (run.hearts > 0 && !online.spectating) {
+    winner = online.me;
+    winnerName = myTag;
+  } else {
+    for (const [id, a] of online.humansAlive) {
+      if (a) {
+        winner = id;
+        winnerName = online.players.get(id)?.name ?? '???';
+      }
+    }
+    if (winner === -1) {
+      const bot = bots.contestants().find((c) => c.alive);
+      if (bot) winnerName = bot.name;
+    }
+  }
+  net?.send(null, { k: 'over', winner, winnerName });
+  onOver(winner, winnerName);
+}
+
+function onOver(winner: number, winnerName: string): void {
+  if (!online || online.over) return;
+  online.over = true;
+  const won = winner === online.me;
+  if (won) hud.banner('#1 LAST GNOME STANDING', 'Winner winner, chicken dinner. Legally distinct.', 3);
+  else if (!online.spectating) {
+    killedBy = null;
+    killedByText = `${winnerName} WINNING`;
+  }
+  endRun(won);
+}
+
+/** Leave a live match (quit, host gone, connection lost). */
+function finishOnline(reason: string): void {
+  if (!online || online.over) return;
+  online.over = true;
+  net?.leave();
+  if (!online.spectating) {
+    killedBy = null;
+    killedByText = reason;
+  }
+  endRun(false);
+}
+
+/** Sends my gnome to everyone, and the world (host) or my hits (client), NET_SEND_HZ times a second. */
+function netTick(dt: number): void {
+  if (!online || online.over || !net) return;
+  online.sendTimer -= dt;
+  if (online.sendTimer > 0) return;
+  online.sendTimer = 1 / NET_SEND_HZ;
+  const p = player.position;
+  net.send(null, { k: 'me', x: r2(p.x), y: r2(p.y), z: r2(p.z), facing: r2(player.facing), alive: !online.spectating });
+  if (online.isHost) {
+    net.send(null, {
+      k: 'snap', t: r2(run.elapsedS), mowers: mowers.snapshot(),
+      bots: bots.contestants().map((c) => [c.id, c.name, r2(c.pos.x), r2(c.pos.y), r2(c.pos.z), c.alive ? 1 : 0]),
+      kills: online.kills.splice(0), feed: online.feed.splice(0), alive: online.alive, total: online.total,
+    });
+  } else if (online.hits.length > 0) {
+    net.send(online.hostId, { k: 'hits', list: online.hits.splice(0) });
   }
 }
 
@@ -715,6 +1073,8 @@ goLobby();
   const ch = params.get('character');
   if (ch && ch in CHARACTERS && ch !== save.character) lobbyCallbacks.onSelectCharacter(ch as CharacterId);
   const auto = params.get('autostart');
+  // ?autostart=online[&code=ABCD] goes straight into matchmaking.
+  if (auto === 'online') lobbyCallbacks.onFindMatch(params.get('code')?.toUpperCase() ?? null);
   if (auto === 'solo' || auto === 'royale') {
     startRun(auto);
     // &level=2|3 starts a solo run on that level; &boss brings its boss fight in now.
@@ -743,12 +1103,18 @@ renderer.setAnimationLoop(() => {
   const inp = input.read(dt);
 
   if (phase === 'playing') {
-    tickRun(dt * (celebrateS > 0 ? TUNING.levelUpTimeScale : 1), inp);
+    // Online, the world cannot slow down for one player's level-up.
+    tickRun(dt * (celebrateS > 0 && !online ? TUNING.levelUpTimeScale : 1), inp);
     if (celebrateS > 0) {
       celebrateS -= dt;
       if (celebrateS <= 0 && phase === 'playing') openLevelUp();
     }
+  } else if (online && !online.over && (phase === 'levelup' || phase === 'paused')) {
+    // Online, menus do not pause the match: your gnome just stands there.
+    tickRun(dt, NO_INPUT);
   }
+  if (online && !online.over) netTick(dt);
+  puppets.update(dt);
 
   if (phase === 'lobby') {
     player.facing += dt * 0.5;

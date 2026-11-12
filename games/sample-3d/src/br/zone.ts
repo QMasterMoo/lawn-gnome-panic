@@ -140,8 +140,8 @@ export function createZone(scene: THREE.Scene): ZoneSystem {
     }
   }
 
-  function reset() {
-    rng = mulberry32(Math.floor(Math.random() * 4294967296));
+  function reset(seed?: number) {
+    rng = mulberry32(seed ?? Math.floor(Math.random() * 4294967296));
     s.cx = 0;
     s.cz = 0;
     s.radius = TUNING.zoneStartRadius;
@@ -192,8 +192,8 @@ export function createZone(scene: THREE.Scene): ZoneSystem {
     setVisible(visible: boolean) {
       group.visible = visible;
     },
-    reset() {
-      reset();
+    reset(seed?: number) {
+      reset(seed);
       applyVisuals(0);
     },
   };
