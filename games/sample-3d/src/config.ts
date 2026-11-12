@@ -938,13 +938,37 @@ export interface LevelUpUI {
   hide(): void;
 }
 
+/** Everything the pause screen shows about the current run. */
+export interface PauseData {
+  mode: GameMode;
+  runNumber: number;
+  elapsedS: number;
+  level: number;
+  xp01: number;
+  hearts: number;
+  maxHearts: number;
+  kills: number;
+  acorns: number;
+  gnomesLeft: number | null; // battle royale only
+  weapons: Partial<Record<WeaponId, number>>;
+  passives: Partial<Record<PassiveId, number>>;
+  stats: PlayerStats;
+  meta: Record<MetaUpgradeId, number>;
+}
+
+export interface PauseUI {
+  /** Resume: button or Esc. Quit: a button that needs a second tap to confirm. */
+  show(d: PauseData, onResume: () => void, onQuit: () => void): void;
+  hide(): void;
+}
+
 export interface ResultsUI {
   /** Click the button or press Space/Enter (after 0.8 s) to continue. */
   show(summary: RunSummary, onContinue: () => void): void;
   hide(): void;
 }
 
-export type GamePhase = 'lobby' | 'playing' | 'levelup' | 'results';
+export type GamePhase = 'lobby' | 'playing' | 'levelup' | 'paused' | 'results';
 
 export type SfxName =
   | 'start' | 'jump' | 'pickup' | 'hit' | 'hurt'

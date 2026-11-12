@@ -35,6 +35,8 @@ import { createBotSystem } from './br/bots';
 import { createZone } from './br/zone';
 import { createRoyaleHud } from './ui/royaleHud';
 import { createViewButton } from './ui/viewButton';
+import { createPauseButton } from './ui/pauseButton';
+import { createPauseUI } from './ui/pause';
 
 // ---------- no browser zoom on phones ----------
 // CSS touch-action handles most browsers; iOS Safari ignores user-scalable=no, so also cancel its
@@ -109,6 +111,67 @@ const bots = createBotSystem(scene);
 const zone = createZone(scene);
 const royaleHud = createRoyaleHud(uiRoot);
 const viewBtn = createViewButton(uiRoot, cycleView);
+const pauseBtn = createPauseButton(uiRoot, () => pauseGame());
+const pauseUI = createPauseUI(uiRoot);
+
+let pausedAt = 0;
+function pauseGame(): void {
+  if (phase !== 'playing') return;
+  phase = 'paused';
+  pausedAt = performance.now();
+  input.setPointerLockAllowed(false);
+  touch.setVisible(false);
+  viewBtn.hide();
+  pauseBtn.hide();
+  setEngineLevel(0);
+  pauseUI.show({
+    mode,
+    runNumber: save.runs + 1,
+    elapsedS: run.elapsedS,
+    level: run.level,
+    xp01: run.xp / run.xpToNext,
+    hearts: run.hearts,
+    maxHearts: stats.maxHearts,
+    kills: run.kills,
+    acorns: run.acorns,
+    gnomesLeft: mode === 'royale' ? bots.aliveCount() + 1 : null,
+    weapons: run.weapons,
+    passives: run.passives,
+    stats,
+    meta: save.upgrades,
+  }, resumeGame, quitRun);
+}
+
+function resumeGame(): void {
+  if (phase !== 'paused') return;
+  pauseUI.hide();
+  phase = 'playing';
+  input.setPointerLockAllowed(true);
+  touch.setVisible(true);
+  viewBtn.show();
+  pauseBtn.show();
+}
+
+function quitRun(): void {
+  if (phase !== 'paused') return;
+  pauseUI.hide();
+  phase = 'playing';
+  killedBy = null;
+  killedByText = 'GIVING UP (it happens)';
+  run.hearts = 0;
+  endRun(false);
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'Escape' || e.repeat) return;
+  if (phase === 'playing') pauseGame();
+  // Esc that just released the mouse lock (and so paused) must not also un-pause.
+  else if (phase === 'paused' && performance.now() - pausedAt > 300) resumeGame();
+});
+// Desktop: losing the mouse lock mid-run (Esc, alt-tab) pauses. Our own unlocks happen after phase changes, so they never trigger this.
+document.addEventListener('pointerlockchange', () => {
+  if (!document.pointerLockElement && phase === 'playing') pauseGame();
+});
 const VIEW_NAMES = { third: 'THIRD PERSON', first: 'FIRST PERSON', top: 'TOP-DOWN' } as const;
 
 /** P or the top-right button: third person -> first person -> top-down. */
@@ -245,6 +308,7 @@ function startRun(m: GameMode = 'solo'): void {
   rig.reset(0);
   viewBtn.setView(flags.view);
   viewBtn.show();
+  pauseBtn.show();
   hud.show();
   if (mode === 'royale') {
     bots.spawn(TUNING.royaleBots, new THREE.Vector3(0, 0, 0), player.position);
@@ -263,6 +327,7 @@ function startRun(m: GameMode = 'solo'): void {
 function openLevelUp(): void {
   phase = 'levelup';
   viewBtn.hide();
+  pauseBtn.hide();
   touch.setVisible(false);
   input.setPointerLockAllowed(false);
   setEngineLevel(0);
@@ -285,6 +350,7 @@ function onPick(index: number): void {
     input.setPointerLockAllowed(true);
     touch.setVisible(true);
     viewBtn.show();
+    pauseBtn.show();
   }
 }
 
@@ -298,6 +364,7 @@ function onReroll(): void {
 function endRun(victory: boolean): void {
   phase = 'results';
   viewBtn.hide();
+  pauseBtn.hide();
   rig.view = 'third'; // see your gnome's fate on the results screen
   input.setPointerLockAllowed(false);
   setEngineLevel(0);
@@ -543,6 +610,16 @@ function tickRun(dt: number, inp: InputState): void {
 
 // ---------- loop ----------
 goLobby();
+
+// Test hooks for headless smoke tests and screenshots: ?autostart=solo|royale skips the lobby; &pause pauses after 1.5 s.
+{
+  const params = new URLSearchParams(location.search);
+  const auto = params.get('autostart');
+  if (auto === 'solo' || auto === 'royale') {
+    startRun(auto);
+    if (params.has('pause')) setTimeout(() => pauseGame(), 1500);
+  }
+}
 
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {

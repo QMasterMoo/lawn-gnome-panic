@@ -86,7 +86,7 @@ const CSS = `
 .hud-run { display: block; font-size: 13px; opacity: .8; }
 
 /* Top right chips */
-.hud-stats { position: absolute; top: 18px; right: 86px; display: flex; flex-direction: column; align-items: flex-end; font-size: 22px; white-space: nowrap; }
+.hud-stats { position: absolute; top: 18px; right: 152px; display: flex; flex-direction: column; align-items: flex-end; font-size: 22px; white-space: nowrap; }
 .hud-chip { display: inline-block; margin-top: 6px; padding: 2px 14px; border-radius: 999px; background: rgba(0, 0, 0, .45); line-height: 1.3; }
 
 /* Boss bar */
