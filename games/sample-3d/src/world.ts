@@ -91,6 +91,7 @@ export function buildWorld(scene: THREE.Scene): World {
   );
   stripes.rotation.x = -Math.PI / 2;
   stripes.position.y = 0.005;
+  stripes.receiveShadow = true; // overlays must darken in shadow like the lawn under them
   scene.add(stripes);
 
   // Mowed decals: a ring buffer of instanced circles, one per 0.8-unit grid cell.
@@ -106,6 +107,7 @@ export function buildWorld(scene: THREE.Scene): World {
     polygonOffsetUnits: -1,
   });
   const mowed = new THREE.InstancedMesh(mowGeo, mowMat, MOW_CAPACITY);
+  mowed.receiveShadow = true;
   mowed.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mowed.position.y = 0.01;
   mowed.frustumCulled = false; // the count changes at runtime; a cached bounding sphere would go stale
