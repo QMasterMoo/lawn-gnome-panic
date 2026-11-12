@@ -6,7 +6,7 @@
     "build": "tsc --noEmit -p . && esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/server.mjs --packages=external",
     "start": "node dist/server.mjs",
     "dev": "npm run build && node dist/server.mjs",
-    "test": "npm run build && node --test test/"
+    "test": "npm run build && node --test test/*.test.mjs"
   },
   "dependencies": {
     "ws": "8.22.0"

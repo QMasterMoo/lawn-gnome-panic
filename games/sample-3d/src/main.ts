@@ -930,7 +930,7 @@ function onGameMsg(from: number, d: GameMsg): void {
       if (!p) return;
       puppets.set({
         key: 'p' + from, name: p.name, x: d.x, y: d.y, z: d.z, facing: d.facing, alive: d.alive,
-        character: p.character in CHARACTERS ? (p.character as CharacterId) : 'gnorman',
+        character: Object.prototype.hasOwnProperty.call(CHARACTERS, p.character) ? (p.character as CharacterId) : 'gnorman',
       });
       if (!d.alive && online.humansAlive.get(from)) online.humansAlive.set(from, false);
       break;
@@ -962,7 +962,7 @@ function onGameMsg(from: number, d: GameMsg): void {
       }
       for (const key of puppets.keys()) if (key.startsWith('b') && !seen.has(key)) puppets.remove(key);
       for (const [x, z, tier, by] of d.kills) {
-        if (tier in MOWER_TIERS) online.netKills.push({ id: 0, tier: tier as MowerTier, x, z, by });
+        if (Object.prototype.hasOwnProperty.call(MOWER_TIERS, tier)) online.netKills.push({ id: 0, tier: tier as MowerTier, x, z, by });
       }
       for (const f of d.feed) royaleHud.feed(f);
       online.alive = d.alive;
