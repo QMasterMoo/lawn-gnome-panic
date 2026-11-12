@@ -86,7 +86,11 @@ export const TUNING = {
   levelUpCelebrateS: 1.0,    // slow-mo celebration before the cards appear
   levelUpTimeScale: 0.2,
   comboWindowS: 2.5,         // kills within this keep the combo alive
-  acornXp: 3,                // each acorn also gives XP (a green mower's pellet is 2)
+  acornXp: 3,
+  dayLengthS: 300,           // one full day + night
+  dayStartT: 0.1,            // runs start mid-morning (0 = sunrise, 0.5 = sunset)
+  lobbyTimeT: 0.04,          // the lobby is frozen at golden hour
+  nightXpMult: 1.25,         // XP bonus while it is night                // each acorn also gives XP (a green mower's pellet is 2)
   // Battle royale (bots)
   royaleBots: 19,            // plus you = 20 gnomes
   royaleSpawnRadius: 60,     // bots drop near you so the fight is visible
@@ -666,6 +670,8 @@ export interface GnomeModel {
 }
 
 export interface World {
+  /** Applies the day/night lighting (sun or moon, ambient). */
+  setLighting(s: DayNightState): void;
   markMowed(x: number, z: number): void;
   /** focus = the player's feet; the sun's shadow camera follows it. */
   update(dt: number, focus: THREE.Vector3): void;
@@ -704,9 +710,13 @@ export interface MowerSystem {
   /** The combine's hp while it is alive, else null. */
   bossHp(): { hp: number; max: number } | null;
   reset(): void;
+  /** Headlights for every mower, including ones spawned later. */
+  setNight(night01: number): void;
 }
 
 export interface MowerModel {
+  /** 0 = day (headlights off) .. 1 = night (headlights fully on). */
+  setNight(night01: number): void;
   group: THREE.Group;           // built facing +z, base at y = 0
   setFlash(on: boolean): void;  // white hit flash
   animate(dt: number, speed: number): void; // wheels, reels, vibration
@@ -906,6 +916,42 @@ export interface PostFX {
 /** Things outside the lawn: sky, clouds, trees, neighbours. */
 export interface Scenery {
   update(dt: number, focus: THREE.Vector3): void;
+  /** Sky colours, stars, moon and cloud tint for the time of day. */
+  setSky(s: DayNightState): void;
+}
+
+/** Lights in the giant house: windows glow at night. */
+export interface HouseLights {
+  setNight(night01: number): void;
+}
+
+// =====================================================================
+// Day and night
+// =====================================================================
+
+export type DayPhase = 'dawn' | 'day' | 'dusk' | 'night';
+
+export interface DayNightState {
+  t: number;              // 0..1 through the cycle: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight
+  phase: DayPhase;
+  night01: number;        // 0 = full day, 1 = full night
+  lightDir: THREE.Vector3; // unit vector toward the sun by day, toward the moon by night
+  lightColor: THREE.Color;
+  lightIntensity: number;
+  hemiSky: THREE.Color;
+  hemiGround: THREE.Color;
+  hemiIntensity: number;
+  skyZenith: THREE.Color;
+  skyHorizon: THREE.Color;
+  fogColor: THREE.Color;
+}
+
+export interface DayNight {
+  /** Advances the clock by dt seconds and returns the new state. */
+  update(dt: number): DayNightState;
+  state(): DayNightState;
+  /** Jumps to a time of day (0..1). */
+  setTime(t: number): void;
 }
 
 export interface HudData {

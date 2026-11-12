@@ -28,6 +28,7 @@ import { loadFlags, saveFlags } from './flags';
 import { createPostFX } from './postfx';
 import { buildProp } from './props';
 import { buildHouse } from './house';
+import { createDayNight } from './daynight';
 import { buildScenery } from './scenery';
 import { createItemSystem } from './items';
 import { createJuice } from './juice';
@@ -98,7 +99,9 @@ function cullProps(dt: number, focus: THREE.Vector3): void {
       : d < TUNING.propCullDist + p.o.height * 2;
   }
 }
-buildHouse(scene);
+const houseLights = buildHouse(scene);
+const dayNight = createDayNight();
+let lastDayPhase = dayNight.state().phase;
 const scenery = buildScenery(scene);
 const gnome = createGnome();
 scene.add(gnome.object);
@@ -271,6 +274,7 @@ function clearField(): void {
 // ---------- phases ----------
 function goLobby(): void {
   phase = 'lobby';
+  dayNight.setTime(TUNING.lobbyTimeT);
   clearField();
   stats = computeStats(save, null);
   player = createPlayerState(stats);
@@ -288,6 +292,8 @@ function goLobby(): void {
 
 function startRun(m: GameMode = 'solo'): void {
   mode = m;
+  dayNight.setTime(TUNING.dayStartT);
+  lastDayPhase = dayNight.state().phase;
   lobbyUI.hide();
   lobbyStage.setVisible(false);
   clearField();
@@ -431,6 +437,15 @@ function applyItem(kind: ItemKind): void {
 function tickRun(dt: number, inp: InputState): void {
   run.elapsedS += dt;
 
+  // Day and night: banners at the turns, bonus XP in the dark.
+  const dn = dayNight.update(dt);
+  if (dn.phase !== lastDayPhase) {
+    if (dn.phase === 'night') hud.banner('NIGHT FALLS', 'The mowers turned their headlights on. +25% XP until dawn.', 3.5);
+    else if (dn.phase === 'dawn' && lastDayPhase === 'night') hud.banner('A NEW DAY DAWNS', 'You survived the night. The lawn is unimpressed.', 3.5);
+    lastDayPhase = dn.phase;
+  }
+  const nightXp = dn.night01 > 0.5 ? TUNING.nightXpMult : 1;
+
   const { jumped } = updatePlayer(player, inp, rig.yaw, OBSTACLES, stats, dt);
   if (jumped) playSfx('jump');
 
@@ -491,13 +506,13 @@ function tickRun(dt: number, inp: InputState): void {
   // Pickups.
   const got = drops.update(dt, player.position, stats.magnetRadius);
   if (got.xp > 0) {
-    pendingLevelUps += addXp(run, got.xp * stats.xpMultiplier);
+    pendingLevelUps += addXp(run, got.xp * stats.xpMultiplier * nightXp);
     playSfx('xp');
   }
   const acornGain = got.acorns + pickups.update(dt, player.position);
   if (acornGain > 0) {
     run.acorns += acornGain;
-    pendingLevelUps += addXp(run, acornGain * TUNING.acornXp * stats.xpMultiplier);
+    pendingLevelUps += addXp(run, acornGain * TUNING.acornXp * stats.xpMultiplier * nightXp);
     playSfx('pickup');
   }
   for (const kind of items.update(dt, player.position)) applyItem(kind);
@@ -619,6 +634,12 @@ goLobby();
     startRun(auto);
     if (params.has('pause')) setTimeout(() => pauseGame(), 1500);
   }
+  // &time=0..1 jumps the clock (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight).
+  const time = parseFloat(params.get('time') ?? '');
+  if (Number.isFinite(time)) {
+    dayNight.setTime(time);
+    lastDayPhase = dayNight.state().phase;
+  }
 }
 
 const clock = new THREE.Clock();
@@ -646,6 +667,14 @@ renderer.setAnimationLoop(() => {
   juice.update(dt, camera, phase === 'playing' ? items.active() : []);
   cullProps(dt, player.position);
   gnome.update(player, dt);
+  // Apply the time of day to everything that is lit or coloured by it.
+  const dnState = dayNight.state();
+  if (scene.fog instanceof THREE.Fog) scene.fog.color.copy(dnState.fogColor);
+  if (scene.background instanceof THREE.Color) scene.background.copy(dnState.fogColor);
+  world.setLighting(dnState);
+  scenery.setSky(dnState);
+  houseLights.setNight(dnState.night01);
+  mowers.setNight(dnState.night01);
   world.setShadowRange(phase === 'playing' && rig.view === 'top' ? 80 : 35);
   world.update(dt, player.position);
   scenery.update(dt, player.position);

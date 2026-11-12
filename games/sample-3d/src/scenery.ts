@@ -1,3 +1,4 @@
+import type { DayNightState } from './config';
 import * as THREE from 'three';
 import type { Scenery } from './config';
 import { ARENA_HALF } from './config';
@@ -18,6 +19,8 @@ const CLOUD_SPREAD = 900;
 const CLOUD_WRAP = 1000;
 const MOTE_COUNT = 60;
 const MOTE_HALF = [15, 5, 15] as const;     // half extents of the fluff box around the focus
+const STAR_COUNT = 900;
+const STAR_RADIUS = 1800;                   // inside the sky dome (SKY_RADIUS)
 
 /** Deterministic PRNG so the scenery is the same every run. */
 function makeRng(seed: number): () => number {
@@ -89,14 +92,19 @@ uniform vec3 uHorizon;
 uniform vec3 uZenith;
 uniform vec3 uSun;
 uniform vec3 uWarm;
+uniform float uNight;
 varying vec3 vDir;
 void main() {
   vec3 d = normalize(vDir);
   float h = clamp(d.y, 0.0, 1.0);
   vec3 col = mix(uHorizon, uZenith, pow(h, 0.6));
   float s = max(dot(d, uSun), 0.0);
-  col += uWarm * (0.8 * pow(s, 64.0) + 0.25 * pow(s, 6.0));
-  col += vec3(1.0, 0.97, 0.85) * smoothstep(0.9990, 0.9996, s);
+  float day = 1.0 - uNight;
+  col += uWarm * (0.8 * pow(s, 64.0) + 0.25 * pow(s, 6.0)) * day;
+  col += vec3(1.0, 0.97, 0.85) * smoothstep(0.9990, 0.9996, s) * day;
+  // Night: a small cool moon disc and a faint halo around uSun (which points at the moon).
+  col += vec3(0.6, 0.7, 1.0) * pow(s, 200.0) * uNight;
+  col += vec3(0.6, 0.7, 1.0) * (0.15 * pow(s, 8.0) * uNight);
   gl_FragColor = vec4(col, 1.0);
   #include <colorspace_fragment>
 }`;
@@ -106,28 +114,60 @@ export function buildScenery(scene: THREE.Scene): Scenery {
   const rand = (lo: number, hi: number) => lo + (hi - lo) * rnd();
 
   // ---- Sky dome ----------------------------------------------------------
-  const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(SKY_RADIUS, 32, 16),
-    new THREE.ShaderMaterial({
-      uniforms: {
-        uHorizon: { value: new THREE.Color(0xcfe9ff) },
-        uZenith: { value: new THREE.Color(0x5aa9ff) },
-        uSun: { value: new THREE.Vector3(0.5, 0.6, 0.3).normalize() },
-        uWarm: { value: new THREE.Color(0xfff2c0) },
-      },
-      vertexShader: SKY_VERT,
-      fragmentShader: SKY_FRAG,
-      side: THREE.BackSide,
-      depthWrite: false,
-      toneMapped: false,
-      fog: false,
-    }),
-  );
+  const skyMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uHorizon: { value: new THREE.Color(0xcfe9ff) },
+      uZenith: { value: new THREE.Color(0x5aa9ff) },
+      uSun: { value: new THREE.Vector3(0.5, 0.6, 0.3).normalize() },
+      uWarm: { value: new THREE.Color(0xfff2c0) },
+      uNight: { value: 0 },
+    },
+    vertexShader: SKY_VERT,
+    fragmentShader: SKY_FRAG,
+    side: THREE.BackSide,
+    depthWrite: false,
+    toneMapped: false,
+    fog: false,
+  });
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(SKY_RADIUS, 32, 16), skyMat);
   sky.renderOrder = -1;
   sky.frustumCulled = false;
   scene.add(sky);
 
+  // ---- Stars -------------------------------------------------------------
+  // Own PRNG, so the rest of the scenery is unchanged. Uniform directions on the upper hemisphere.
+  const starRng = makeRng(9001);
+  const starPos = new Float32Array(STAR_COUNT * 3);
+  for (let i = 0; i < STAR_COUNT; ) {
+    const x = starRng() * 2 - 1;
+    const y = starRng();
+    const z = starRng() * 2 - 1;
+    const len = Math.hypot(x, y, z);
+    if (len > 1 || len < 0.001 || y / len <= 0.05) continue;
+    starPos[i * 3] = (x / len) * STAR_RADIUS;
+    starPos[i * 3 + 1] = (y / len) * STAR_RADIUS;
+    starPos[i * 3 + 2] = (z / len) * STAR_RADIUS;
+    i++;
+  }
+  const starGeom = new THREE.BufferGeometry();
+  starGeom.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+  const starMat = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 3,
+    sizeAttenuation: false,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    fog: false,
+  });
+  const stars = new THREE.Points(starGeom, starMat);
+  stars.frustumCulled = false;
+  stars.visible = false;
+  scene.add(stars);
+
   // ---- Clouds ------------------------------------------------------------
+  const cloudDayColor = new THREE.Color(0xffffff);
+  const cloudNightColor = new THREE.Color(0x2a3350);
   const cloudGeom = new THREE.SphereGeometry(1, 16, 12);
   const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: false, fog: false });
   const clouds: { group: THREE.Group; speed: number }[] = [];
@@ -290,10 +330,20 @@ export function buildScenery(scene: THREE.Scene): Scenery {
   let time = 0;
 
   return {
+    setSky(s: DayNightState) {
+      skyMat.uniforms.uHorizon.value.copy(s.skyHorizon);
+      skyMat.uniforms.uZenith.value.copy(s.skyZenith);
+      skyMat.uniforms.uSun.value.copy(s.lightDir);
+      skyMat.uniforms.uNight.value = s.night01;
+      starMat.opacity = s.night01 * 0.9;
+      stars.visible = s.night01 >= 0.02;
+      cloudMat.color.copy(cloudDayColor).lerp(cloudNightColor, s.night01);
+    },
     update(dt: number, focus: THREE.Vector3) {
       time += dt;
 
       sky.position.set(focus.x, 0, focus.z);
+      stars.position.set(focus.x, 0, focus.z);
 
       for (const c of clouds) {
         c.group.position.x += c.speed * dt;

@@ -1,10 +1,11 @@
+import type { HouseLights } from './config';
 import * as THREE from 'three';
 import { HOUSE_FRONT_Z } from './config';
 
 type V3 = [number, number, number];
 
 /** The giant house and patio north of the lawn. Static: adds meshes and returns. */
-export function buildHouse(scene: THREE.Scene): void {
+export function buildHouse(scene: THREE.Scene): HouseLights {
   const F = HOUSE_FRONT_Z;   // front wall, z = -256
   const C = F - 30;          // centre z of the house (walls run from F back to F-60)
   const siding = 0xf4e8d0;
@@ -138,8 +139,14 @@ export function buildHouse(scene: THREE.Scene): void {
   ];
   const glassMat = std(0x9fd8ff, { metalness: 0.2, roughness: 0.1, emissive: 0x223344 });
   const whiteMat = std(0xffffff);
+  // Night glow: lit windows, and the TV window, each get their own emissive material so setNight can drive them.
+  const glowMat = new THREE.MeshStandardMaterial({ color: 0x9fd8ff, metalness: 0.2, roughness: 0.1, emissive: 0xffc46b, emissiveIntensity: 0 });
+  const tvMat = new THREE.MeshStandardMaterial({ color: 0x9fd8ff, metalness: 0.2, roughness: 0.1, emissive: 0x6fa8ff, emissiveIntensity: 0 });
+  const glassAt = (idx: number[]): V3[] => idx.map((i): V3 => [windows[i].x, windows[i].y, F + 0.65]);
   instanced(new THREE.BoxGeometry(11, 13, 0.6), whiteMat, windows.map((w): V3 => [w.x, w.y, F + 0.3]));
-  instanced(new THREE.BoxGeometry(9, 11, 0.3), glassMat, windows.map((w): V3 => [w.x, w.y, F + 0.65]));
+  instanced(new THREE.BoxGeometry(9, 11, 0.3), glassMat, glassAt([0, 8]));                 // two dark rooms
+  instanced(new THREE.BoxGeometry(9, 11, 0.3), glowMat, glassAt([1, 2, 3, 4, 6, 7]));      // lit rooms
+  add(new THREE.BoxGeometry(9, 11, 0.3), tvMat, windows[5].x, windows[5].y, F + 0.65);     // TV room (upper x=-18)
   instanced(new THREE.BoxGeometry(0.5, 11, 0.3), whiteMat, windows.map((w): V3 => [w.x, w.y, F + 0.85]));
   instanced(new THREE.BoxGeometry(9, 0.5, 0.3), whiteMat, windows.map((w): V3 => [w.x, w.y, F + 0.85]));
   const shutters: V3[] = [];
@@ -210,4 +217,37 @@ export function buildHouse(scene: THREE.Scene): void {
     g.fillText('404', 96, 50);
   });
   add(new THREE.PlaneGeometry(3, 1.6), new THREE.MeshStandardMaterial({ map: plaqueTex, roughness: 0.6 }), -7.8, 17, F + 0.1);
+
+  // ---- Porch lamp beside the door, with a pool of light on the steps (night only) ----
+  const lampGlowMat = new THREE.MeshStandardMaterial({ color: 0xffd27a, emissive: 0xffd27a, emissiveIntensity: 0 });
+  add(new THREE.BoxGeometry(1.6, 2.4, 1.2), std(0x222222), 8, 13, F + 0.6);
+  add(new THREE.SphereGeometry(0.5, 12, 8), lampGlowMat, 8, 13, F + 1.5);
+  const poolMat = new THREE.MeshBasicMaterial({
+    color: 0xffc46b, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0,
+  });
+  const pool = new THREE.Mesh(new THREE.CircleGeometry(10, 32), poolMat);
+  pool.rotation.x = -Math.PI / 2;
+  pool.position.set(0, 0.08, F + 9);   // on the patio at the foot of the steps (a raised disc floated past the steps)
+  house.add(pool);
+
+  // The TV window flips between two blues every 0.15-0.4 s, driven by performance.now().
+  let tvNextFlip = 0;
+  let tvOn = false;
+
+  return {
+    setNight(night01: number) {
+      glowMat.emissiveIntensity = night01 * 1.4;
+
+      const now = performance.now();
+      if (now >= tvNextFlip) {
+        tvOn = !tvOn;
+        tvMat.emissive.setHex(tvOn ? 0x9fc8ff : 0x6fa8ff);
+        tvNextFlip = now + 150 + Math.random() * 250;
+      }
+      tvMat.emissiveIntensity = night01 * 1.2;
+
+      lampGlowMat.emissiveIntensity = night01 * 2;
+      poolMat.opacity = night01 * 0.35;
+    },
+  };
 }

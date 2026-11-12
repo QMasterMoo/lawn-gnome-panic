@@ -66,6 +66,7 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
   let pendingKills: MowerKill[] = [];
   let nextId = 1;
   let spawnTimer = 1;
+  let night01 = 0;
 
   const alive = (): Mower[] => mowers.filter((m) => m.dyingS < 0);
 
@@ -95,6 +96,7 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
       sz = p.z;
     }
     const model = createMowerModel(tier);
+    model.setNight(night01);
     model.group.rotation.order = 'YXZ';
     scene.add(model.group);
     model.group.position.set(sx, 0, sz);
@@ -303,6 +305,10 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
 
   return {
     update,
+    setNight(value: number) {
+      night01 = value;
+      for (const m of mowers) m.model.setNight(value);
+    },
     enemies(): readonly EnemyView[] {
       return alive();
     },

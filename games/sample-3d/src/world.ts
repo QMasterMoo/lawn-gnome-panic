@@ -1,3 +1,4 @@
+import type { DayNightState } from './config';
 // src/world.ts
 import * as THREE from 'three';
 import { ARENA_HALF, COLORS, type World } from './config';
@@ -13,6 +14,9 @@ const PICKET_BODY_Y = 2.8; // 5.6 tall, base on the ground
 const PICKET_TIP_Y = 6.0; // 0.8 tall cone sitting on top of the body
 const RAIL_HEIGHTS = [1.4, 4.2];
 const BRICK_Z = -ARENA_HALF - 0.6;
+const SUN_DISTANCE = 85;
+// Direction from the focus toward the sun (or moon at night). Starts as the old fixed offset.
+const lightDirStore = new THREE.Vector3(40, 70, 25).normalize();
 
 const hex = (c: number): string => '#' + c.toString(16).padStart(6, '0');
 const clampByte = (v: number): number => Math.min(255, Math.round(v));
@@ -36,7 +40,8 @@ function make2d(w: number, h: number): CanvasRenderingContext2D {
 
 export function buildWorld(scene: THREE.Scene): World {
   // Lights
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x446644, 1.2));
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x446644, 1.2);
+  scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff2d6, 2.8);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -229,7 +234,16 @@ export function buildWorld(scene: THREE.Scene): World {
 
   const update = (_dt: number, focus: THREE.Vector3): void => {
     sun.target.position.set(focus.x, 0, focus.z);
-    sun.position.set(focus.x + 40, 70, focus.z + 25);
+    sun.position.copy(focus).addScaledVector(lightDirStore, SUN_DISTANCE);
+  };
+
+  const setLighting = (s: DayNightState): void => {
+    sun.color.copy(s.lightColor);
+    sun.intensity = s.lightIntensity;
+    hemi.color.copy(s.hemiSky);
+    hemi.groundColor.copy(s.hemiGround);
+    hemi.intensity = s.hemiIntensity;
+    lightDirStore.copy(s.lightDir);
   };
 
   const reset = (): void => {
@@ -252,5 +266,5 @@ export function buildWorld(scene: THREE.Scene): World {
     sc.updateProjectionMatrix();
   };
 
-  return { markMowed, update, reset, setShadowRange };
+  return { markMowed, update, reset, setShadowRange, setLighting };
 }
