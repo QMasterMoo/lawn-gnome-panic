@@ -13,7 +13,7 @@ const SUB_LINES = [
 const ICONS: Record<string, string> = {
   slingshot: '🪨', trowels: '🔱', sprinkler: '💦', mushrooms: '🍄',
   stormOfDaggers: '🗡️', leafPileFireball: '🍂', hoseMissile: '🚿', windChimeLullaby: '🎐', leafBlower: '🌬️', pitchfork: '🔱',
-  fertilizer: '🌱', compost: '♻️', comfyBoots: '👢',
+  fertilizer: '🌱', compost: '♻️', comfyBoots: '👢', rake: '🧲', thickBeard: '🧔', sneakers: '👟', luckyClover: '🍀', mulchArmor: '🛡️',
 };
 
 const WEAPON_BORDER = '#ffd54f';

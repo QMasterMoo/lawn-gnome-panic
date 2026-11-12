@@ -14,15 +14,17 @@ export function computeStats(save: MetaSave, run: RunState | null): PlayerStats 
   return {
     ...base,
     moveSpeed,
-    staminaMax: base.staminaMax + up('sprintDuration'),
+    staminaMax: base.staminaMax + up('sprintDuration') + pas('sneakers'),
     staminaRegenPerSec: base.staminaRegenPerSec + up('sprintRecharge'),
     staminaRegenDelayS: Math.max(0.2, base.staminaRegenDelayS - 0.15 * save.upgrades.sprintRecharge),
     jumpSpeed: base.jumpSpeed + up('jumpHeight'),
-    maxHearts: base.maxHearts + up('hearts'),
-    magnetRadius: base.magnetRadius + up('magnet'),
+    maxHearts: base.maxHearts + up('hearts') + pas('thickBeard'),
+    magnetRadius: base.magnetRadius + up('magnet') + pas('rake'),
     xpMultiplier: base.xpMultiplier + up('wisdom'),
     rerolls: base.rerolls + up('luck'),
     damageMult: base.damageMult + pas('fertilizer'),
     cooldownMult: Math.max(0.5, base.cooldownMult - pas('compost')),
+    acornLuck: base.acornLuck + pas('luckyClover'),
+    invulnBonusS: base.invulnBonusS + pas('mulchArmor'),
   };
 }

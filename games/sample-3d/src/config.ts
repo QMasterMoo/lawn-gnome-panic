@@ -115,7 +115,37 @@ export const TUNING = {
   survivalAcornsPer10s: 1,
   bossAcornBonus: 50,
   bossAcornDrop: 25,
+  levelClearHeal: 2,         // hearts restored when a solo level's bosses fall
+  levelClearAcorns: 30,
+  levelBreatherS: 8,         // no spawns for this long after a level clear
 } as const;
+
+/** A solo level: the waves replay with these multipliers, then the boss fight ends the level. */
+export interface LevelDef {
+  name: string;
+  sub: string;
+  speedMult: number;
+  hpMult: number;
+  spawnMult: number;     // multiplies the wave spawn interval (lower = more often)
+  maxAliveMult: number;
+  bossCount: number;     // combines in the boss fight
+  bossHpMult: number;
+  bossAtS: number;       // seconds into the level when the boss fight starts
+}
+
+/** Solo is three levels, about 20 minutes. Clearing level 3's boss wins the run. */
+export const SOLO_LEVELS: readonly LevelDef[] = [
+  { name: 'LEVEL 1: THE FRONT LAWN', sub: 'Mow or be mowed.', speedMult: 1, hpMult: 1, spawnMult: 1, maxAliveMult: 1, bossCount: 1, bossHpMult: 1, bossAtS: 300 },
+  { name: 'LEVEL 2: MOW HARDER', sub: 'Same mowers. Faster, tougher, and more of them. They are upset.', speedMult: 1.15, hpMult: 1.7, spawnMult: 0.8, maxAliveMult: 1.3, bossCount: 2, bossHpMult: 1.3, bossAtS: 330 },
+  { name: 'LEVEL 3: MOW HARDEST WITH A VENGEANCE', sub: 'Three combines are coming. This is fine.', speedMult: 1.3, hpMult: 2.6, spawnMult: 0.65, maxAliveMult: 1.6, bossCount: 3, bossHpMult: 1.6, bossAtS: 360 },
+];
+
+export interface MowerDifficulty {
+  speedMult: number;
+  hpMult: number;
+  spawnMult: number;
+  maxAliveMult: number;
+}
 
 export type ObstacleKind =
   | 'stump' | 'rock' | 'bush' | 'birdbath' | 'brick' | 'flowerpot' | 'bucket'
@@ -241,6 +271,8 @@ export interface PlayerStats {
   cooldownMult: number;       // weapon cooldowns are multiplied by this
   choiceCount: number;        // cards per level-up
   rerolls: number;            // level-up rerolls per run
+  acornLuck: number;          // multiplies mowers' acorn drop chance
+  invulnBonusS: number;       // extra invincibility after a hit
 }
 
 export const BASE_STATS: PlayerStats = {
@@ -258,6 +290,8 @@ export const BASE_STATS: PlayerStats = {
   cooldownMult: 1,
   choiceCount: 3,
   rerolls: 0,
+  acornLuck: 1,
+  invulnBonusS: 0,
 };
 
 // =====================================================================
@@ -314,7 +348,7 @@ export const SAVE_KEY = 'sample-3d.save.v1';
 export type WeaponId =
   | 'slingshot' | 'trowels' | 'sprinkler' | 'mushrooms'
   | 'stormOfDaggers' | 'leafPileFireball' | 'hoseMissile' | 'windChimeLullaby' | 'leafBlower' | 'pitchfork';
-export type PassiveId = 'fertilizer' | 'compost' | 'comfyBoots';
+export type PassiveId = 'fertilizer' | 'compost' | 'comfyBoots' | 'rake' | 'thickBeard' | 'sneakers' | 'luckyClover' | 'mulchArmor';
 
 export interface WeaponDef {
   id: WeaponId;
@@ -389,6 +423,11 @@ export const PASSIVE_DEFS: Record<PassiveId, PassiveDef> = {
   fertilizer: { id: 'fertilizer', name: 'Fertilizer', blurb: 'Grows your damage. Smells awful.', effect: '+15% damage', maxLevel: 5, perLevel: 0.15 },
   compost: { id: 'compost', name: 'Compost Heap', blurb: 'Recycled cooldowns. Eco-friendly violence.', effect: '-8% weapon cooldowns', maxLevel: 5, perLevel: 0.08 },
   comfyBoots: { id: 'comfyBoots', name: 'Comfy Boots', blurb: 'Orthopedic. Aerodynamic. Gnomish.', effect: '+8% move speed', maxLevel: 5, perLevel: 0.08 },
+  rake: { id: 'rake', name: 'Garden Rake of Attraction', blurb: 'Rakes pellets and acorns to you from across the lawn.', effect: '+1.2m pickup range', maxLevel: 5, perLevel: 1.2 },
+  thickBeard: { id: 'thickBeard', name: 'Thick Beard', blurb: 'More beard, more hit points. Science.', effect: '+1 max heart (and heals 1)', maxLevel: 2, perLevel: 1 },
+  sneakers: { id: 'sneakers', name: 'Light-Up Sneakers', blurb: 'They blink when you run. You run longer out of pride.', effect: '+0.6s sprint', maxLevel: 4, perLevel: 0.6 },
+  luckyClover: { id: 'luckyClover', name: 'Four-Leaf Clover', blurb: 'Mowers drop acorns more often. Statistically suspicious.', effect: '+40% acorn drops', maxLevel: 3, perLevel: 0.4 },
+  mulchArmor: { id: 'mulchArmor', name: 'Mulch Armor', blurb: 'Soft, damp, protective. Longer invincibility after a hit.', effect: '+0.3s invincibility', maxLevel: 3, perLevel: 0.3 },
 };
 
 export interface SlingshotLevel { damage: number; cooldownS: number; projectiles: number; speed: number; pierce: number; range: number }
@@ -558,6 +597,8 @@ export interface RunSummary {
   killedBy: MowerTier | null;
   /** Overrides the "Killed by" text, e.g. 'THE MOW ZONE'. */
   killedByText: string | null;
+  /** Solo: levels cleared (bosses defeated), 0..3. */
+  levelsCleared: number;
   /** Battle royale only: final position, 1 = winner. */
   placement: { rank: number; total: number } | null;
 }
@@ -706,9 +747,14 @@ export interface MowerSystem {
   enemies(): readonly EnemyView[];
   damage(id: number, amount: number): void;
   slow(id: number, factor: number, seconds: number): void;
-  spawnBoss(): void;
-  /** The combine's hp while it is alive, else null. */
-  bossHp(): { hp: number; max: number } | null;
+  /** Spawns `count` combines near the player with hp x hpMult. */
+  spawnBoss(count: number, hpMult: number): void;
+  /** Combined hp of all living combines, else null. */
+  bossHp(): { hp: number; max: number; count: number } | null;
+  /** Speed, hp and spawn-rate multipliers for regular mowers (solo levels). */
+  setDifficulty(d: MowerDifficulty): void;
+  /** No new regular spawns for this many seconds. */
+  holdSpawns(seconds: number): void;
   reset(): void;
   /** Headlights for every mower, including ones spawned later. */
   setNight(night01: number): void;
@@ -964,8 +1010,10 @@ export interface HudData {
   elapsedS: number;
   kills: number;
   acorns: number;
-  boss: { hp: number; max: number } | null;
+  boss: { hp: number; max: number; count: number } | null;
   runNumber: number;
+  /** e.g. 'LEVEL 2' in solo, '' otherwise. */
+  levelLabel: string;
   /** Active timed buffs, e.g. Triple Espresso. */
   buffs: readonly { label: string; remaining01: number }[];
 }

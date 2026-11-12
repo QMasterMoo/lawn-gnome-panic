@@ -3,7 +3,7 @@ import {
   COLORS, OBSTACLES, PLAYER_RADIUS, PEDESTAL_HEIGHT, MOWER_TIERS, TUNING, WAVES,
   type GamePhase, type InputState, type MowerTier, type RunSummary, type UpgradeChoice,
   type Weapon, type WeaponContext, type WeaponId, type MetaUpgradeId, type VisualMode, type ItemKind, type GameMode,
-  ITEM_DEFS, CHICKEN_HEAL, CAMERA_VIEWS,
+  ITEM_DEFS, CHICKEN_HEAL, CAMERA_VIEWS, SOLO_LEVELS,
 } from './config';
 import { createInput } from './input';
 import { createTouchControls } from './ui/touch';
@@ -225,6 +225,13 @@ let pendingLevelUps = 0;
 let choices: UpgradeChoice[] = [];
 let waveIndex = -1;
 let victoryTimer = -1;
+// Solo levels: the waves replay each level with harder mowers, ending in a boss fight.
+let levelIdx = 0;
+let levelStartS = 0;        // run time when the current level's wave clock started
+let levelBossSpawned = false;
+let bossDone = false;       // royale: its single boss is finished
+let levelsCleared = 0;
+let levelBannerAt = -1;     // run time to announce the next level
 let killedBy: MowerTier | null = null;
 let espressoS = 0;
 let mode: GameMode = 'solo';
@@ -303,6 +310,13 @@ function startRun(m: GameMode = 'solo'): void {
   pendingLevelUps = 0;
   waveIndex = -1;
   victoryTimer = -1;
+  levelIdx = 0;
+  levelStartS = 0;
+  levelBossSpawned = false;
+  bossDone = false;
+  levelsCleared = 0;
+  levelBannerAt = -1;
+  mowers.setDifficulty(mode === 'solo' ? SOLO_LEVELS[0] : { speedMult: 1, hpMult: 1, spawnMult: 1, maxAliveMult: 1 });
   killedBy = null;
   killedByText = null;
   zoneDmgTimer = 0;
@@ -322,7 +336,7 @@ function startRun(m: GameMode = 'solo'): void {
     royaleHud.show();
     hud.banner(`BATTLE ROYALE · ${TUNING.royaleBots + 1} GNOMES`, 'Last gnome standing wins. The bots have names. Respect them.', 3.5);
   } else {
-    hud.banner(`RUN #${save.runs + 1} BEGINS`, 'Death is permanent. Your upgrades are not. Very roguelike.', 3);
+    hud.banner(`RUN #${save.runs + 1} · ${SOLO_LEVELS[0].name}`, `Three levels. Three boss fights. Death is permanent; your upgrades are not.`, 4);
   }
   phase = 'playing';
   input.setPointerLockAllowed(true);
@@ -346,6 +360,7 @@ function onPick(index: number): void {
   if (!c || phase !== 'levelup') return;
   applyChoice(run, c, stats);
   stats = computeStats(save, run);
+  if (c.id === 'thickBeard') run.hearts = Math.min(stats.maxHearts, run.hearts + 1); // more beard heals too
   syncWeapons();
   pendingLevelUps--;
   levelUp.hide();
@@ -382,14 +397,14 @@ function endRun(victory: boolean): void {
     playSfx('hit');
   }
   const survivalBonus = Math.floor(run.elapsedS / 10) * TUNING.survivalAcornsPer10s;
-  const bossBonus = run.bossDefeated ? TUNING.bossAcornBonus : 0;
+  const bossBonus = levelsCleared * TUNING.bossAcornBonus;
   const totalEarned = run.acorns + survivalBonus + bossBonus;
   const newBestTime = Math.floor(run.elapsedS) > save.bestTimeS;
   save.runs += 1;
   save.acorns += totalEarned;
   save.totalAcornsEarned += totalEarned;
   if (newBestTime) save.bestTimeS = Math.floor(run.elapsedS);
-  if (run.bossDefeated) save.bossKills += 1;
+  save.bossKills += levelsCleared;
   writeSave(save);
 
   const summary: RunSummary = {
@@ -397,6 +412,7 @@ function endRun(victory: boolean): void {
     acornsCollected: run.acorns, survivalBonus, bossBonus, totalEarned, newBestTime,
     killedBy: victory ? null : killedBy,
     killedByText: victory ? null : killedByText,
+    levelsCleared,
     placement: mode === 'royale' ? { rank: run.hearts > 0 ? 1 : bots.aliveCount() + 1, total: TUNING.royaleBots + 1 } : null,
   };
   hud.hide();
@@ -405,6 +421,36 @@ function endRun(victory: boolean): void {
 }
 
 // ---------- the run ----------
+/** All combines of the current boss fight are down. */
+function clearLevel(): void {
+  levelsCleared += 1;
+  levelBossSpawned = false;
+  if (mode !== 'solo') {
+    bossDone = true;
+    hud.banner('COMBINE DEFEATED', 'The lawn is safe. For now. (It is never safe.)', 3);
+    return;
+  }
+  if (levelIdx >= SOLO_LEVELS.length - 1) {
+    run.bossDefeated = true;
+    victoryTimer = TUNING.victoryDelayS;
+    hud.banner('THE COMBINES ARE DEFEATED', 'Three levels. One gnome. The lawn is yours (until it grows back).', 3);
+    return;
+  }
+  const cleared = levelIdx + 1;
+  levelIdx += 1;
+  const next = SOLO_LEVELS[levelIdx];
+  run.hearts = Math.min(stats.maxHearts, run.hearts + TUNING.levelClearHeal);
+  run.acorns += TUNING.levelClearAcorns;
+  mowers.setDifficulty(next);
+  mowers.holdSpawns(TUNING.levelBreatherS);
+  levelStartS = run.elapsedS + TUNING.levelBreatherS;
+  waveIndex = -1;
+  levelBannerAt = run.elapsedS + 3.2;
+  hud.banner(`LEVEL ${cleared} CLEAR!`, `+${TUNING.levelClearHeal} hearts · +${TUNING.levelClearAcorns} acorns · Catch your breath.`, 3);
+  playSfx('victory');
+  juice.shake(1);
+}
+
 function applyItem(kind: ItemKind): void {
   const def = ITEM_DEFS[kind];
   juice.toast(def.name, def.toast, '#' + def.color.toString(16).padStart(6, '0'));
@@ -449,40 +495,49 @@ function tickRun(dt: number, inp: InputState): void {
   const { jumped } = updatePlayer(player, inp, rig.yaw, OBSTACLES, stats, dt);
   if (jumped) playSfx('jump');
 
-  // Waves and boss.
-  const wi = waveIndexAt(run.elapsedS);
+  // Waves and bosses. Solo replays the waves each level with harder mowers; royale is a single level.
+  const L = mode === 'solo' ? SOLO_LEVELS[levelIdx] : null;
+  const levelTime = Math.max(0, run.elapsedS - levelStartS);
+  const wi = waveIndexAt(levelTime);
   if (wi !== waveIndex) {
     waveIndex = wi;
     const b = WAVES[wi].banner;
-    if (b) hud.banner(b.title, b.sub, 3.5);
+    if (b && levelIdx === 0) hud.banner(b.title, b.sub, 3.5); // tier banners only the first time through
   }
-  if (!run.bossSpawned && run.elapsedS >= TUNING.bossAtS) {
+  if (L && levelBannerAt > 0 && run.elapsedS >= levelBannerAt) {
+    levelBannerAt = -1;
+    hud.banner(L.name, L.sub, 4);
+  }
+  if (!levelBossSpawned && !bossDone && levelTime >= (L ? L.bossAtS : TUNING.bossAtS)) {
+    levelBossSpawned = true;
     run.bossSpawned = true;
-    mowers.spawnBoss();
+    const count = L ? L.bossCount : 1;
+    mowers.spawnBoss(count, L ? L.bossHpMult : 1);
     playSfx('bossWarning');
-    hud.banner('A COMBINE APPROACHES', 'Of course there is a boss fight. This is a roguelike.', 4);
+    if (count === 1) hud.banner('A COMBINE APPROACHES', 'Of course there is a boss fight. This is a roguelike.', 4);
+    else if (count === 2) hud.banner('TWO COMBINES APPROACH', 'It brought a friend. Rude.', 4);
+    else hud.banner(`${count} COMBINES APPROACH`, 'Just triple it. Absolutely unfair. Good luck.', 4);
   }
 
   // Mowers.
   const targets: THREE.Vector3[] = [player.position];
   for (const c of bots.contestants()) if (c.alive) targets.push(c.pos);
-  const kills = mowers.update(dt, run.elapsedS, targets, OBSTACLES, (x, z) => world.markMowed(x, z));
+  const kills = mowers.update(dt, levelTime, targets, OBSTACLES, (x, z) => world.markMowed(x, z));
   for (const k of kills) {
     run.kills += 1;
     const def = MOWER_TIERS[k.tier];
     drops.spawnXp(k.x, k.z, def.xp);
     if (k.tier === 'combine') {
       drops.spawnAcorns(k.x, k.z, TUNING.bossAcornDrop);
-      run.bossDefeated = true;
-      victoryTimer = TUNING.victoryDelayS;
-      hud.banner('COMBINE DEFEATED', 'The lawn is safe. For now. (It is never safe.)', 3);
       juice.shake(1.5);
-    } else if (Math.random() < def.acornChance) {
+    } else if (Math.random() < def.acornChance * stats.acornLuck) {
       drops.spawnAcorns(k.x, k.z, 1);
     }
     juice.kill(k.x, k.z);
     playSfx('enemyDie');
   }
+  // Every combine of this boss fight is down: the level is cleared.
+  if (levelBossSpawned && victoryTimer < 0 && mowers.bossHp() === null) clearLevel();
 
   // Weapons.
   const enemiesNow = mowers.enemies();
@@ -537,7 +592,7 @@ function tickRun(dt: number, inp: InputState): void {
       // A mower may be up on an obstacle (e.pos.y > 0): you clear it only by being above its top.
       if (d < PLAYER_RADIUS + e.radius && player.position.y < e.pos.y + def.height && player.position.y > e.pos.y - 0.6) {
         run.hearts -= def.contactDamage;
-        run.invulnS = TUNING.invulnS;
+        run.invulnS = TUNING.invulnS + stats.invulnBonusS;
         killedBy = e.tier;
         killedByText = null;
         juice.hurt();
@@ -602,6 +657,7 @@ function tickRun(dt: number, inp: InputState): void {
     acorns: run.acorns,
     boss: mowers.bossHp(),
     runNumber: save.runs + 1,
+    levelLabel: mode === 'solo' ? `LEVEL ${levelIdx + 1}` : '',
     buffs: espressoS > 0 ? [{ label: 'TRIPLE ESPRESSO', remaining01: espressoS / TUNING.espressoS }] : [],
   });
 
@@ -632,6 +688,13 @@ goLobby();
   const auto = params.get('autostart');
   if (auto === 'solo' || auto === 'royale') {
     startRun(auto);
+    // &level=2|3 starts a solo run on that level; &boss brings its boss fight in now.
+    const lv = parseInt(params.get('level') ?? '', 10);
+    if (auto === 'solo' && lv >= 2 && lv <= SOLO_LEVELS.length) {
+      levelIdx = lv - 1;
+      mowers.setDifficulty(SOLO_LEVELS[levelIdx]);
+    }
+    if (auto === 'solo' && params.has('boss')) levelStartS = -SOLO_LEVELS[levelIdx].bossAtS;
     if (params.has('pause')) setTimeout(() => pauseGame(), 1500);
   }
   // &time=0..1 jumps the clock (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight).

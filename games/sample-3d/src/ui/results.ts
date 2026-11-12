@@ -129,8 +129,8 @@ export function createResultsUI(parent: HTMLElement): ResultsUI {
         titleRow.append(el('h1', 'rs-title', '#1 LAST GNOME STANDING'));
         children.push(titleRow, el('p', 'rs-line', 'Winner winner, chicken dinner. Legally distinct.'));
       } else if (s.victory) {
-        titleRow.append(el('h1', 'rs-title', 'COMBINE DEFEATED'));
-        children.push(titleRow, el('p', 'rs-line', 'The lawn always grows back. That is the roguelike promise.'));
+        titleRow.append(el('h1', 'rs-title', 'THE LAWN IS YOURS'));
+        children.push(titleRow, el('p', 'rs-line', 'Three levels, six combines, one very tired gnome. The lawn always grows back. That is the roguelike promise.'));
       } else {
         titleRow.append(el('h1', 'rs-title', 'YOU DIED'), el('span', 'rs-permanent', '(permanently*)'));
         const killer = s.killedByText ?? (s.killedBy ? MOWER_TIERS[s.killedBy].name : 'hubris');
@@ -150,6 +150,7 @@ export function createResultsUI(parent: HTMLElement): ResultsUI {
         timeLine,
         el('div', '', `Mowers destroyed ${s.kills}`),
         el('div', '', `Level reached ${s.level}`),
+        ...(s.placement ? [] : [el('div', '', `Bosses defeated ${s.levelsCleared} / 3`)]),
       );
 
       const acorns = el('div', 'rs-acorns');

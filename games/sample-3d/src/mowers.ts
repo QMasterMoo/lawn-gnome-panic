@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   ARENA_HALF, MOWER_TIERS, OBSTACLES, TUNING, WAVES,
   type EnemyView, type MowerKill, type MowerModel, type MowerSystem, type MowerTier, type Obstacle, type RegularTier, type WavePhase,
+  type MowerDifficulty,
 } from './config';
 import { createMowerModel } from './mowerModels';
 
@@ -66,6 +67,9 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
   let pendingKills: MowerKill[] = [];
   let nextId = 1;
   let spawnTimer = 1;
+  let holdS = 0;
+  let bossHpMult = 1;
+  let diff: MowerDifficulty = { speedMult: 1, hpMult: 1, spawnMult: 1, maxAliveMult: 1 };
   let night01 = 0;
 
   const alive = (): Mower[] => mowers.filter((m) => m.dyingS < 0);
@@ -100,13 +104,14 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
     model.group.rotation.order = 'YXZ';
     scene.add(model.group);
     model.group.position.set(sx, 0, sz);
+    const hp = tier === 'combine' ? def.hp * bossHpMult : def.hp * diff.hpMult;
     mowers.push({
       id: nextId++,
       tier,
       pos: new THREE.Vector3(sx, 0, sz),
       radius: def.radius,
-      hp: def.hp,
-      maxHp: def.hp,
+      hp,
+      maxHp: hp,
       heading: heading ?? Math.atan2(target.x - sx, target.z - sz),
       vy: 0,
       pitch: 0,
@@ -133,10 +138,11 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
     // rings either the player or a random other gnome.
     let wave: WavePhase = WAVES[0];
     for (const w of WAVES) if (w.fromS <= elapsedS) wave = w;
-    spawnTimer -= dt;
+    if (holdS > 0) holdS -= dt;
+    else spawnTimer -= dt;
     if (spawnTimer <= 0) {
-      spawnTimer = wave.spawnEveryS;
-      const cap = targets.length > 1 ? wave.maxAlive * 2 : wave.maxAlive;
+      spawnTimer = wave.spawnEveryS * diff.spawnMult;
+      const cap = Math.round((targets.length > 1 ? wave.maxAlive * 2 : wave.maxAlive) * diff.maxAliveMult);
       if (targets.length > 0 && alive().length < cap) {
         const around = targets.length === 1 || Math.random() < 0.5
           ? targets[0]
@@ -169,7 +175,7 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
       const def = MOWER_TIERS[m.tier];
       m.slowS -= dt;
       const mul = m.slowS > 0 ? m.slowFactor : 1;
-      const speed = def.speed * mul * (m.climbing ? CLIMB_SPEED_FACTOR : 1);
+      const speed = def.speed * diff.speedMult * mul * (m.climbing ? CLIMB_SPEED_FACTOR : 1);
       const near = nearestTarget(m.pos.x, m.pos.z, targets);
       if (near !== null) {
         const desired = Math.atan2(near.x - m.pos.x, near.z - m.pos.z);
@@ -262,7 +268,7 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
     // 6. Visuals and 7. Mowing.
     for (const m of live) {
       const def = MOWER_TIERS[m.tier];
-      const speed = def.speed * (m.slowS > 0 ? m.slowFactor : 1) * (m.climbing ? CLIMB_SPEED_FACTOR : 1);
+      const speed = def.speed * diff.speedMult * (m.slowS > 0 ? m.slowFactor : 1) * (m.climbing ? CLIMB_SPEED_FACTOR : 1);
       m.flashS -= dt;
       m.model.setFlash(m.flashS > 0);
       m.model.group.position.set(m.pos.x, m.pos.y, m.pos.z);
@@ -329,19 +335,37 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
       m.slowFactor = factor;
       m.slowS = Math.max(m.slowS, seconds);
     },
-    spawnBoss(): void {
-      const p = ringPoint(lastTarget, TUNING.bossSpawnDist, TUNING.bossSpawnDist + 3, MOWER_TIERS.combine.radius);
-      spawn('combine', lastTarget, p.x, p.z);
+    spawnBoss(count: number, hpMult: number): void {
+      bossHpMult = hpMult;
+      for (let i = 0; i < count; i++) {
+        const p = ringPoint(lastTarget, TUNING.bossSpawnDist, TUNING.bossSpawnDist + 3 + i * 6, MOWER_TIERS.combine.radius);
+        spawn('combine', lastTarget, p.x, p.z);
+      }
     },
-    bossHp(): { hp: number; max: number } | null {
-      const boss = alive().find((m) => m.tier === 'combine');
-      return boss ? { hp: boss.hp, max: boss.maxHp } : null;
+    bossHp(): { hp: number; max: number; count: number } | null {
+      let hp = 0;
+      let max = 0;
+      let count = 0;
+      for (const m of alive()) {
+        if (m.tier !== 'combine') continue;
+        hp += m.hp;
+        max += m.maxHp;
+        count++;
+      }
+      return count > 0 ? { hp, max, count } : null;
+    },
+    setDifficulty(d: MowerDifficulty): void {
+      diff = { ...d };
+    },
+    holdSpawns(seconds: number): void {
+      holdS = Math.max(holdS, seconds);
     },
     reset(): void {
       for (const m of mowers) scene.remove(m.model.group);
       mowers = [];
       pendingKills = [];
       spawnTimer = 1;
+      holdS = 0;
     },
   };
 }

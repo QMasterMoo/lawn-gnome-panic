@@ -196,7 +196,8 @@ export function createHud(root: HTMLElement): HudUI {
   // Boss bar
   const boss = el('div', 'hud-boss');
   boss.style.display = 'none';
-  boss.appendChild(el('div', 'hud-boss-label', 'THE COMBINE'));
+  const bossLabel = el('div', 'hud-boss-label', 'THE COMBINE');
+  boss.appendChild(bossLabel);
   const bossBar = el('div', 'hud-boss-bar');
   const bossFill = el('div', 'hud-boss-fill');
   bossBar.appendChild(bossFill);
@@ -323,7 +324,7 @@ export function createHud(root: HTMLElement): HudUI {
 
       // Timer
       sync('timer', fmtTime(d.elapsedS), v => { timerText.textContent = v; });
-      sync('run', `RUN #${d.runNumber}`, v => { runEl.textContent = v; });
+      sync('run', `RUN #${d.runNumber}${d.levelLabel ? ' · ' + d.levelLabel : ''}`, v => { runEl.textContent = v; });
 
       // Top right chips
       sync('kills', `☠ ${d.kills}`, v => { killsEl.textContent = v; });
@@ -337,6 +338,7 @@ export function createHud(root: HTMLElement): HudUI {
       const bossOn = d.boss !== null;
       sync('bossOn', bossOn ? '1' : '0', v => { boss.style.display = v === '1' ? 'block' : 'none'; });
       if (d.boss) {
+        sync('bossLbl', d.boss.count > 1 ? `THE COMBINES ×${d.boss.count}` : 'THE COMBINE', v => { bossLabel.textContent = v; });
         const pct = d.boss.max > 0 ? clamp01(d.boss.hp / d.boss.max) : 0;
         sync('bossW', `${pct}`, v => { bossFill.style.width = `${Number(v) * 100}%`; });
       }

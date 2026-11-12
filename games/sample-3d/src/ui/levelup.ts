@@ -11,7 +11,7 @@ const SUB_LINES = [
 const ICONS: Record<string, string> = {
   slingshot: '🪨', trowels: '🔱', sprinkler: '💦', mushrooms: '🍄',
   stormOfDaggers: '🗡️', leafPileFireball: '🍂', hoseMissile: '🚿', windChimeLullaby: '🎐', leafBlower: '🌬️', pitchfork: '🔱',
-  fertilizer: '🌱', compost: '♻️', comfyBoots: '👢', heal: '🥪',
+  fertilizer: '🌱', compost: '♻️', comfyBoots: '👢', heal: '🥪', rake: '🧲', thickBeard: '🧔', sneakers: '👟', luckyClover: '🍀', mulchArmor: '🛡️',
 };
 
 const BORDER: Record<UpgradeChoice['kind'], string> = {
