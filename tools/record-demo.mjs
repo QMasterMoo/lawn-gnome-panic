@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // Records a scripted demo of a running game to an MP4 (or a GIF with --gif).
+// With --pr <n> it records a GIF, uploads it with gh and embeds it in that PR's description.
 // See docs/demos.md.
 //
 // Usage: npm run demo -- <demo.json> [--gif] [--out file.mp4|file.gif] [--url http://localhost:5174/]
+//                                    [--pr <number> [--repo owner/name] [--title "Caption"]]
 //   e.g. npm run demo -- games/sample-3d/demos/double-jump-flip.json
 // Start the game's dev server first (npm run dev -w games/<name>).
 //
@@ -22,7 +24,7 @@
 // Actions: jump, forward, back, left, right, sprint, turnLeft, turnRight, or any KeyboardEvent.code (e.g. "KeyF").
 // Output: <demo folder>/out/<demo name>.mp4 (or .gif) unless --out is given; the extension picks the format.
 
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import puppeteer from 'puppeteer-core';
@@ -63,7 +65,7 @@ for (let i = 2; i < process.argv.length; i++) {
   else if (a.startsWith('--')) flags[a.slice(2)] = process.argv[++i];
   else demoPath ??= a;
 }
-if (!demoPath) fail('usage: npm run demo -- <demo.json> [--gif] [--out file.mp4|file.gif] [--url http://localhost:5174/]');
+if (!demoPath) fail('usage: npm run demo -- <demo.json> [--gif] [--out file.mp4|file.gif] [--url http://localhost:5174/] [--pr <n> [--repo owner/name] [--title text]]');
 const flag = (name) => flags[name];
 
 let demo;
@@ -87,8 +89,13 @@ for (const [k, v] of Object.entries(demo.setup ?? {})) {
   if (v === false || v === null || v === undefined) continue;
   url.searchParams.set(k, v === true ? '' : String(v));
 }
-const out = flag('out') ?? path.join(path.dirname(demoPath), 'out', `${path.basename(demoPath, '.json')}.${flag('gif') ? 'gif' : 'mp4'}`);
+const demoName = path.basename(demoPath, '.json');
+const prNumber = flag('pr');
+if (prNumber !== undefined && !/^\d+$/.test(prNumber)) fail(`--pr needs a PR number, got "${prNumber}"`);
+// PR embeds must be GIFs: GitHub only plays video it hosted itself, but shows any image inline.
+const out = flag('out') ?? path.join(path.dirname(demoPath), 'out', `${demoName}.${flag('gif') || prNumber ? 'gif' : 'mp4'}`);
 const asGif = out.toLowerCase().endsWith('.gif');
+if (prNumber && !asGif) fail('--pr embeds a GIF; drop --out or give it a .gif path');
 // Video is cheap per frame, so it gets a bigger, smoother default than a GIF.
 const [W, H] = demo.size ?? (asGif ? [640, 400] : [960, 600]);
 const FPS = demo.fps ?? (asGif ? 25 : 30);
@@ -175,6 +182,13 @@ if (errors.length > 0) {
   for (const e of errors) console.error(`  ${e}`);
   process.exit(1);
 }
+if (prNumber) {
+  try {
+    embedInPr(prNumber, out);
+  } catch (e) {
+    fail(`recorded ${out}, but embedding it in the PR failed: ${e.message}`);
+  }
+}
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, Math.max(0, ms)));
@@ -204,4 +218,76 @@ function writeMp4(pngs, file) {
     for (const buf of pngs) proc.stdin.write(buf);
     proc.stdin.end();
   });
+}
+
+// ---------- --pr: upload the GIF and embed it in the PR description ----------
+
+function gh(args, input) {
+  try {
+    return execFileSync('gh', args, { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
+  } catch (e) {
+    throw new Error(`gh ${args.slice(0, 3).join(' ')} failed: ${(e.stderr || e.message).trim()}`);
+  }
+}
+
+/** owner/name of the repo PRs target: --repo, else the "origin" remote. */
+function targetRepo() {
+  if (flag('repo')) return flag('repo');
+  const url = execFileSync('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8' }).trim();
+  const m = url.match(/github\.com[:/]([^/]+\/[^/]+?)(\.git)?$/);
+  if (!m) fail(`cannot tell the GitHub repo from origin (${url}); pass --repo owner/name`);
+  return m[1];
+}
+
+function embedInPr(pr, file) {
+  const repo = targetRepo();
+  const info = JSON.parse(gh(['pr', 'view', pr, '--repo', repo, '--json', 'body,headRepository,headRepositoryOwner']));
+  // Upload to the repo the PR comes from (a fork, or the target itself), which the author can write to.
+  const assetsRepo = `${info.headRepositoryOwner.login}/${info.headRepository.name}`;
+  const branch = 'demo-assets';
+
+  // The demo-assets branch holds only uploaded clips. Create it from the default branch's head if it is missing.
+  try {
+    gh(['api', `repos/${assetsRepo}/git/ref/heads/${branch}`]);
+  } catch {
+    const base = JSON.parse(gh(['api', `repos/${assetsRepo}`])).default_branch;
+    const sha = JSON.parse(gh(['api', `repos/${assetsRepo}/git/ref/heads/${base}`])).object.sha;
+    gh(['api', '-X', 'POST', `repos/${assetsRepo}/git/refs`, '-f', `ref=refs/heads/${branch}`, '-f', `sha=${sha}`]);
+  }
+
+  // A new file name per upload, so GitHub's image cache never shows an old take.
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '');
+  const assetPath = `demos/pr-${pr}/${demoName}-${stamp}.gif`;
+  const sizeMb = fs.statSync(file).size / 1e6;
+  if (sizeMb > 8) console.warn(`warning: ${sizeMb.toFixed(1)} MB GIF; GitHub may not display images this large. Try a shorter duration or smaller size.`);
+  const payload = JSON.stringify({
+    message: `Demo clip for ${repo}#${pr}: ${demoName}`,
+    branch,
+    content: fs.readFileSync(file).toString('base64'),
+  });
+  gh(['api', '-X', 'PUT', `repos/${assetsRepo}/contents/${assetPath}`, '--input', '-'], payload);
+  const imgUrl = `https://raw.githubusercontent.com/${assetsRepo}/${branch}/${assetPath}`;
+
+  // One marked block per demo inside a "## Demo" section: re-running replaces it in place.
+  const title = flag('title') ?? demo.title ?? demoName;
+  const block = `<!-- demo:${demoName} -->\n**${title}**\n\n![${title}](${imgUrl})\n<!-- /demo:${demoName} -->`;
+  let body = info.body ?? '';
+  const re = new RegExp(`<!-- demo:${demoName} -->[\\s\\S]*?<!-- /demo:${demoName} -->`);
+  if (re.test(body)) {
+    body = body.replace(re, block);
+  } else if (/<!-- \/demo:[^>]*-->/.test(body)) {
+    // After the last existing demo, so clips stay in the order they were added.
+    const ends = [...body.matchAll(/<!-- \/demo:[^>]*-->/g)];
+    const at = ends.at(-1).index + ends.at(-1)[0].length;
+    body = `${body.slice(0, at)}\n\n${block}${body.slice(at)}`;
+  } else if (/^## Demo\s*$/m.test(body)) {
+    body = body.replace(/^## Demo\s*$/m, `## Demo\n\n${block}`);
+  } else {
+    // Put the section above the trailing "Generated with" footer if there is one, else at the end.
+    const section = `## Demo\n\n${block}\n\n`;
+    const footer = body.search(/^.*Generated with \[Claude Code\].*$/m);
+    body = footer >= 0 ? body.slice(0, footer) + section + body.slice(footer) : `${body.trimEnd()}\n\n${section.trimEnd()}\n`;
+  }
+  gh(['pr', 'edit', pr, '--repo', repo, '--body-file', '-'], body);
+  console.log(`embedded in https://github.com/${repo}/pull/${pr}\n  ${imgUrl}`);
 }

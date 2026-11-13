@@ -12,7 +12,21 @@ npm run demo -- games/sample-3d/demos/double-jump.json --gif     # GIF instead
 
 Output goes to `games/<name>/demos/out/`, which is gitignored. To use another port or file, pass `--url http://localhost:5180/` or `--out path.mp4`. If Chrome or Edge is installed somewhere unusual, set `DEMO_BROWSER` to its path.
 
-To attach a clip to a PR, drag the file into a GitHub comment. MP4 files are small and keep full color. GIFs play inline anywhere, but only have 256 colors and hit GitHub's 10 MB limit after a few seconds. The clips have no sound.
+The clips have no sound.
+
+## Put a demo in a PR description
+
+```sh
+npm run demo -- games/sample-3d/demos/double-jump.json --pr 12 --title "Double jump with front flip"
+```
+
+`--pr <n>` records a GIF and commits it to a `demo-assets` branch of the repo the PR comes from (your fork, or the main repo), creating that branch if needed. It then adds the GIF to a `## Demo` section of the PR description with `gh pr edit`. It needs the `gh` CLI, logged in with push access to the PR's source repo.
+
+- **Re-running is safe.** Each demo gets its own marked block (`<!-- demo:<name> -->`), so recording the same demo again replaces it in place. A different demo is added below the existing ones.
+- **The target repo** is the `origin` remote. Pass `--repo owner/name` to override it.
+- **The caption** is `--title`, else the demo file's `"title"`, else the file name.
+- **Why a GIF:** GitHub only plays a video in a PR if it was uploaded through the web editor, which needs a logged-in browser and isn't possible with `gh`. Images from any URL display inline. Keep clips to about 3–5 s: a GIF runs about 1 MB per second at 640×400, and the tool warns when one passes 8 MB.
+- **Full-quality video:** record an MP4 and drag it into a PR comment by hand. GitHub turns it into a `user-attachments` link with a player.
 
 ## Write one
 
@@ -35,6 +49,7 @@ A demo is a JSON file in `games/<name>/demos/`:
 |---|---|
 | `setup` | Becomes the page's query string. `true` adds a bare flag; `false` or `null` leaves the key out. |
 | `url` | The page to load. The default is `http://localhost:5174/`. |
+| `title` | Caption used by `--pr`. |
 | `warmup` | Seconds to wait after the page loads before recording starts. Default 2.5. |
 | `duration` | Seconds to record. The default is the end of the last step plus 1. |
 | `size`, `fps` | Frame size and rate. The MP4 default is `[960, 600]` at 30; the GIF default is `[640, 400]` at 25. |
