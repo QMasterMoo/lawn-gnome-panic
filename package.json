@@ -8,6 +8,13 @@
   ],
   "scripts": {
     "new": "node tools/new-game.mjs",
-    "site": "node tools/build-site.mjs"
+    "site": "node tools/build-site.mjs",
+    "demo": "node tools/record-demo.mjs"
+  },
+  "devDependencies": {
+    "@ffmpeg-installer/ffmpeg": "1.1.0",
+    "gifenc": "1.0.3",
+    "pngjs": "7.0.0",
+    "puppeteer-core": "24.10.0"
   }
 }
