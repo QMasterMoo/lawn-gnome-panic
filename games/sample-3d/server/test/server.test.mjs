@@ -170,3 +170,46 @@ test('an offensive name is rejected', async () => {
     c.close();
   }
 });
+
+test('chat reaches the queue group, censored', async () => {
+  const a = await open();
+  const b = await open();
+  try {
+    a.send({ t: 'hello', v: 2, name: 'Alpha', character: 'gnorman' });
+    const wa = await a.next('welcome');
+    b.send({ t: 'hello', v: 2, name: 'Bravo', character: 'gnorman' });
+    await b.next('welcome');
+    a.send({ t: 'queue', code: 'CHAT1', character: 'gnorman', name: 'Alpha' });
+    await a.next('queued');
+    b.send({ t: 'queue', code: 'CHAT1', character: 'gnorman', name: 'Bravo' });
+    await b.next('queued');
+
+    a.send({ t: 'chat', text: 'hello you shit' });
+    for (const c of [a, b]) {
+      const msg = await c.next('chat');
+      assert.equal(msg.from, wa.id);
+      assert.equal(msg.name, 'Alpha');
+      assert.equal(typeof msg.color, 'number');
+      assert.ok(msg.text.startsWith('hello you'));
+      assert.ok(!msg.text.includes('shit'));
+    }
+  } finally {
+    a.close();
+    b.close();
+  }
+});
+
+test('chat is rate limited', async () => {
+  const c = await open();
+  try {
+    c.send({ t: 'hello', v: 2, name: 'Charlie', character: 'gnorman' });
+    await c.next('welcome');
+    c.send({ t: 'queue', code: 'CHAT2', character: 'gnorman', name: 'Charlie' });
+    await c.next('queued');
+    for (let i = 0; i < 6; i++) c.send({ t: 'chat', text: `line ${i}` });
+    const err = await c.next('error');
+    assert.equal(err.code, 'chat-rate');
+  } finally {
+    c.close();
+  }
+});

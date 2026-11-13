@@ -13,7 +13,8 @@ export const MAX_PLAYERS = 20;
 /** A match never starts with fewer players than this; a lone player keeps waiting. */
 export const MIN_PLAYERS = 2;
 /**
- * Player colours (0xRRGGBB). The server gives each player of a match a different one, at random.
+ * Player colours (0xRRGGBB). The server gives each player a random one, unique within their queue group,
+ * when they queue; it is kept into the match.
  * All are light enough to read on a dark backing; names and chat are always drawn on one
  * (see src/ui/nameStyle.ts), so they stay readable over any part of the world.
  */
@@ -27,6 +28,9 @@ export const PUBLIC_FILL_WAIT_S = 15;
 export const PRIVATE_FILL_WAIT_S = 45;
 /** How often clients send 'me' and the host sends 'snap'. */
 export const NET_SEND_HZ = 15;
+/** Chat flood limit: at most this many lines per player per window. */
+export const CHAT_RATE_COUNT = 5;
+export const CHAT_RATE_WINDOW_S = 5;
 /** Room codes: 4-8 characters of A-Z and 0-9 (the client upper-cases input). */
 export const ROOM_CODE_RE = /^[A-Z0-9]{4,8}$/;
 
@@ -45,7 +49,9 @@ export type ClientMsg =
   /** Leave the queue or the current match. */
   | { t: 'leave' }
   /** Forward d to one player of my match (to = their id) or to every other player (to = null). */
-  | { t: 'relay'; to: number | null; d: GameMsg };
+  | { t: 'relay'; to: number | null; d: GameMsg }
+  /** Chat to everyone in my queue group or match. The server tidies, cuts to CHAT_MAX and censors it. */
+  | { t: 'chat'; text: string };
 
 // ---------------------------------------------------------------- server -> client
 export type ServerMsg =
@@ -59,8 +65,11 @@ export type ServerMsg =
   | { t: 'left'; id: number }
   /** Your match or queue is over: the host left, or the server is restarting for an update. */
   | { t: 'ended'; reason: string }
-  /** code 'bad-name': the name failed checkName(); the player was not queued. */
-  | { t: 'error'; message: string; code?: 'bad-name' };
+  /** A chat line from someone in my queue group or match (my own lines come back too). Already censored. */
+  | { t: 'chat'; from: number; name: string; color: number; text: string }
+  /** code 'bad-name': the name failed checkName(); the player was not queued.
+   *  code 'chat-rate': more than CHAT_RATE_COUNT lines in CHAT_RATE_WINDOW_S; that line was dropped (show it in chat, not as a failure). */
+  | { t: 'error'; message: string; code?: 'bad-name' | 'chat-rate' };
 
 // ---------------------------------------------------------------- game messages (opaque to the server)
 /** [id, tier, x, y, z, heading, hp, maxHp]. Numbers rounded to 2 decimals. tier is a MowerTier string. */
