@@ -24,6 +24,8 @@
  * - Mix: the tonal parts sit on a bus that ducks on each kick (fake sidechain). Stabs, pad and reese
  *   are high-passed so the sine sub owns the low end. Stabs feed a ping-pong delay into a hall reverb, and the pad feeds the reverb.
  *
+ * - Swing: off-beat 16th hats are pushed late by 6-16% of a 16th, varying per run (its own seeded stream).
+ *
  * - All triggers use the `time` passed to the Loop callback, never Tone.now(), or the break flams.
  */
 import type * as ToneNS from 'tone';
@@ -57,7 +59,10 @@ export function buildRunTrack(T: Tone, keep: Keep, out: ToneNS.Volume, seed: num
   transport.bpm.value = 162 + Math.floor(rnd() * 14);
 
   const fx = createFx(T, keep, out);
-  const kit = createKit(T, keep, out, fx, { snarePitch: pick(['D3', 'E3', 'F#3']) });
+  // Swing: off-beat 16th hats land late by 6-16% of a 16th. It comes from its own random stream,
+  // so adding it did not change any other choice a seed makes.
+  const swing = 0.06 + 0.1 * mulberry32((seed ^ 0x5bd1e995) >>> 0)();
+  const kit = createKit(T, keep, out, fx, { snarePitch: pick(['D3', 'E3', 'F#3']), swing });
 
   // ----- music bus: everything tonal ducks under the kick (simple sidechain pump) -----
   const duck = keep(new T.Gain(1)).connect(out);
@@ -85,7 +90,7 @@ export function buildRunTrack(T: Tone, keep: Keep, out: ToneNS.Volume, seed: num
   const root = 33 + Math.floor(rnd() * 12); // tonic, A1..G#2
   const preset = pick(PRESETS);
   const mode = MODES[preset.mode];
-  console.info(`[music] ${preset.name} in ${NOTE_NAMES[root % 12]} ${preset.mode}, ${Math.round(transport.bpm.value)} bpm`);
+  console.info(`[music] ${preset.name} in ${NOTE_NAMES[root % 12]} ${preset.mode}, ${Math.round(transport.bpm.value)} bpm, swing ${Math.round(swing * 100)}%`);
   // Pre-voice every chord of both progressions once, voice-leading through the whole loop.
   const voiceProg = (prog: number[], size: number, center: number): number[][] => {
     let prev: number[] | null = null;
