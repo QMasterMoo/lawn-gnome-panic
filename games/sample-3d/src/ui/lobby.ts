@@ -3,6 +3,9 @@ import type { GameMode, LobbyCallbacks, LobbyUI, MetaSave, MetaUpgradeDef } from
 import type { VisualMode } from '../config';
 import { CHARACTERS, CHARACTER_ORDER, LOCKED_CHARACTER_NAMES, META_UPGRADES, SOLO_LEVELS, TUNING, upgradeCost } from '../config';
 
+/** The lobby's modes: the two game modes, plus ONLINE (matchmaking, not a local run). */
+type LobbyMode = GameMode | 'online';
+
 const CSS = `
 .lb-root {
   position: absolute; inset: 0; pointer-events: none; overflow: hidden;
@@ -157,6 +160,36 @@ const CSS = `
   margin-top: 4px; font-size: 11px; font-style: italic; color: #ffd9a0; text-align: center; text-shadow: 0 2px 0 #000;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.lb-mode-btn:disabled { cursor: not-allowed; opacity: .6; }
+.lb-mode-btn:disabled:hover { filter: none; }
+.lb-code-wrap { margin-bottom: 8px; pointer-events: auto; }
+.lb-code {
+  display: block; box-sizing: border-box; width: 100%; font: inherit; font-size: 14px; letter-spacing: 2px;
+  text-transform: uppercase; padding: 9px 10px; border-radius: 6px; pointer-events: auto;
+  background: rgba(20,8,50,.8); color: #fff; border: 2px solid rgba(255,255,255,.6);
+}
+.lb-code::placeholder { color: #8f88aa; letter-spacing: 1px; font-size: 12px; text-transform: none; }
+.lb-code:focus { outline: none; border-color: #ffd54f; }
+.lb-code:disabled { opacity: .6; }
+.lb-match {
+  box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 10px; margin-top: 10px;
+  padding: 10px 12px; border-radius: 12px; background: rgba(10,4,30,.85); border: 1px solid rgba(255,255,255,.2);
+  font-size: 15px; font-weight: bold; color: #fff; text-shadow: 0 2px 0 #000;
+}
+.lb-match-dot {
+  flex: none; width: 10px; height: 10px; border-radius: 50%; background: #ffd54a;
+  animation: lb-pulse 1s ease-in-out infinite;
+}
+@keyframes lb-pulse {
+  0%, 100% { opacity: .25; transform: scale(.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+.lb-match-text { flex: 1; min-width: 0; line-height: 1.25; overflow-wrap: anywhere; }
+.lb-match-cancel {
+  flex: none; font: inherit; font-size: 12px; padding: 7px 10px; border: none; border-radius: 6px;
+  background: linear-gradient(#ffe14d, #ffb300); color: #2a1400; cursor: pointer; pointer-events: auto;
+}
+.lb-play:disabled, .lb-play:disabled:hover { filter: grayscale(.7) brightness(.8); transform: skew(-8deg); cursor: not-allowed; }
 @media (max-width: 760px) {
   .lb-nav { display: none; }
   .lb-chars {
@@ -361,10 +394,10 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   const play = h('button', 'lb-play');
   const playSub = h('div', 'lb-play-sub');
   play.append(h('div', 'lb-play-main', 'PLAY'), playSub);
-  play.onclick = () => cb.onPlay(mode, level);
+  play.onclick = () => startPlay();
 
   // Party panel (fake, foreshadows multiplayer) and game mode selector, stacked above PLAY
-  let mode: GameMode = 'solo';
+  let mode: LobbyMode = 'solo';
   let runCount = 0;
   const side = h('div', 'lb-side lb-side-panel');
   const party = h('div', 'lb-party');
@@ -388,10 +421,11 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   applyCharacter(CHARACTER_ORDER[0]);
 
   const modeRow = h('div', 'lb-mode');
-  const modeBtns = new Map<GameMode, HTMLButtonElement>();
-  const MODE_OPTIONS: { mode: GameMode; label: string; caption: string }[] = [
+  const modeBtns = new Map<LobbyMode, HTMLButtonElement>();
+  const MODE_OPTIONS: { mode: LobbyMode; label: string; caption: string }[] = [
     { mode: 'solo', label: 'SOLO', caption: '' },
     { mode: 'royale', label: 'BATTLE ROYALE', caption: `vs ${TUNING.royaleBots} bots` },
+    { mode: 'online', label: 'ONLINE', caption: 'up to 20 humans' },
   ];
   for (const opt of MODE_OPTIONS) {
     const cell = h('div', 'lb-mode-cell');
@@ -456,9 +490,74 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
     applyLevels();
   }
 
-  side.append(party, levelWrap, modeRow);
+  // Room code row, ONLINE only (between the level picker and the mode row)
+  let searching = false;
+  const codeWrap = h('div', 'lb-code-wrap');
+  const codeInput = h('input', 'lb-code');
+  codeInput.type = 'text';
+  codeInput.placeholder = 'ROOM CODE (optional)';
+  codeInput.maxLength = 8;
+  codeInput.autocomplete = 'off';
+  codeInput.spellcheck = false;
+  codeInput.oninput = () => {
+    const clean = codeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (clean !== codeInput.value) codeInput.value = clean;
+    updatePlaySub();
+  };
+  codeInput.onkeydown = (e) => {
+    e.stopPropagation(); // typing must not trigger game keys
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      startPlay();
+    }
+  };
+  codeWrap.append(codeInput);
+  codeWrap.style.display = 'none';
+
+  // Matchmaking status, shown at the bottom of the panel (just above PLAY) while searching in ONLINE
+  const matchBox = h('div', 'lb-match');
+  const matchText = h('span', 'lb-match-text');
+  const matchCancel = h('button', 'lb-match-cancel', 'CANCEL');
+  matchCancel.type = 'button';
+  matchCancel.onclick = () => cb.onLeaveMatch();
+  matchBox.append(h('span', 'lb-match-dot'), matchText, matchCancel);
+  matchBox.style.display = 'none';
+
+  side.append(party, levelWrap, codeWrap, modeRow, matchBox);
+
+  /** The play button and Enter: ONLINE starts matchmaking; the other modes start a run. */
+  function startPlay(): void {
+    if (searching) return;
+    const m = mode;
+    if (m === 'online') {
+      const code = codeInput.value;
+      if (code.length > 0 && code.length < 4) {
+        showToast('Room codes are 4-8 letters or digits.');
+        return;
+      }
+      cb.onFindMatch(code.length > 0 ? code : null);
+      return;
+    }
+    cb.onPlay(m, level);
+  }
+
+  /** Searching: show the status box and turn off play, the mode buttons and the code input. */
+  function setSearching(text: string | null): void {
+    searching = text !== null;
+    if (text !== null) matchText.textContent = text;
+    matchBox.style.display = searching ? '' : 'none';
+    play.disabled = searching;
+    codeInput.disabled = searching;
+    for (const btn of modeBtns.values()) btn.disabled = searching;
+    requestAnimationFrame(fitShop);
+  }
 
   function updatePlaySub(): void {
+    if (mode === 'online') {
+      const code = codeInput.value;
+      playSub.textContent = `RUN #${runCount + 1} · ONLINE ROYALE · ${code ? 'ROOM ' + code : 'PUBLIC MATCHMAKING'}`;
+      return;
+    }
     playSub.textContent = mode === 'royale'
       ? `RUN #${runCount + 1} · BATTLE ROYALE · ${TUNING.royaleBots + 1} GNOMES`
       : `RUN #${runCount + 1} · SOLO · LEVEL ${level}`;
@@ -476,10 +575,11 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   };
   window.addEventListener('resize', fitShop);
 
-  function setMode(next: GameMode): void {
+  function setMode(next: LobbyMode): void {
     mode = next;
     for (const [m, btn] of modeBtns) btn.classList.toggle('on', m === mode);
     levelWrap.style.display = mode === 'solo' ? '' : 'none';
+    codeWrap.style.display = mode === 'online' ? '' : 'none';
     requestAnimationFrame(fitShop);
     updatePlaySub();
   }
@@ -525,12 +625,15 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   }
 
   window.addEventListener('keydown', (e) => {
-    if (!visible || e.key !== 'Enter') return;
+    if (!visible || searching || e.key !== 'Enter') return;
     e.preventDefault();
-    cb.onPlay(mode, level);
+    startPlay();
   });
 
   return {
+    setMatchStatus(text: string | null) {
+      setSearching(text);
+    },
     setCharacter(id: CharacterId) {
       applyCharacter(id);
     },
@@ -541,6 +644,7 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
       render(save, false);
       tip.textContent = TIPS[tipIdx];
       visible = true;
+      matchBox.style.display = searching ? '' : 'none';
       screen.style.display = '';
       requestAnimationFrame(fitShop);
       window.clearInterval(tipTimer);
@@ -554,6 +658,7 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
     },
     hide() {
       visible = false;
+      matchBox.style.display = 'none';
       screen.style.display = 'none';
       window.clearInterval(tipTimer);
       tipTimer = 0;

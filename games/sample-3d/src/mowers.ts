@@ -6,6 +6,7 @@ import {
 } from './config';
 import { createMowerModel } from './mowerModels';
 import { heightAt } from './terrain';
+import type { MowerSnap } from './net/protocol';
 
 interface Mower {
   id: number;
@@ -23,6 +24,16 @@ interface Mower {
   slowS: number;
   flashS: number;
   dyingS: number; // < 0 means alive
+  // Puppet mode: where the host says this mower is and which way it faces. Unused offline.
+  tx: number;
+  ty: number;
+  tz: number;
+  th: number;
+}
+
+/** True when t is a key of MOWER_TIERS (own keys only, so 'toString' does not pass). */
+function isMowerTier(t: string): t is MowerTier {
+  return Object.prototype.hasOwnProperty.call(MOWER_TIERS, t);
 }
 
 /** Speed multiplier while a mower is crawling up an obstacle's side. */
@@ -63,6 +74,9 @@ function nearestTarget(x: number, z: number, targets: readonly THREE.Vector3[]):
   return best;
 }
 
+/** Rounds to 2 decimals for the wire. */
+const r2 = (v: number): number => Math.round(v * 100) / 100;
+
 export function createMowerSystem(scene: THREE.Scene): MowerSystem {
   let mowers: Mower[] = [];
   let pendingKills: MowerKill[] = [];
@@ -74,6 +88,94 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
   let night01 = 0;
 
   const alive = (): Mower[] => mowers.filter((m) => m.dyingS < 0);
+
+  /** Puppet mode (online client): the host runs the mowers, this system only shows them. */
+  let puppet = false;
+
+  /** Model setup shared by spawn() and applySnapshot(). */
+  function buildModel(tier: MowerTier, x: number, y: number, z: number): MowerModel {
+    const model = createMowerModel(tier);
+    model.setNight(night01);
+    model.group.rotation.order = 'YXZ';
+    scene.add(model.group);
+    model.group.position.set(x, y, z);
+    return model;
+  }
+
+  /** Ground pitch: the slope along the heading (negative = nose up). */
+  function groundPitch(m: Mower): number {
+    const fx = Math.sin(m.heading);
+    const fz = Math.cos(m.heading);
+    const dh = heightAt(m.pos.x + fx, m.pos.z + fz) - heightAt(m.pos.x - fx, m.pos.z - fz);
+    return -Math.atan2(dh, 2);
+  }
+
+  /** Flash, pose, animation and mowing for one living mower (steps 6-7). */
+  function renderMower(m: Mower, dt: number, speed: number, onMow: (x: number, z: number) => void): void {
+    m.flashS -= dt;
+    m.model.setFlash(m.flashS > 0);
+    m.model.group.position.set(m.pos.x, m.pos.y, m.pos.z);
+    m.model.group.rotation.y = m.heading;
+    m.model.group.rotation.x = m.pitch;
+    m.model.animate(dt, speed);
+
+    onMow(m.pos.x, m.pos.z);
+    if (m.tier === 'combine') {
+      const fx = Math.sin(m.heading);
+      const fz = Math.cos(m.heading);
+      const rx = -fz; // right = (-cos h, 0, sin h)
+      const rz = fx;
+      onMow(m.pos.x + fx * 2 + rx * 1.6, m.pos.z + fz * 2 + rz * 1.6);
+      onMow(m.pos.x + fx * 2 - rx * 1.6, m.pos.z + fz * 2 - rz * 1.6);
+    }
+  }
+
+  /** Dying mowers shrink, spin and are removed (step 8). */
+  function stepDying(dt: number): void {
+    const kept: Mower[] = [];
+    for (const m of mowers) {
+      if (m.dyingS < 0) {
+        kept.push(m);
+        continue;
+      }
+      m.dyingS -= dt;
+      m.model.group.scale.setScalar(Math.max(0.01, m.dyingS / 0.25));
+      m.model.group.rotation.y += 15 * dt;
+      if (m.dyingS <= 0) {
+        scene.remove(m.model.group);
+      } else {
+        kept.push(m);
+      }
+    }
+    mowers = kept;
+  }
+
+  /** Puppet mode: ease toward the host's snapshot, then animate, mow and die. Never reports kills. */
+  function updatePuppets(dt: number, onMow: (x: number, z: number) => void): MowerKill[] {
+    const k = 1 - Math.exp(-12 * dt);
+    for (const m of alive()) {
+      const ox = m.pos.x;
+      const oz = m.pos.z;
+      const dx = m.tx - m.pos.x;
+      const dy = m.ty - m.pos.y;
+      const dz = m.tz - m.pos.z;
+      if (Math.hypot(dx, dy, dz) > 20) {
+        m.pos.set(m.tx, m.ty, m.tz);
+      } else {
+        m.pos.x += dx * k;
+        m.pos.y += dy * k;
+        m.pos.z += dz * k;
+      }
+      const dth = Math.atan2(Math.sin(m.th - m.heading), Math.cos(m.th - m.heading));
+      m.heading += dth * k;
+      m.pitch += (groundPitch(m) - m.pitch) * k;
+      const speed = dt > 0 ? Math.hypot(m.pos.x - ox, m.pos.z - oz) / dt : 0;
+      renderMower(m, dt, speed, onMow);
+    }
+    stepDying(dt);
+    pendingKills = [];
+    return [];
+  }
 
   function pickTier(mix: WavePhase['mix']): RegularTier {
     const entries = (Object.entries(mix) as [RegularTier, number][]).filter(([, w]) => w > 0);
@@ -101,12 +203,9 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
       sz = p.z;
     }
     const sy = heightAt(sx, sz);
-    const model = createMowerModel(tier);
-    model.setNight(night01);
-    model.group.rotation.order = 'YXZ';
-    scene.add(model.group);
-    model.group.position.set(sx, sy, sz);
+    const model = buildModel(tier, sx, sy, sz);
     const hp = tier === 'combine' ? def.hp * bossHpMult : def.hp * diff.hpMult;
+    const h = heading ?? Math.atan2(target.x - sx, target.z - sz);
     mowers.push({
       id: nextId++,
       tier,
@@ -114,7 +213,7 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
       radius: def.radius,
       hp,
       maxHp: hp,
-      heading: heading ?? Math.atan2(target.x - sx, target.z - sz),
+      heading: h,
       vy: 0,
       pitch: 0,
       climbing: false,
@@ -123,6 +222,10 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
       slowS: 0,
       flashS: 0,
       dyingS: -1,
+      tx: sx,
+      ty: sy,
+      tz: sz,
+      th: h,
     });
   }
 
@@ -133,6 +236,8 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
     obstacles: readonly Obstacle[],
     onMow: (x: number, z: number) => void,
   ): MowerKill[] {
+    if (puppet) return updatePuppets(dt, onMow);
+
     // targets[0] is the player; the boss always goes after the player.
     if (targets.length > 0) lastTarget.copy(targets[0]);
 
@@ -243,11 +348,7 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
       } else if (m.vy < 0) {
         targetPitch = 0.5;
       } else {
-        // Ground pitch: the slope along the heading.
-        const fx = Math.sin(m.heading);
-        const fz = Math.cos(m.heading);
-        const dh = heightAt(m.pos.x + fx, m.pos.z + fz) - heightAt(m.pos.x - fx, m.pos.z - fz);
-        targetPitch = -Math.atan2(dh, 2);
+        targetPitch = groundPitch(m);
       }
       m.pitch += (targetPitch - m.pitch) * (1 - Math.exp(-10 * dt));
     }
@@ -291,41 +392,11 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
     for (const m of live) {
       const def = MOWER_TIERS[m.tier];
       const speed = def.speed * diff.speedMult * (m.slowS > 0 ? m.slowFactor : 1) * (m.climbing ? CLIMB_SPEED_FACTOR : 1);
-      m.flashS -= dt;
-      m.model.setFlash(m.flashS > 0);
-      m.model.group.position.set(m.pos.x, m.pos.y, m.pos.z);
-      m.model.group.rotation.y = m.heading;
-      m.model.group.rotation.x = m.pitch;
-      m.model.animate(dt, speed);
-
-      onMow(m.pos.x, m.pos.z);
-      if (m.tier === 'combine') {
-        const fx = Math.sin(m.heading);
-        const fz = Math.cos(m.heading);
-        const rx = -fz; // right = (-cos h, 0, sin h)
-        const rz = fx;
-        onMow(m.pos.x + fx * 2 + rx * 1.6, m.pos.z + fz * 2 + rz * 1.6);
-        onMow(m.pos.x + fx * 2 - rx * 1.6, m.pos.z + fz * 2 - rz * 1.6);
-      }
+      renderMower(m, dt, speed, onMow);
     }
 
     // 8. Dying mowers shrink, spin and are removed.
-    const kept: Mower[] = [];
-    for (const m of mowers) {
-      if (m.dyingS < 0) {
-        kept.push(m);
-        continue;
-      }
-      m.dyingS -= dt;
-      m.model.group.scale.setScalar(Math.max(0.01, m.dyingS / 0.25));
-      m.model.group.rotation.y += 15 * dt;
-      if (m.dyingS <= 0) {
-        scene.remove(m.model.group);
-      } else {
-        kept.push(m);
-      }
-    }
-    mowers = kept;
+    stepDying(dt);
 
     // 9. Report kills since the last call.
     return pendingKills.splice(0);
@@ -340,24 +411,27 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
     enemies(): readonly EnemyView[] {
       return alive();
     },
-    damage(id: number, amount: number): void {
+    damage(id: number, amount: number, by?: number): void {
       const m = alive().find((x) => x.id === id);
       if (!m) return;
-      m.hp -= amount;
       m.flashS = 0.08;
+      if (puppet) return; // the host owns hp
+      m.hp -= amount;
       if (m.hp <= 0) {
         m.hp = 0;
         m.dyingS = 0.25;
-        pendingKills.push({ id: m.id, tier: m.tier, x: m.pos.x, z: m.pos.z });
+        pendingKills.push({ id: m.id, tier: m.tier, x: m.pos.x, z: m.pos.z, by });
       }
     },
     slow(id: number, factor: number, seconds: number): void {
+      if (puppet) return;
       const m = alive().find((x) => x.id === id);
       if (!m) return;
       m.slowFactor = factor;
       m.slowS = Math.max(m.slowS, seconds);
     },
     spawnBoss(count: number, hpMult: number): void {
+      if (puppet) return;
       bossHpMult = hpMult;
       for (let i = 0; i < count; i++) {
         const p = ringPoint(lastTarget, TUNING.bossSpawnDist, TUNING.bossSpawnDist + 3 + i * 6, MOWER_TIERS.combine.radius);
@@ -382,12 +456,64 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
     holdSpawns(seconds: number): void {
       holdS = Math.max(holdS, seconds);
     },
+    snapshot(): MowerSnap[] {
+      return alive().map((m): MowerSnap => [
+        m.id, m.tier, r2(m.pos.x), r2(m.pos.y), r2(m.pos.z), r2(m.heading), r2(m.hp), r2(m.maxHp),
+      ]);
+    },
+    setPuppet(on: boolean): void {
+      puppet = on;
+    },
+    applySnapshot(list: readonly MowerSnap[]): void {
+      if (!puppet) return;
+      const listed = new Set<number>();
+      for (const [id, tier, x, y, z, heading, hp, maxHp] of list) {
+        if (!isMowerTier(tier)) continue;
+        listed.add(id);
+        const m = alive().find((q) => q.id === id);
+        if (m) {
+          m.tx = x;
+          m.ty = y;
+          m.tz = z;
+          m.th = heading;
+          m.hp = hp;
+          m.maxHp = maxHp;
+        } else {
+          const model = buildModel(tier, x, y, z);
+          mowers.push({
+            id,
+            tier,
+            pos: new THREE.Vector3(x, y, z),
+            radius: MOWER_TIERS[tier].radius,
+            hp,
+            maxHp,
+            heading,
+            vy: 0,
+            pitch: 0,
+            climbing: false,
+            model,
+            slowFactor: 1,
+            slowS: 0,
+            flashS: 0,
+            dyingS: -1,
+            tx: x,
+            ty: y,
+            tz: z,
+            th: heading,
+          });
+        }
+      }
+      for (const m of alive()) {
+        if (!listed.has(m.id)) m.dyingS = 0.25;
+      }
+    },
     reset(): void {
       for (const m of mowers) scene.remove(m.model.group);
       mowers = [];
       pendingKills = [];
       spawnTimer = 1;
       holdS = 0;
+      puppet = false;
     },
   };
 }

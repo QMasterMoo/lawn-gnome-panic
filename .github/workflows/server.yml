@@ -1,0 +1,31 @@
+name: Deploy matchmaking server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - games/sample-3d/server/**
+      - games/sample-3d/src/net/protocol.ts
+      - fly.toml
+  workflow_dispatch:
+
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test -w games/sample-3d/server
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      # Builds the Docker image on Fly's builders and rolls it out (bluegreen, see fly.toml).
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

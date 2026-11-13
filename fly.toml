@@ -1,0 +1,45 @@
+# Fly.io app for the sample-3d matchmaking server. Deploy: fly deploy (from the repo root).
+# Change `app` to a name of your own; it must be unique on Fly.
+app = "lawn-gnome-mm"
+primary_region = "iad"
+
+[build]
+  dockerfile = "games/sample-3d/server/Dockerfile"
+
+[env]
+  PORT = "8080"
+
+# Rolling update without dropping matches: the new machine starts and passes /healthz,
+# traffic moves to it, then the old one gets SIGTERM. The server stops matchmaking and
+# lets running matches finish for up to kill_timeout (300 s is Fly's maximum).
+[deploy]
+  strategy = "bluegreen"
+  wait_timeout = "10m"
+
+kill_signal = "SIGTERM"
+kill_timeout = 300
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Scale to zero: the machine stops a few minutes after the last socket closes and
+  # starts again on the next connection (a 1-2 s cold start). Idle costs ~nothing.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 400
+    hard_limit = 500
+
+  [[http_service.checks]]
+    grace_period = "5s"
+    interval = "15s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "2s"
+
+# Matchmaking state lives in memory, so run exactly one machine: fly scale count 1
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

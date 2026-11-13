@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "games/*",
+    "games/*/server",
     "packages/*"
   ],
   "scripts": {

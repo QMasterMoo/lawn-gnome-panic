@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import type { GameMsg, MowerSnap, ServerMsg } from './net/protocol';
 
 // =====================================================================
 // World
@@ -93,6 +94,7 @@ export const TUNING = {
   nightXpMult: 1.25,         // XP bonus while it is night                // each acorn also gives XP (a green mower's pellet is 2)
   // Battle royale (bots)
   royaleBots: 19,            // plus you = 20 gnomes
+  onlineSpawnRing: 18,       // online: players start on a ring this far from the centre
   royaleSpawnRadius: 60,     // bots drop near you so the fight is visible
   zoneStartRadius: 85,       // the wall is on screen from the first second
   zoneFinalRadius: 6,
@@ -789,7 +791,8 @@ export interface EnemyView {
   readonly maxHp: number;
 }
 
-export interface MowerKill { id: number; tier: MowerTier; x: number; z: number }
+/** by: who landed the killing blow (an online player id, -1 for a bot); undefined offline = the local player. */
+export interface MowerKill { id: number; tier: MowerTier; x: number; z: number; by?: number }
 
 export interface MowerSystem {
   /**
@@ -798,7 +801,8 @@ export interface MowerSystem {
    */
   update(dt: number, elapsedS: number, targets: readonly THREE.Vector3[], obstacles: readonly Obstacle[], onMow: (x: number, z: number) => void): MowerKill[];
   enemies(): readonly EnemyView[];
-  damage(id: number, amount: number): void;
+  /** by is copied into the MowerKill if this hit kills. In puppet mode only the hit flash happens. */
+  damage(id: number, amount: number, by?: number): void;
   slow(id: number, factor: number, seconds: number): void;
   /** Spawns `count` combines near the player with hp x hpMult. */
   spawnBoss(count: number, hpMult: number): void;
@@ -811,6 +815,15 @@ export interface MowerSystem {
   reset(): void;
   /** Headlights for every mower, including ones spawned later. */
   setNight(night01: number): void;
+  /** Online host: every living mower, compact, numbers rounded to 2 decimals. */
+  snapshot(): MowerSnap[];
+  /**
+   * Online client: true = mowers only follow applySnapshot. update() then does no spawning, AI, leash or kills
+   * (always returns []), only moves models toward the latest snapshot, animates and calls onMow. reset() sets it back to false.
+   */
+  setPuppet(on: boolean): void;
+  /** Puppet mode: the authoritative list. New ids appear, listed ids move there smoothly, missing ids die (shrink and spin). */
+  applySnapshot(list: readonly MowerSnap[]): void;
 }
 
 export interface MowerModel {
@@ -865,6 +878,10 @@ export interface LobbyCallbacks {
   onBuy(id: MetaUpgradeId): void;
   onVisualMode(mode: VisualMode): void;
   onSelectCharacter(id: CharacterId): void;
+  /** ONLINE mode's play button. code null = public matchmaking, else an upper-cased room code. */
+  onFindMatch(code: string | null): void;
+  /** Cancel button while searching. */
+  onLeaveMatch(): void;
 }
 
 export interface LobbyUI {
@@ -875,6 +892,8 @@ export interface LobbyUI {
   setVisualMode(mode: VisualMode): void;
   /** Highlights the selected character card. */
   setCharacter(id: CharacterId): void;
+  /** Online matchmaking status. text null = not searching (play button back to normal); else show it with a CANCEL button. */
+  setMatchStatus(text: string | null): void;
 }
 
 // =====================================================================
@@ -959,7 +978,8 @@ export interface ZoneSystem {
   state(): ZoneState;
   isOutside(x: number, z: number): boolean;
   setVisible(visible: boolean): void;
-  reset(): void;
+  /** seed: the same seed gives the same circles on every client (online). Omitted = random. */
+  reset(seed?: number): void;
 }
 
 export interface BotContext {
@@ -1125,3 +1145,46 @@ export type SfxName =
   | 'start' | 'jump' | 'pickup' | 'hit' | 'hurt'
   | 'shoot' | 'enemyHit' | 'enemyDie' | 'xp' | 'levelUp'
   | 'bossWarning' | 'buy' | 'splash' | 'boom' | 'victory';
+
+// =====================================================================
+// Online (see src/net/protocol.ts)
+// =====================================================================
+
+/** A gnome driven by the network: another player, or (on clients) one of the host's bots. */
+export interface PuppetState {
+  key: string;              // 'p<playerId>' for players, 'b<botId>' for bots
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  facing: number | null;    // null = face the direction of movement (bots)
+  alive: boolean;
+  character: CharacterId | null; // null = bot: hat and shirt colours picked from a hash of the name
+}
+
+export interface PuppetSystem {
+  /** Latest known state of one gnome. The first call for a key builds its model and name tag. */
+  set(s: PuppetState): void;
+  remove(key: string): void;
+  keys(): string[];
+  /** Eases every model toward its latest state (~100 ms), walks while moving, falls over when dead. */
+  update(dt: number): void;
+  /** Feet positions of living puppets whose key starts with prefix ('p' = players). The vectors are live; do not mutate. */
+  living(prefix: string): THREE.Vector3[];
+  reset(): void;
+}
+
+export interface NetClient {
+  /** My player id once 'welcome' arrived, else null. */
+  readonly id: number | null;
+  readonly connected: boolean;
+  /** Opens the socket (if not open) and sends hello. Resolves on 'welcome'; rejects if it cannot connect. */
+  connect(): Promise<void>;
+  queue(code: string | null, character: string): void;
+  leave(): void;
+  send(to: number | null, d: GameMsg): void;
+  /** Every server message, including 'welcome'. Called after connect() resolves too. */
+  onMessage(fn: (m: ServerMsg) => void): void;
+  /** Called once when the socket closes for any reason. */
+  onClose(fn: () => void): void;
+}
