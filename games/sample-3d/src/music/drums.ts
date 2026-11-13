@@ -83,6 +83,37 @@ export function withFill(bar: Slice[], from: 8 | 12 = 12): Slice[] {
   return out;
 }
 
+/** Fills for the last bar of a section (into the next one). */
+export type TransitionFill = 'roll' | 'cut' | 'stutter' | 'syncopated';
+export const TRANSITION_FILLS: TransitionFill[] = ['roll', 'cut', 'stutter', 'syncopated'];
+
+/**
+ * A section-ending fill over the last beat or two of `bar`. Deliberately small, so the
+ * groove stays recognisable:
+ * - roll: snare roll over the last beat.
+ * - cut: the drums drop out on the last beat, leaving one ghost note (a breath before the drop).
+ * - stutter: the beat-3 snare slice repeated across the last beat.
+ * - syncopated: snare/ghost pushes on the off-16ths of the last 6 steps.
+ */
+export function transitionFill(bar: Slice[], kind: TransitionFill): Slice[] {
+  const out = bar.slice();
+  switch (kind) {
+    case 'roll': return withFill(bar, 12);
+    case 'cut':
+      for (let i = 12; i < 16; i++) out[i] = {};
+      out[15] = { g: 1 };
+      return out;
+    case 'stutter': {
+      const hit: Slice = { ...(bar[8].s ? bar[8] : { s: 1 }), k: undefined };
+      for (let i = 12; i < 16; i++) out[i] = i % 2 === 0 ? hit : { g: 1 };
+      return out;
+    }
+    case 'syncopated':
+      out[10] = { s: 1 }; out[11] = {}; out[12] = { g: 1 }; out[13] = { s: 1 }; out[14] = { g: 1 }; out[15] = { s: 1 };
+      return out;
+  }
+}
+
 export interface Kit {
   /** Plays one slice. Returns true if it had a kick (for sidechain ducking). */
   hit(sl: Slice, time: number, pos: number, vel?: number): boolean;

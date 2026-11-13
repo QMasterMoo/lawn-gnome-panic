@@ -24,13 +24,17 @@
  * - Mix: the tonal parts sit on a bus that ducks on each kick (fake sidechain). Stabs, pad and reese
  *   are high-passed so the sine sub owns the low end. Stabs feed a ping-pong delay into a hall reverb, and the pad feeds the reverb.
  *
+ * - Fills: a snare roll at the 8-bar midpoint. On the last bar of each section, one of four
+ *   transition fills (roll, cut, stutter, syncopated) from its own seeded stream, never the same twice running,
+ *   so the transitions vary without getting busy.
+ *
  * - Swing: off-beat 16th hats are pushed late by 6-16% of a 16th, varying per run (its own seeded stream).
  *
  * - All triggers use the `time` passed to the Loop callback, never Tone.now(), or the break flams.
  */
 import type * as ToneNS from 'tone';
 import type { Keep, Tone } from './engine';
-import { BREAKS, chopBar, createKit, withFill, type Slice } from './drums';
+import { BREAKS, TRANSITION_FILLS, chopBar, createKit, transitionFill, withFill, type Slice, type TransitionFill } from './drums';
 import { createFx } from './mix';
 import { MODES, NOTE_NAMES, chordTones, midiToNote, mulberry32, voiceLead, type ModeName } from './theory';
 
@@ -124,6 +128,15 @@ export function buildRunTrack(T: Tone, keep: Keep, out: ToneNS.Volume, seed: num
   const fillA = withFill(drumsA[3], rnd() < 0.5 ? 12 : 8);
   const fillB = withFill(drumsB[3], rnd() < 0.5 ? 12 : 8);
 
+  // Section-end fills: picked as the song plays from their own seeded stream, never the same kind
+  // twice in a row. Mid-section (bar 8) fills stay the plain roll.
+  const fillRnd = mulberry32((seed ^ 0x27d4eb2d) >>> 0);
+  let lastFill: TransitionFill | null = null;
+  const nextFill = (): TransitionFill => {
+    const options = TRANSITION_FILLS.filter((f) => f !== lastFill);
+    return (lastFill = options[Math.floor(fillRnd() * options.length)]);
+  };
+
   const step16 = T.Time('16n').toSeconds();
   let step = 0;
   let pattern: Slice[] | null = null;
@@ -139,7 +152,9 @@ export function buildRunTrack(T: Tone, keep: Keep, out: ToneNS.Volume, seed: num
 
     if (pos === 0) {
       const lastOfEight = sb % 8 === 7;
-      if (breakdown) pattern = sb >= 6 ? straight[sb % 2].map((s) => (s.h ? { h: 1 as const } : {})) : null; // hats creep back in
+      const lastOfSection = sb === SECTION_BARS - 1;
+      if (lastOfSection) pattern = transitionFill(section === 'B' ? drumsB[3] : drumsA[3], nextFill());
+      else if (breakdown) pattern = sb >= 6 ? straight[sb % 2].map((s) => (s.h ? { h: 1 as const } : {})) : null; // hats creep back in
       else if (intro && sb < 8) pattern = lastOfEight ? fillA : straight[sb % 2];
       else if (section === 'B') pattern = lastOfEight ? fillB : drumsB[sb % 4];
       else pattern = lastOfEight ? fillA : drumsA[sb % 4];
