@@ -407,15 +407,32 @@ function build(T: Tone, seed: number): void {
   loop.start(0);
 }
 
+let unlockBound = false;
+/** Resumes Tone's AudioContext now if allowed, and on the first click / key / touch otherwise. */
+function unlockOnGesture(T: Tone): void {
+  if (T.getContext().state === 'running') return;
+  void T.start().catch(() => {});
+  if (unlockBound) return;
+  unlockBound = true;
+  const unlock = (): void => {
+    void T.start().catch(() => {});
+    if (T.getContext().state === 'running') {
+      for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) window.removeEventListener(ev, unlock, true);
+    }
+  };
+  for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) window.addEventListener(ev, unlock, true);
+}
+
 /** Starts a brand new track. Call once per run. */
 export function startMusic(seed: number = Math.floor(Math.random() * 2 ** 31)): void {
   const gen = ++generation;
   playing = true;
-  void loadTone().then(async (T) => {
+  void loadTone().then((T) => {
     if (!T || gen !== generation) return;
     try {
-      await T.start();
-      if (gen !== generation) return;
+      // Don't await T.start(): without a user gesture (autostart, online match start) it never
+      // resolves. Build and start the Transport now; it begins sounding once the context unlocks.
+      unlockOnGesture(T);
       teardown(T);
       build(T, seed);
       if (playing) T.getTransport().start('+0.05');
