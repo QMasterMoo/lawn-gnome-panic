@@ -25,7 +25,7 @@ import { computeStats } from './stats';
 import { createRun, addXp, rollChoices, applyChoice } from './run';
 import { WEAPON_FACTORIES } from './weapons';
 import { playSfx, setEngineLevel } from './audio';
-import { startMusic, pauseMusic, resumeMusic, stopMusic, isMusicMuted, setMusicMuted } from './music';
+import { startMusic, startMenuMusic, pauseMusic, resumeMusic, stopMusic, isMusicMuted, setMusicMuted } from './music';
 import { loadFlags, saveFlags } from './flags';
 import { createPostFX } from './postfx';
 import { buildProp } from './props';
@@ -372,7 +372,7 @@ function goLobby(): void {
   lobbyUI.show(save);
   input.setPointerLockAllowed(false);
   setEngineLevel(0);
-  stopMusic();
+  startMenuMusic();
   nowPlaying.hide();
 }
 
