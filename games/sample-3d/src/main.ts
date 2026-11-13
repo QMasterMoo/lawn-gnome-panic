@@ -25,6 +25,7 @@ import { computeStats } from './stats';
 import { createRun, addXp, rollChoices, applyChoice } from './run';
 import { WEAPON_FACTORIES } from './weapons';
 import { playSfx, setEngineLevel } from './audio';
+import { startMusic, pauseMusic, resumeMusic, stopMusic, isMusicMuted, setMusicMuted } from './music';
 import { loadFlags, saveFlags } from './flags';
 import { createPostFX } from './postfx';
 import { buildProp } from './props';
@@ -40,6 +41,7 @@ import { createZone } from './br/zone';
 import { createRoyaleHud } from './ui/royaleHud';
 import { createViewButton } from './ui/viewButton';
 import { createPauseButton } from './ui/pauseButton';
+import { createMuteButton } from './ui/muteButton';
 import { createPauseUI } from './ui/pause';
 import { createNetClient, serverUrl } from './net/client';
 import { initTelemetry, track } from './telemetry';
@@ -144,6 +146,8 @@ const zone = createZone(scene);
 const royaleHud = createRoyaleHud(uiRoot);
 const viewBtn = createViewButton(uiRoot, cycleView);
 const pauseBtn = createPauseButton(uiRoot, () => pauseGame());
+const muteBtn = createMuteButton(uiRoot, isMusicMuted, () => setMusicMuted(!isMusicMuted()));
+muteBtn.show();
 const pauseUI = createPauseUI(uiRoot);
 const puppets = createPuppetSystem(scene);
 
@@ -158,6 +162,7 @@ function pauseGame(): void {
   pauseBtn.hide();
   spectateBar.hide();
   setEngineLevel(0);
+  pauseMusic();
   pauseUI.show({
     mode,
     runNumber: save.runs + 1,
@@ -180,6 +185,7 @@ function resumeGame(): void {
   if (phase !== 'paused') return;
   pauseUI.hide();
   phase = 'playing';
+  resumeMusic();
   input.setPointerLockAllowed(true);
   touch.setVisible(true);
   viewBtn.show();
@@ -364,6 +370,7 @@ function goLobby(): void {
   lobbyUI.show(save);
   input.setPointerLockAllowed(false);
   setEngineLevel(0);
+  stopMusic();
 }
 
 function startRun(m: GameMode = 'solo', level = 1): void {
@@ -427,6 +434,7 @@ function startRun(m: GameMode = 'solo', level = 1): void {
   input.setPointerLockAllowed(true);
   touch.setVisible(true);
   playSfx('start');
+  startMusic();
 }
 
 function openLevelUp(): void {
@@ -482,6 +490,7 @@ function endRun(victory: boolean): void {
   rig.view = 'third'; // see your gnome's fate on the results screen
   input.setPointerLockAllowed(false);
   setEngineLevel(0);
+  stopMusic();
   gnome.object.visible = true;
   if (victory) {
     playSfx('victory');
