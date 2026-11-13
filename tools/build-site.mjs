@@ -1,4 +1,7 @@
-// Builds every game in games/ into a static site under site/ with an index page.
+// Builds every game in games/ into a static site under site/.
+// The FEATURED game is served at the site root; its old /<game>/ path becomes a redirect
+// (query string and hash kept, so ?code=... links still work), as do FEATURED_ALIASES. Every other game is at
+// /<game>/, and the list of all games is at /arcade/.
 // Usage: npm run site
 import { execSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -8,6 +11,9 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const gamesDir = join(root, 'games');
 const siteDir = join(root, 'site');
+const FEATURED = 'sample-3d';
+/** Extra short paths that redirect to the featured game, e.g. /<repo>/gnome/. */
+const FEATURED_ALIASES = ['gnome'];
 
 function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -26,6 +32,22 @@ function readmeIntro(path) {
     if (text && !text.startsWith('#')) return text.replace(/\s+/g, ' ');
   }
   return '';
+}
+
+// GitHub Pages has no server-side redirects: a page that replaces itself does the job.
+function redirectHtml(to) {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Moved</title>
+  <link rel="canonical" href="${to}">
+  <script>location.replace(${JSON.stringify(to)} + location.search + location.hash);</script>
+  <meta http-equiv="refresh" content="0; url=${to}">
+</head>
+<body><a href="${to}">This game moved here.</a></body>
+</html>
+`;
 }
 
 rmSync(siteDir, { recursive: true, force: true });
@@ -47,14 +69,22 @@ for (const name of readdirSync(gamesDir).sort()) {
     process.exit(1);
   }
 
-  cpSync(join(gameDir, 'dist'), join(siteDir, name), { recursive: true });
+  if (name === FEATURED) {
+    cpSync(join(gameDir, 'dist'), siteDir, { recursive: true });
+    for (const path of [name, ...FEATURED_ALIASES]) {
+      mkdirSync(join(siteDir, path), { recursive: true });
+      writeFileSync(join(siteDir, path, 'index.html'), redirectHtml('../'));
+    }
+  } else {
+    cpSync(join(gameDir, 'dist'), join(siteDir, name), { recursive: true });
+  }
   const description = pkg.description || readmeIntro(join(gameDir, 'README.md'));
   games.push({ name, description });
 }
 
 const cards = games
   .map(
-    ({ name, description }) => `    <a class="card" href="./${escapeHtml(name)}/">
+    ({ name, description }) => `    <a class="card" href="${name === FEATURED ? '../' : `../${escapeHtml(name)}/`}">
       <h2>${escapeHtml(name)}</h2>
       ${description ? `<p>${escapeHtml(description)}</p>` : ''}
     </a>`,
@@ -75,6 +105,8 @@ const html = `<!doctype html>
     .card:hover { border-color: #5b8def; }
     .card h2 { margin: 0 0 8px; font-size: 1.2rem; }
     .card p { margin: 0; color: #a7adb6; line-height: 1.4; }
+    footer { text-align: center; margin-top: 32px; }
+    footer a { color: #8fb3ff; }
   </style>
 </head>
 <body>
@@ -82,10 +114,13 @@ const html = `<!doctype html>
   <main class="grid">
 ${cards}
   </main>
+  <footer><a href="https://github.com/cstabnick/lawn-gnome-panic">Source code on GitHub</a></footer>
 </body>
 </html>
 `;
 
-writeFileSync(join(siteDir, 'index.html'), html);
+mkdirSync(join(siteDir, 'arcade'), { recursive: true });
+writeFileSync(join(siteDir, 'arcade', 'index.html'), html);
 writeFileSync(join(siteDir, '.nojekyll'), '');
-console.log(`Site built: ${games.length} game(s) in ${siteDir}`);
+if (!games.some((g) => g.name === FEATURED)) writeFileSync(join(siteDir, 'index.html'), redirectHtml('./arcade/'));
+console.log(`Site built: ${games.length} game(s) in ${siteDir} (${FEATURED} at the root, list at arcade/)`);

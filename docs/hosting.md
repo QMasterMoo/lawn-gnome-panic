@@ -13,7 +13,7 @@ The workflow is already in `.github/workflows/pages.yml`. It runs on every push 
 3. Push `main`: `git push -u origin main`.
 4. In the repository, go to Settings → Pages → Source and choose **GitHub Actions**.
 
-The site appears at `https://<user>.github.io/<repo>/`. Each game is at `/<repo>/<game>/`, for example `/<repo>/sample-3d/`.
+The site appears at `https://<user>.github.io/<repo>/`. The featured game (`FEATURED` in `tools/build-site.mjs`, now `sample-3d`) is at the root, and its old `/<repo>/sample-3d/` path and the short alias `/<repo>/gnome/` redirect there (query string kept). Other games are at `/<repo>/<game>/`; the list of all games is at `/<repo>/arcade/`.
 
 ## itch.io
 
