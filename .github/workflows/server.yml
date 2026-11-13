@@ -6,6 +6,7 @@ on:
     paths:
       - games/sample-3d/server/**
       - games/sample-3d/src/net/protocol.ts
+      - games/sample-3d/src/net/textFilter.ts
       - fly.toml
   workflow_dispatch:
 
