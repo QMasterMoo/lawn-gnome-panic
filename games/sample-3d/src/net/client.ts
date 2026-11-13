@@ -19,6 +19,7 @@ export function createNetClient(url: string, hello: { name: string; character: s
   let ws: WebSocket | null = null;
   let id: number | null = null;
   let opening: Promise<void> | null = null;
+  let lastHeardAt = 0;
   const listeners: ((m: ServerMsg) => void)[] = [];
   const closers: (() => void)[] = [];
 
@@ -38,6 +39,7 @@ export function createNetClient(url: string, hello: { name: string; character: s
         let welcomed = false;
         sock.onopen = () => raw({ t: 'hello', v: PROTOCOL_VERSION, name: hello.name, character: hello.character });
         sock.onmessage = (ev) => {
+          lastHeardAt = performance.now();
           let m: ServerMsg;
           try {
             m = JSON.parse(String(ev.data)) as ServerMsg;
@@ -69,6 +71,24 @@ export function createNetClient(url: string, hello: { name: string; character: s
     leave() { raw({ t: 'leave' }); },
     send(to: number | null, d: GameMsg) { raw({ t: 'relay', to, d }); },
     chat(text: string) { raw({ t: 'chat', text }); },
+    get lastHeardAt() { return lastHeardAt; },
+    drop() {
+      const sock = ws;
+      if (!sock) return;
+      ws = null;
+      id = null;
+      opening = null;
+      sock.onopen = null;
+      sock.onmessage = null;
+      sock.onerror = null;
+      sock.onclose = null;
+      try {
+        sock.close();
+      } catch {
+        // already closing
+      }
+      for (const fn of closers) fn();
+    },
     onMessage(fn) { listeners.push(fn); },
     onClose(fn) { closers.push(fn); },
   };

@@ -1192,6 +1192,10 @@ export interface NetClient {
   send(to: number | null, d: GameMsg): void;
   /** Sends a chat line to my queue group or match. */
   chat(text: string): void;
+  /** performance.now() when the last server message arrived (0 before any). */
+  readonly lastHeardAt: number;
+  /** Abandons a stalled socket at once (no closing handshake); onClose listeners run immediately. connect() opens a fresh one. */
+  drop(): void;
   /** Every server message, including 'welcome'. Called after connect() resolves too. */
   onMessage(fn: (m: ServerMsg) => void): void;
   /** Called once when the socket closes for any reason. */

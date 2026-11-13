@@ -1,13 +1,19 @@
 // Matchmaking and relay logic. No sockets and no timers here, so it can be tested directly:
 // index.ts owns the sockets and calls tick() once a second.
 import {
-  CHAT_RATE_COUNT, CHAT_RATE_WINDOW_S, MAX_PLAYERS, MIN_PLAYERS, PLAYER_COLORS, PROTOCOL_VERSION, ROOM_CODE_RE,
+  CHAT_RATE_COUNT, CHAT_RATE_WINDOW_S, IDLE_DISCONNECT_S, MATCH_SILENT_S, MAX_PLAYERS, MIN_PLAYERS, PLAYER_COLORS, PROTOCOL_VERSION, ROOM_CODE_RE,
 } from '../../src/net/protocol';
 import type { GameMsg, PlayerInfo, ServerMsg } from '../../src/net/protocol';
 import { CHAT_MAX, censorText, checkName, tidyText } from '../../src/net/textFilter';
 
 export interface Conn { readonly id: number; send(msg: ServerMsg): void; close(): void }
-export interface MatchmakerOptions { publicWaitS: number; privateWaitS: number; now: () => number /* ms */; random: () => number }
+export interface MatchmakerOptions {
+  publicWaitS: number; privateWaitS: number; now: () => number /* ms */; random: () => number;
+  /** Defaults to MATCH_SILENT_S. */
+  matchSilentS?: number;
+  /** Defaults to IDLE_DISCONNECT_S. */
+  idleS?: number;
+}
 
 const MATCH_MAX_MS = 30 * 60 * 1000;
 
@@ -21,6 +27,8 @@ interface Player {
   match: string | null; // matchId, or null
   color: number | null; // 0xRRGGBB from PLAYER_COLORS, set when queued; null when not queued
   chatTimes: number[];  // ms timestamps of recent chat lines (flood limit)
+  lastRelayAt: number;  // ms; in a match, when this player last relayed anything
+  busyAt: number;       // ms; last tick this player was queued or in a match (or connected)
 }
 
 interface Group {
@@ -59,7 +67,7 @@ export class Matchmaker {
   connect(conn: Conn): void {
     this.players.set(conn.id, {
       id: conn.id, conn, hello: false, name: '', character: 'gnorman', group: null, match: null,
-      color: null, chatTimes: [],
+      color: null, chatTimes: [], lastRelayAt: 0, busyAt: this.opts.now(),
     });
   }
 
@@ -95,7 +103,22 @@ export class Matchmaker {
       } else if (now - g.firstAt >= this.waitS(g) * 1000) this.start(g);
       else this.sendQueued(g);
     }
+    // Idle connections (lobby tabs left open) keep the server machine awake: close them.
+    const idleMs = (this.opts.idleS ?? IDLE_DISCONNECT_S) * 1000;
+    for (const p of this.players.values()) {
+      if (p.group !== null || p.match !== null) p.busyAt = now;
+      else if (now - p.busyAt > idleMs) p.conn.close();
+    }
+    const silentMs = (this.opts.matchSilentS ?? MATCH_SILENT_S) * 1000;
     for (const m of [...this.matches.values()]) {
+      // Silent members are gone in all but name (dead connection, phone asleep): remove them.
+      for (const id of [...m.members]) {
+        const p = this.players.get(id);
+        if (!p || now - p.lastRelayAt <= silentMs) continue;
+        this.leaveMatch(p, 'timeout');
+        p.conn.send({ t: 'ended', reason: 'You stopped responding (bad connection, or the game went to sleep).' });
+      }
+      for (const id of m.members) this.sendTo(id, { t: 'beat' });
       if (now - m.startedAt <= MATCH_MAX_MS) continue;
       for (const id of m.members) {
         const p = this.players.get(id);
@@ -210,6 +233,7 @@ export class Matchmaker {
     if (!m) return;
     const to = msg.to;
     if (!(to === null || typeof to === 'number') || !isObj(msg.d)) return;
+    p.lastRelayAt = this.opts.now();
     const d = msg.d as GameMsg;
     if (to === null) {
       for (const id of m.members) if (id !== p.id) this.sendTo(id, { t: 'relay', from: p.id, d });
@@ -232,24 +256,24 @@ export class Matchmaker {
         else this.sendQueued(g);
       }
     }
-    if (p.match !== null) {
-      const m = this.matches.get(p.match);
-      p.match = null;
-      if (m) {
-        m.members = m.members.filter((id) => id !== p.id);
-        if (m.hostId === p.id) {
-          for (const id of m.members) {
-            const o = this.players.get(id);
-            if (o) o.match = null;
-            this.sendTo(id, { t: 'ended', reason: 'THE HOST LEFT (rude)' });
-          }
-          m.members = [];
-          this.matches.delete(m.id);
-        } else {
-          for (const id of m.members) this.sendTo(id, { t: 'left', id: p.id });
-          if (m.members.length === 0) this.matches.delete(m.id);
-        }
-      }
+    if (p.match !== null) this.leaveMatch(p, 'quit');
+  }
+
+  /** Removes p from its match. If p was the host, the next player in join order takes over. */
+  private leaveMatch(p: Player, reason: 'quit' | 'timeout'): void {
+    if (p.match === null) return;
+    const m = this.matches.get(p.match);
+    p.match = null;
+    if (!m) return;
+    m.members = m.members.filter((id) => id !== p.id);
+    if (m.members.length === 0) {
+      this.matches.delete(m.id);
+      return;
+    }
+    for (const id of m.members) this.sendTo(id, { t: 'left', id: p.id, reason });
+    if (m.hostId === p.id) {
+      m.hostId = m.members[0];
+      for (const id of m.members) this.sendTo(id, { t: 'host', hostId: m.hostId });
     }
   }
 
@@ -271,6 +295,7 @@ export class Matchmaker {
       if (!p) continue;
       p.group = null;
       p.match = matchId;
+      p.lastRelayAt = now;
       p.conn.send({ t: 'match', matchId, seed, hostId, you: id, players: infos });
     }
   }

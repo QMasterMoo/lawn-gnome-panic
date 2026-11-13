@@ -470,6 +470,7 @@ export function createMowerSystem(scene: THREE.Scene): MowerSystem {
       for (const [id, tier, x, y, z, heading, hp, maxHp] of list) {
         if (!isMowerTier(tier)) continue;
         listed.add(id);
+        if (id >= nextId) nextId = id + 1; // if this client becomes host, its own spawns get fresh ids
         const m = alive().find((q) => q.id === id);
         if (m) {
           m.tx = x;
