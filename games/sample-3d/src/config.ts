@@ -1176,6 +1176,8 @@ export interface PuppetSystem {
   update(dt: number): void;
   /** Feet positions of living puppets whose key starts with prefix ('p' = players). The vectors are live; do not mutate. */
   living(prefix: string): THREE.Vector3[];
+  /** Live feet position of one living puppet, or null if it is unknown or dead. Do not mutate. */
+  position(key: string): THREE.Vector3 | null;
   reset(): void;
 }
 
@@ -1213,3 +1215,17 @@ export interface ChatUI {
   onOpenChange(fn: (open: boolean) => void): void;
 }
 
+/** Online spectator bar (src/ui/spectate.ts), shown after my gnome dies. */
+export interface SpectateCallbacks {
+  onPrev(): void;
+  onNext(): void;
+  /** Free camera on/off. */
+  onToggleFree(): void;
+}
+
+export interface SpectateBar {
+  show(): void;
+  hide(): void;
+  /** target null = free camera. alive = gnomes still alive in the match. Cheap to call every frame (only touches the DOM on change). */
+  set(target: { name: string; color: number } | null, alive: number): void;
+}
