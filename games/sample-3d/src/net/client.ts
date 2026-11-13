@@ -65,7 +65,7 @@ export function createNetClient(url: string, hello: { name: string; character: s
       });
       return opening;
     },
-    queue(code, character) { raw({ t: 'queue', code, character }); },
+    queue(code, character, name) { raw({ t: 'queue', code, character, name }); },
     leave() { raw({ t: 'leave' }); },
     send(to: number | null, d: GameMsg) { raw({ t: 'relay', to, d }); },
     onMessage(fn) { listeners.push(fn); },

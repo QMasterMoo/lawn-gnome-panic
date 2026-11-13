@@ -1,4 +1,5 @@
 import type { KillEvent, RoyaleHud, RoyaleHudData, ZoneState } from '../config';
+import { stylePlayerName } from './nameStyle';
 
 /** Battle royale overlay: gnomes remaining, zone timer, kill feed. */
 
@@ -151,6 +152,7 @@ export function createRoyaleHud(parent: HTMLElement): RoyaleHud {
       const victim = doc.createElement('span');
       victim.className = 'br-victim';
       victim.textContent = e.victim;
+      if (e.color !== undefined) stylePlayerName(victim, e.color);
       el.append(skull, victim);
 
       const rest =

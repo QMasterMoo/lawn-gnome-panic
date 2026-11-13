@@ -2,6 +2,7 @@ import type { CharacterId } from '../config';
 import type { GameMode, LobbyCallbacks, LobbyUI, MetaSave, MetaUpgradeDef } from '../config';
 import type { VisualMode } from '../config';
 import { CHARACTERS, CHARACTER_ORDER, LOCKED_CHARACTER_NAMES, META_UPGRADES, SOLO_LEVELS, TUNING, upgradeCost } from '../config';
+import { checkName, NAME_MAX } from '../net/textFilter';
 
 /** The lobby's modes: the two game modes, plus ONLINE (matchmaking, not a local run). */
 type LobbyMode = GameMode | 'online';
@@ -171,6 +172,10 @@ const CSS = `
 .lb-code::placeholder { color: #8f88aa; letter-spacing: 1px; font-size: 12px; text-transform: none; }
 .lb-code:focus { outline: none; border-color: #ffd54f; }
 .lb-code:disabled { opacity: .6; }
+
+.lb-nick { text-transform: none; letter-spacing: 0; margin-bottom: 6px; }
+.lb-nick::placeholder { letter-spacing: 1px; }
+.lb-code.bad { border-color: #ff5252; }
 .lb-match {
   box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 10px; margin-top: 10px;
   padding: 10px 12px; border-radius: 12px; background: rgba(10,4,30,.85); border: 1px solid rgba(255,255,255,.2);
@@ -493,6 +498,31 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   // Room code row, ONLINE only (between the level picker and the mode row)
   let searching = false;
   const codeWrap = h('div', 'lb-code-wrap');
+  // Display name, checked on every edit. Only good names reach onSetName; the value is not rewritten while typing.
+  const nameInput = h('input', 'lb-code lb-nick');
+  nameInput.type = 'text';
+  nameInput.placeholder = 'YOUR NAME';
+  nameInput.maxLength = NAME_MAX;
+  nameInput.autocomplete = 'off';
+  nameInput.spellcheck = false;
+  nameInput.oninput = () => {
+    const c = checkName(nameInput.value);
+    if (c.ok) {
+      nameInput.classList.remove('bad');
+      nameInput.title = '';
+      cb.onSetName(c.name);
+    } else {
+      nameInput.classList.add('bad');
+      nameInput.title = c.reason;
+    }
+  };
+  nameInput.onkeydown = (e) => {
+    e.stopPropagation(); // typing must not trigger game keys
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      startPlay();
+    }
+  };
   const codeInput = h('input', 'lb-code');
   codeInput.type = 'text';
   codeInput.placeholder = 'ROOM CODE (optional)';
@@ -511,7 +541,7 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
       startPlay();
     }
   };
-  codeWrap.append(codeInput);
+  codeWrap.append(nameInput, codeInput);
   codeWrap.style.display = 'none';
 
   // Matchmaking status, shown at the bottom of the panel (just above PLAY) while searching in ONLINE
@@ -530,6 +560,12 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
     if (searching) return;
     const m = mode;
     if (m === 'online') {
+      const c = checkName(nameInput.value);
+      if (!c.ok) {
+        showToast(c.reason);
+        nameInput.classList.add('bad');
+        return;
+      }
       const code = codeInput.value;
       if (code.length > 0 && code.length < 4) {
         showToast('Room codes are 4-8 letters or digits.');
@@ -548,6 +584,7 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
     matchBox.style.display = searching ? '' : 'none';
     play.disabled = searching;
     codeInput.disabled = searching;
+    nameInput.disabled = searching;
     for (const btn of modeBtns.values()) btn.disabled = searching;
     requestAnimationFrame(fitShop);
   }
@@ -642,6 +679,8 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
     },
     show(save: MetaSave) {
       render(save, false);
+      nameInput.value = save.name;
+      nameInput.classList.remove('bad');
       tip.textContent = TIPS[tipIdx];
       visible = true;
       matchBox.style.display = searching ? '' : 'none';

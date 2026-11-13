@@ -41,8 +41,8 @@ import { createPauseButton } from './ui/pauseButton';
 import { createPauseUI } from './ui/pause';
 import { createNetClient, serverUrl } from './net/client';
 import { createPuppetSystem } from './net/puppets';
-import { generateGamertags } from './br/names';
-import { MAX_PLAYERS, NET_SEND_HZ, type GameMsg, type KillSnap, type PlayerInfo, type ServerMsg } from './net/protocol';
+import { checkName } from './net/textFilter';
+import { MIN_PLAYERS, NET_SEND_HZ, type GameMsg, type KillSnap, type PlayerInfo, type ServerMsg } from './net/protocol';
 import type { KillEvent, MowerKill, NetClient } from './config';
 
 // ---------- no browser zoom on phones ----------
@@ -112,7 +112,7 @@ const scenery = buildScenery(scene);
 let gnome = createGnomeModel(CHARACTERS.gnorman.look);
 
 /** Swaps the player's model to a character's look (lobby selection). */
-function setPlayerCharacter(id: CharacterId): void {
+function setPlayerCharacter(id: CharacterId, color: number | null = null): void {
   scene.remove(gnome.object);
   gnome.object.traverse((o) => {
     const mesh = o as THREE.Mesh;
@@ -122,7 +122,7 @@ function setPlayerCharacter(id: CharacterId): void {
       for (const m of mats) m.dispose();
     }
   });
-  gnome = createGnomeModel(CHARACTERS[id].look);
+  gnome = createGnomeModel(color === null ? CHARACTERS[id].look : { ...CHARACTERS[id].look, hat: color });
   scene.add(gnome.object);
 }
 scene.add(gnome.object);
@@ -249,6 +249,10 @@ const lobbyCallbacks: LobbyCallbacks = {
     net?.leave();
     lobbyUI.setMatchStatus(null);
   },
+  onSetName: (name: string) => {
+    save.name = name;
+    writeSave(save);
+  },
 };
 const lobbyUI = createLobbyUI(uiRoot, lobbyCallbacks);
 
@@ -328,6 +332,7 @@ function goLobby(): void {
   if (online) {
     net?.leave();
     online = null;
+    setPlayerCharacter(save.character);
   }
   dayNight.setTime(TUNING.lobbyTimeT);
   clearField();
@@ -379,7 +384,7 @@ function startRun(m: GameMode = 'solo', level = 1): void {
   pauseBtn.show();
   hud.show();
   if (mode === 'royale' && online) {
-    // Players stand on a ring in join order; the host fills the rest of the 20 with bots.
+    // Players stand on a ring in join order. Online matches are humans only (no bots).
     const idx = Math.max(0, online.order.indexOf(online.me));
     const a = (idx / online.order.length) * Math.PI * 2;
     const sx = Math.sin(a) * TUNING.onlineSpawnRing;
@@ -388,13 +393,11 @@ function startRun(m: GameMode = 'solo', level = 1): void {
     player.facing = a + Math.PI;
     rig.reset(player.facing);
     zone.reset(online.seed);
-    const botCount = Math.max(0, MAX_PLAYERS - online.order.length);
-    if (online.isHost) bots.spawn(botCount, new THREE.Vector3(0, 0, 0), player.position);
-    else mowers.setPuppet(true);
+    if (!online.isHost) mowers.setPuppet(true);
     zone.setVisible(true);
     royaleHud.show();
     const humans = online.order.length;
-    hud.banner(`ONLINE ROYALE · ${humans} HUMAN${humans === 1 ? '' : 'S'} + ${botCount} BOTS`, online.isHost ? 'You are hosting. Please do not close the tab.' : 'Last gnome standing wins. Some of these gnomes are people.', 4);
+    hud.banner(`ONLINE ROYALE · ${humans} GNOMES`, online.isHost ? 'You are hosting. Please do not close the tab.' : 'Last gnome standing wins. Some of these gnomes are people.', 4);
   } else if (mode === 'royale') {
     bots.spawn(TUNING.royaleBots, new THREE.Vector3(0, 0, 0), player.position);
     zone.setVisible(true);
@@ -780,7 +783,7 @@ function tickRoyale(dt: number, sim: boolean, sp: boolean): boolean {
   if (online.isHost) {
     let humans = run.hearts > 0 && !sp ? 1 : 0;
     for (const a of online.humansAlive.values()) if (a) humans++;
-    online.alive = bots.aliveCount() + humans;
+    online.alive = humans;
   }
   royaleHud.update({ alive: online.alive, total: online.total, zone: zs, playerOutside: outside });
   if (online.isHost && online.alive <= 1) {
@@ -795,6 +798,7 @@ interface OnlineMatch {
   me: number;
   hostId: number;
   isHost: boolean;
+  myColor: number;                      // my match colour (hat, name tag, kill feed)
   seed: number;
   order: number[];                      // player ids in join order (spawn ring slots)
   players: Map<number, PlayerInfo>;
@@ -813,11 +817,15 @@ interface OnlineMatch {
 
 let net: NetClient | null = null;
 let online: OnlineMatch | null = null;
-const myTag = generateGamertags(1)[0];
 const r2 = (v: number): number => Math.round(v * 100) / 100;
 
 async function findMatch(code: string | null): Promise<void> {
   if (phase !== 'lobby') return;
+  const nm = checkName(save.name);
+  if (!nm.ok) {
+    juice.toast('PICK ANOTHER NAME', nm.reason, '#ff8a80');
+    return;
+  }
   const url = serverUrl();
   if (!url) {
     lobbyUI.setMatchStatus(null);
@@ -827,12 +835,12 @@ async function findMatch(code: string | null): Promise<void> {
   lobbyUI.setMatchStatus('CONNECTING TO THE LAWN...');
   try {
     if (!net) {
-      net = createNetClient(url, { name: myTag, character: save.character });
+      net = createNetClient(url, { name: save.name, character: save.character });
       net.onMessage(onServerMsg);
       net.onClose(onNetClose);
     }
     await net.connect();
-    net.queue(code, save.character);
+    net.queue(code, save.character, save.name);
   } catch {
     lobbyUI.setMatchStatus(null);
     juice.toast('NO SERVER', 'The matchmaking server did not answer. It may be waking up: try again.', '#ff8a80');
@@ -861,13 +869,15 @@ function startOnline(m: Extract<ServerMsg, { t: 'match' }>): void {
     players.set(p.id, p);
     if (p.id !== m.you) humansAlive.set(p.id, true);
   }
+  const myColor = m.players.find((p) => p.id === m.you)?.color ?? 0xffffff;
   online = {
-    me: m.you, hostId: m.hostId, isHost: m.hostId === m.you, seed: m.seed,
+    me: m.you, hostId: m.hostId, isHost: m.hostId === m.you, myColor, seed: m.seed,
     order: m.players.map((p) => p.id), players, humansAlive,
-    total: MAX_PLAYERS, alive: MAX_PLAYERS, sendTimer: 0,
+    total: m.players.length, alive: m.players.length, sendTimer: 0,
     kills: [], feed: [], hits: [], netKills: [],
     spectating: false, placement: 0, over: false,
   };
+  setPlayerCharacter(save.character, myColor);
   startRun('royale', 1);
 }
 
@@ -876,7 +886,11 @@ function onServerMsg(m: ServerMsg): void {
     case 'queued':
       if (phase === 'lobby') {
         const n = m.players;
-        lobbyUI.setMatchStatus(`${n} GNOME${n === 1 ? '' : 'S'} FOUND · STARTS IN ${m.startsInS}s${m.code ? ` · CODE ${m.code}` : ''}`);
+        if (n < MIN_PLAYERS) {
+          lobbyUI.setMatchStatus(`WAITING FOR ANOTHER GNOME...${m.code ? ` · CODE ${m.code}` : ''}`);
+        } else {
+          lobbyUI.setMatchStatus(`${n} GNOME${n === 1 ? '' : 'S'} FOUND · STARTS IN ${m.startsInS}s${m.code ? ` · CODE ${m.code}` : ''}`);
+        }
       }
       break;
     case 'match':
@@ -895,7 +909,7 @@ function onServerMsg(m: ServerMsg): void {
         puppets.remove('p' + m.id);
         if (online.humansAlive.get(m.id)) {
           online.humansAlive.set(m.id, false);
-          const ev = { victim: online.players.get(m.id)?.name ?? '???', cause: 'THE EXIT BUTTON' };
+          const ev = { victim: online.players.get(m.id)?.name ?? '???', cause: 'THE EXIT BUTTON', color: online.players.get(m.id)?.color };
           if (online.isHost) online.feed.push(ev);
           royaleHud.feed(ev);
         }
@@ -909,7 +923,8 @@ function onServerMsg(m: ServerMsg): void {
       }
       break;
     case 'error':
-      juice.toast('THE SERVER SAYS NO', m.message, '#ff8a80');
+      if (m.code === 'bad-name') juice.toast('PICK ANOTHER NAME', m.message, '#ff8a80');
+      else juice.toast('THE SERVER SAYS NO', m.message, '#ff8a80');
       if (phase === 'lobby') lobbyUI.setMatchStatus(null);
       break;
     default:
@@ -931,6 +946,7 @@ function onGameMsg(from: number, d: GameMsg): void {
       puppets.set({
         key: 'p' + from, name: p.name, x: d.x, y: d.y, z: d.z, facing: d.facing, alive: d.alive,
         character: Object.prototype.hasOwnProperty.call(CHARACTERS, p.character) ? (p.character as CharacterId) : 'gnorman',
+        color: p.color,
       });
       if (!d.alive && online.humansAlive.get(from)) online.humansAlive.set(from, false);
       break;
@@ -945,7 +961,7 @@ function onGameMsg(from: number, d: GameMsg): void {
     case 'died': {
       if (!online.isHost || online.humansAlive.get(from) === undefined) return;
       online.humansAlive.set(from, false);
-      const ev = { victim: online.players.get(from)?.name ?? '???', cause: d.cause };
+      const ev = { victim: online.players.get(from)?.name ?? '???', cause: d.cause, color: online.players.get(from)?.color };
       royaleHud.feed(ev);
       online.feed.push(ev);
       break;
@@ -958,7 +974,7 @@ function onGameMsg(from: number, d: GameMsg): void {
       for (const [id, name, x, y, z, alive] of d.bots) {
         const key = 'b' + id;
         seen.add(key);
-        puppets.set({ key, name, x, y, z, facing: null, alive: alive === 1, character: null });
+        puppets.set({ key, name, x, y, z, facing: null, alive: alive === 1, character: null, color: null });
       }
       for (const key of puppets.keys()) if (key.startsWith('b') && !seen.has(key)) puppets.remove(key);
       for (const [x, z, tier, by] of d.kills) {
@@ -985,7 +1001,7 @@ function becomeSpectator(): void {
   online.placement = online.isHost ? online.alive + 1 : online.alive;
   const cause = killedByText ?? (killedBy ? MOWER_TIERS[killedBy].name : 'a lawn mower');
   if (online.isHost) {
-    const ev = { victim: myTag, cause };
+    const ev = { victim: save.name, cause, color: online.myColor };
     royaleHud.feed(ev);
     online.feed.push(ev);
   } else {
@@ -1003,17 +1019,13 @@ function hostEndMatch(): void {
   let winnerName = 'NOBODY (the mowers win)';
   if (run.hearts > 0 && !online.spectating) {
     winner = online.me;
-    winnerName = myTag;
+    winnerName = save.name;
   } else {
     for (const [id, a] of online.humansAlive) {
       if (a) {
         winner = id;
         winnerName = online.players.get(id)?.name ?? '???';
       }
-    }
-    if (winner === -1) {
-      const bot = bots.contestants().find((c) => c.alive);
-      if (bot) winnerName = bot.name;
     }
   }
   net?.send(null, { k: 'over', winner, winnerName });
@@ -1055,7 +1067,7 @@ function netTick(dt: number): void {
   if (online.isHost) {
     net.send(null, {
       k: 'snap', t: r2(run.elapsedS), mowers: mowers.snapshot(),
-      bots: bots.contestants().map((c) => [c.id, c.name, r2(c.pos.x), r2(c.pos.y), r2(c.pos.z), c.alive ? 1 : 0]),
+      bots: [],
       kills: online.kills.splice(0), feed: online.feed.splice(0), alive: online.alive, total: online.total,
     });
   } else if (online.hits.length > 0) {

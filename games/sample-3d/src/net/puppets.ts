@@ -55,13 +55,15 @@ export function createPuppetSystem(scene: THREE.Scene): PuppetSystem {
   const puppets = new Map<string, Puppet>();
 
   const build = (s: PuppetState): Puppet => {
-    const model = s.character
-      ? createGnomeModel(CHARACTERS[s.character].look)
-      : (() => {
-          const h = hashName(s.name);
-          return createGnome(HAT_COLORS[h % HAT_COLORS.length], SHIRT_COLORS[(h >>> 4) % SHIRT_COLORS.length]);
-        })();
-    const tag = createNameTag(s.name);
+    const model = s.character && s.color !== null
+      ? createGnomeModel({ ...CHARACTERS[s.character].look, hat: s.color })
+      : s.character
+        ? createGnomeModel(CHARACTERS[s.character].look)
+        : (() => {
+            const h = hashName(s.name);
+            return createGnome(HAT_COLORS[h % HAT_COLORS.length], SHIRT_COLORS[(h >>> 4) % SHIRT_COLORS.length]);
+          })();
+    const tag = createNameTag(s.name, s.color);
     scene.add(model.object);
     scene.add(tag);
     model.object.position.set(s.x, s.y, s.z);

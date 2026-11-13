@@ -99,15 +99,15 @@ test('two players are matched, relay a message, and one leaves', async () => {
   const a = await open();
   const b = await open();
   try {
-    a.send({ t: 'hello', v: 1, name: 'A', character: 'gnorman' });
+    a.send({ t: 'hello', v: 2, name: 'Alpha', character: 'gnorman' });
     const wa = await a.next('welcome');
-    b.send({ t: 'hello', v: 1, name: 'B', character: 'gnorman' });
+    b.send({ t: 'hello', v: 2, name: 'Bravo', character: 'gnorman' });
     const wb = await b.next('welcome');
 
     // A queues first so A is the first joiner and therefore the host.
-    a.send({ t: 'queue', code: 'TEST1', character: 'gnancy' });
+    a.send({ t: 'queue', code: 'TEST1', character: 'gnancy', name: 'Alpha' });
     await a.next('queued');
-    b.send({ t: 'queue', code: 'TEST1', character: 'gnancy' });
+    b.send({ t: 'queue', code: 'TEST1', character: 'gnancy', name: 'Bravo' });
 
     const ma = await a.next('match');
     const mb = await b.next('match');
@@ -116,6 +116,8 @@ test('two players are matched, relay a message, and one leaves', async () => {
     assert.equal(ma.players.length, 2);
     assert.equal(ma.you, wa.id);
     assert.equal(mb.you, wb.id);
+    for (const info of ma.players) assert.equal(typeof info.color, 'number');
+    assert.notEqual(ma.players[0].color, ma.players[1].color);
 
     b.send({ t: 'relay', to: null, d: { k: 'died', cause: 'x' } });
     const r = await a.next('relay');
@@ -137,6 +139,33 @@ test('hello with a wrong protocol version gets an error', async () => {
     c.send({ t: 'hello', v: 999, name: 'X', character: 'gnorman' });
     const err = await c.next('error');
     assert.equal(typeof err.message, 'string');
+  } finally {
+    c.close();
+  }
+});
+
+test('a lone player is not matched', async () => {
+  const a = await open();
+  try {
+    a.send({ t: 'hello', v: 2, name: 'Alpha', character: 'gnorman' });
+    await a.next('welcome');
+    a.send({ t: 'queue', code: 'LONE1', character: 'gnorman', name: 'Alpha' });
+    await a.next('queued');
+    // The test server waits 1 s; a lone player must still not get a match.
+    await assert.rejects(a.next('match'));
+  } finally {
+    a.close();
+  }
+});
+
+test('an offensive name is rejected', async () => {
+  const c = await open();
+  try {
+    c.send({ t: 'hello', v: 2, name: 'Charlie', character: 'gnorman' });
+    await c.next('welcome');
+    c.send({ t: 'queue', code: null, character: 'gnorman', name: 'fuckface' });
+    const err = await c.next('error');
+    assert.equal(err.code, 'bad-name');
   } finally {
     c.close();
   }

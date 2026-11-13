@@ -1,13 +1,13 @@
 // Matchmaking and relay logic. No sockets and no timers here, so it can be tested directly:
 // index.ts owns the sockets and calls tick() once a second.
-import { MAX_PLAYERS, PROTOCOL_VERSION, ROOM_CODE_RE } from '../../src/net/protocol';
+import { MAX_PLAYERS, MIN_PLAYERS, PLAYER_COLORS, PROTOCOL_VERSION, ROOM_CODE_RE } from '../../src/net/protocol';
 import type { GameMsg, PlayerInfo, ServerMsg } from '../../src/net/protocol';
+import { checkName } from '../../src/net/textFilter';
 
 export interface Conn { readonly id: number; send(msg: ServerMsg): void; close(): void }
 export interface MatchmakerOptions { publicWaitS: number; privateWaitS: number; now: () => number /* ms */; random: () => number }
 
 const MATCH_MAX_MS = 30 * 60 * 1000;
-const CONTROL_RE = /[\u0000-\u001f\u007f]/g;
 
 interface Player {
   id: number;
@@ -35,12 +35,6 @@ interface Match {
 
 function isObj(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-function cleanName(raw: unknown, id: number): string {
-  const s = typeof raw === 'string' ? raw.replace(CONTROL_RE, '').trim() : '';
-  const cut = Array.from(s).slice(0, 18).join('');
-  return cut === '' ? `Gnome${id}` : cut;
 }
 
 function cleanCharacter(raw: unknown): string {
@@ -88,7 +82,11 @@ export class Matchmaker {
   tick(): void {
     const now = this.opts.now();
     for (const g of [...this.groups.values()]) {
-      if (now - g.firstAt >= this.waitS(g) * 1000) this.start(g);
+      if (g.members.length < MIN_PLAYERS) {
+        // A lone player keeps waiting; the countdown restarts when the second player arrives.
+        g.firstAt = now;
+        this.sendQueued(g);
+      } else if (now - g.firstAt >= this.waitS(g) * 1000) this.start(g);
       else this.sendQueued(g);
     }
     for (const m of [...this.matches.values()]) {
@@ -131,7 +129,8 @@ export class Matchmaker {
       return;
     }
     p.hello = true;
-    p.name = cleanName(msg.name, p.id);
+    const c = checkName(msg.name);
+    p.name = c.ok ? c.name : `Gnome${p.id}`;
     p.character = cleanCharacter(msg.character);
     p.conn.send({ t: 'welcome', id: p.id });
   }
@@ -149,6 +148,12 @@ export class Matchmaker {
       p.conn.send({ t: 'error', message: 'Room codes are 4-8 letters or digits.' });
       return;
     }
+    const c = checkName(msg.name);
+    if (!c.ok) {
+      p.conn.send({ t: 'error', message: c.reason, code: 'bad-name' });
+      return;
+    }
+    p.name = c.name;
 
     this.leave(p);
     const key = code ?? '';
@@ -159,6 +164,7 @@ export class Matchmaker {
     }
     group.members.push(p.id);
     p.group = key;
+    if (group.members.length === MIN_PLAYERS) group.firstAt = this.opts.now();
     if (group.members.length >= MAX_PLAYERS) this.start(group);
     else this.sendQueued(group);
   }
@@ -212,16 +218,23 @@ export class Matchmaker {
   }
 
   private start(g: Group): void {
+    if (g.members.length < MIN_PLAYERS) return;
     this.groups.delete(g.key);
     const now = this.opts.now();
     const matchId = Array.from({ length: 8 }, () => Math.floor(this.opts.random() * 16).toString(16)).join('');
     const seed = Math.floor(this.opts.random() * 4294967296);
     const hostId = g.members[0];
-    const infos: PlayerInfo[] = [];
-    for (const id of g.members) {
-      const p = this.players.get(id);
-      if (p) infos.push({ id, name: p.name, character: p.character });
+    // Fisher-Yates shuffle of the palette: each player of the match gets a different colour.
+    const palette = [...PLAYER_COLORS];
+    for (let i = palette.length - 1; i > 0; i--) {
+      const j = Math.floor(this.opts.random() * (i + 1));
+      [palette[i], palette[j]] = [palette[j], palette[i]];
     }
+    const infos: PlayerInfo[] = [];
+    g.members.forEach((id, i) => {
+      const p = this.players.get(id);
+      if (p) infos.push({ id, name: p.name, character: p.character, color: palette[i % palette.length] });
+    });
     this.matches.set(matchId, { id: matchId, hostId, startedAt: now, members: [...g.members] });
     for (const id of g.members) {
       const p = this.players.get(id);

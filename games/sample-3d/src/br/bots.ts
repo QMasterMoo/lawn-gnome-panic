@@ -9,6 +9,7 @@ import type {
 import { createGnome } from '../gnome';
 import { createPlayerState, updatePlayer } from '../player';
 import { generateGamertags } from './names';
+import { colorCss, colorRgba } from '../ui/nameStyle';
 
 const HAT_COLORS = [0xd93636, 0x8e24aa, 0x1e88e5, 0x43a047, 0xfb8c00, 0xfdd835, 0x00acc1, 0xec407a, 0x6d4c41, 0x212121];
 const SHIRT_COLORS = [0x2f64c9, 0xc62828, 0x2e7d32, 0x6a1b9a, 0xef6c00, 0x455a64, 0xad1457, 0x00838f];
@@ -79,27 +80,45 @@ function findSpawnSpot(center: THREE.Vector3, avoid: THREE.Vector3): { x: number
   return spot;
 }
 
-/** Name tag: a dark rounded pill with white bold text, drawn to a canvas texture. */
-export function createNameTag(name: string): THREE.Sprite {
+/** Name tag: a dark rounded pill with white bold text, drawn to a canvas texture.
+ *  With a colour: a darker chip with a coloured outline and coloured text. */
+export function createNameTag(name: string, color: number | null = null): THREE.Sprite {
   const w = 256;
   const h = 48;
-  const r = 12;
+  const r = color === null ? 12 : 4;
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const g = canvas.getContext('2d');
   if (g) {
-    g.beginPath();
-    g.moveTo(r, 0);
-    g.arcTo(w, 0, w, h, r);
-    g.arcTo(w, h, 0, h, r);
-    g.arcTo(0, h, 0, 0, r);
-    g.arcTo(0, 0, w, 0, r);
-    g.closePath();
-    g.fillStyle = 'rgba(0,0,0,0.55)';
-    g.fill();
+    const path = (inset: number, radius: number): void => {
+      const x0 = inset;
+      const y0 = inset;
+      const x1 = w - inset;
+      const y1 = h - inset;
+      g.beginPath();
+      g.moveTo(x0 + radius, y0);
+      g.arcTo(x1, y0, x1, y1, radius);
+      g.arcTo(x1, y1, x0, y1, radius);
+      g.arcTo(x0, y1, x0, y0, radius);
+      g.arcTo(x0, y0, x1, y0, radius);
+      g.closePath();
+    };
+    if (color === null) {
+      path(0, r);
+      g.fillStyle = 'rgba(0,0,0,0.55)';
+      g.fill();
+    } else {
+      path(0, r);
+      g.fillStyle = 'rgba(0,0,0,0.7)';
+      g.fill();
+      path(1.5, r);
+      g.lineWidth = 3;
+      g.strokeStyle = colorRgba(color, 0.55);
+      g.stroke();
+    }
     g.font = 'bold 26px sans-serif';
-    g.fillStyle = '#ffffff';
+    g.fillStyle = color === null ? '#ffffff' : colorCss(color);
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillText(name, w / 2, h / 2 + 1, w - 16);

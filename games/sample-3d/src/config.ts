@@ -380,6 +380,7 @@ export const LOCKED_CHARACTER_NAMES: readonly string[] = ['GNOAH', 'SIR GNOMESAL
 
 export interface MetaSave {
   version: 1;
+  name: string;              // online display name, passed checkName()
   character: CharacterId;    // the selected character
   levelsUnlocked: number;    // solo levels available in the lobby (1..SOLO_LEVELS.length)
   acorns: number;            // bankable currency
@@ -882,6 +883,8 @@ export interface LobbyCallbacks {
   onFindMatch(code: string | null): void;
   /** Cancel button while searching. */
   onLeaveMatch(): void;
+  /** The name field changed to a name that passed checkName(); the argument is the cleaned name. */
+  onSetName(name: string): void;
 }
 
 export interface LobbyUI {
@@ -961,6 +964,7 @@ export interface Contestant {
 export interface KillEvent {
   victim: string;
   cause: string; // e.g. 'a Red Mower (the fast one)' or 'THE MOW ZONE'
+  color?: number; // victim's player colour (online); absent = default feed style
 }
 
 export interface ZoneState {
@@ -1160,6 +1164,7 @@ export interface PuppetState {
   facing: number | null;    // null = face the direction of movement (bots)
   alive: boolean;
   character: CharacterId | null; // null = bot: hat and shirt colours picked from a hash of the name
+  color: number | null;     // player colour (PLAYER_COLORS): hat and name tag; null = default look
 }
 
 export interface PuppetSystem {
@@ -1180,7 +1185,7 @@ export interface NetClient {
   readonly connected: boolean;
   /** Opens the socket (if not open) and sends hello. Resolves on 'welcome'; rejects if it cannot connect. */
   connect(): Promise<void>;
-  queue(code: string | null, character: string): void;
+  queue(code: string | null, character: string, name: string): void;
   leave(): void;
   send(to: number | null, d: GameMsg): void;
   /** Every server message, including 'welcome'. Called after connect() resolves too. */

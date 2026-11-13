@@ -6,10 +6,21 @@
 // Everyone runs their own gnome and weapons and reports hits on mowers to the host.
 // All messages are JSON text frames.
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
-/** Gnomes per match; empty slots are filled with bots by the host. */
+/** Gnomes per match. Online matches are humans only (no bots). */
 export const MAX_PLAYERS = 20;
+/** A match never starts with fewer players than this; a lone player keeps waiting. */
+export const MIN_PLAYERS = 2;
+/**
+ * Player colours (0xRRGGBB). The server gives each player of a match a different one, at random.
+ * All are light enough to read on a dark backing; names and chat are always drawn on one
+ * (see src/ui/nameStyle.ts), so they stay readable over any part of the world.
+ */
+export const PLAYER_COLORS: readonly number[] = [
+  0xff5a5a, 0xff9a3c, 0xffd54f, 0xc6ff4a, 0x5cff7a, 0x3df5c8, 0x4fd8ff, 0x6fa8ff, 0xa98bff, 0xe07cff,
+  0xff6fd0, 0xff8fa3, 0xffb38a, 0xe8e070, 0x9be08a, 0x8ae6e6, 0xb0c8ff, 0xd9b3ff, 0xffffff, 0xc9a27a,
+];
 /** A public match starts this long after its first player queued, or as soon as it is full. */
 export const PUBLIC_FILL_WAIT_S = 15;
 /** A private (room code) match waits longer, so friends have time to type the code. */
@@ -21,15 +32,16 @@ export const ROOM_CODE_RE = /^[A-Z0-9]{4,8}$/;
 
 export interface PlayerInfo {
   id: number;        // assigned by the server, unique while it runs
-  name: string;      // gamertag, at most 18 characters
+  name: string;      // display name, passed checkName() in src/net/textFilter.ts
   character: string; // CharacterId ('gnorman' | 'gnancy'); unknown values render as gnorman
+  color: number;     // one of PLAYER_COLORS, unique within the match
 }
 
 // ---------------------------------------------------------------- client -> server
 export type ClientMsg =
   | { t: 'hello'; v: number; name: string; character: string }
-  /** Join matchmaking. code null = public queue; else a private room code matching ROOM_CODE_RE. character replaces hello's. */
-  | { t: 'queue'; code: string | null; character: string }
+  /** Join matchmaking. code null = public queue; else a private room code matching ROOM_CODE_RE. name and character replace hello's. */
+  | { t: 'queue'; code: string | null; character: string; name: string }
   /** Leave the queue or the current match. */
   | { t: 'leave' }
   /** Forward d to one player of my match (to = their id) or to every other player (to = null). */
@@ -47,12 +59,13 @@ export type ServerMsg =
   | { t: 'left'; id: number }
   /** Your match or queue is over: the host left, or the server is restarting for an update. */
   | { t: 'ended'; reason: string }
-  | { t: 'error'; message: string };
+  /** code 'bad-name': the name failed checkName(); the player was not queued. */
+  | { t: 'error'; message: string; code?: 'bad-name' };
 
 // ---------------------------------------------------------------- game messages (opaque to the server)
 /** [id, tier, x, y, z, heading, hp, maxHp]. Numbers rounded to 2 decimals. tier is a MowerTier string. */
 export type MowerSnap = [number, string, number, number, number, number, number, number];
-/** [botId, name, x, y, z, alive 1|0]. Bots only; humans send their own 'me'. */
+/** [botId, name, x, y, z, alive 1|0]. Unused since online went humans-only (bots stays []). */
 export type BotSnap = [number, string, number, number, number, 0 | 1];
 /** [x, z, tier, by]: a mower died. by = id of the player whose hit killed it, -1 for a bot or unknown. */
 export type KillSnap = [number, number, string, number];
@@ -61,7 +74,7 @@ export type GameMsg =
   /** Host -> all, NET_SEND_HZ. t = match clock (s). kills and feed hold only what happened since the last snap. */
   | {
       k: 'snap'; t: number; mowers: MowerSnap[]; bots: BotSnap[]; kills: KillSnap[];
-      feed: { victim: string; cause: string }[]; alive: number; total: number;
+      feed: { victim: string; cause: string; color?: number }[]; alive: number; total: number;
     }
   /** Every player -> all, NET_SEND_HZ: where my gnome is. */
   | { k: 'me'; x: number; y: number; z: number; facing: number; alive: boolean }
@@ -69,5 +82,5 @@ export type GameMsg =
   | { k: 'hits'; list: [number, number, number, number][] }
   /** Client -> host: I died. cause is a KillEvent cause string. */
   | { k: 'died'; cause: string }
-  /** Host -> all: the match is over. winner = player id, or -1 when a bot won. */
+  /** Host -> all: the match is over. winner = player id, or -1 when nobody survived. */
   | { k: 'over'; winner: number; winnerName: string };
