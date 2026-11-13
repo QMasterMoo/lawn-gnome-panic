@@ -162,6 +162,11 @@ export function createPuppetSystem(scene: THREE.Scene): PuppetSystem {
       return out;
     },
 
+    position(key: string): THREE.Vector3 | null {
+      const p = puppets.get(key);
+      return p && p.alive ? p.state.position : null;
+    },
+
     reset(): void {
       for (const key of [...puppets.keys()]) this.remove(key);
     },

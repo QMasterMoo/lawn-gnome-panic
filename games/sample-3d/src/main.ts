@@ -33,6 +33,7 @@ import { createDayNight } from './daynight';
 import { buildScenery } from './scenery';
 import { createItemSystem } from './items';
 import { createChat } from './ui/chat';
+import { createSpectateBar } from './ui/spectate';
 import { createJuice } from './juice';
 import { createBotSystem } from './br/bots';
 import { createZone } from './br/zone';
@@ -154,6 +155,7 @@ function pauseGame(): void {
   touch.setVisible(false);
   viewBtn.hide();
   pauseBtn.hide();
+  spectateBar.hide();
   setEngineLevel(0);
   pauseUI.show({
     mode,
@@ -181,6 +183,7 @@ function resumeGame(): void {
   touch.setVisible(true);
   viewBtn.show();
   pauseBtn.show();
+  if (online?.spectating && !online.over) spectateBar.show();
 }
 
 function quitRun(): void {
@@ -212,7 +215,8 @@ const VIEW_NAMES = { third: 'THIRD PERSON', first: 'FIRST PERSON', top: 'TOP-DOW
 /** P or the top-right button: third person -> first person -> top-down. */
 function cycleView(): void {
   if (phase !== 'playing') return;
-  const next = CAMERA_VIEWS[(CAMERA_VIEWS.indexOf(rig.view) + 1) % CAMERA_VIEWS.length];
+  let next = CAMERA_VIEWS[(CAMERA_VIEWS.indexOf(rig.view) + 1) % CAMERA_VIEWS.length];
+  if (next === 'first' && online?.spectating) next = CAMERA_VIEWS[(CAMERA_VIEWS.indexOf(next) + 1) % CAMERA_VIEWS.length];
   rig.view = next;
   flags.view = next;
   saveFlags(flags);
@@ -319,6 +323,7 @@ function clearWeapons(): void {
 }
 
 function clearField(): void {
+  spectateBar.hide();
   clearWeapons();
   mowers.reset();
   drops.reset();
@@ -460,6 +465,7 @@ function onReroll(): void {
 
 function endRun(victory: boolean): void {
   phase = 'results';
+  spectateBar.hide();
   levelUp.hide();
   pauseUI.hide();
   viewBtn.hide();
@@ -891,6 +897,8 @@ function startOnline(m: Extract<ServerMsg, { t: 'match' }>): void {
   };
   setPlayerCharacter(save.character, myColor);
   startRun('royale', 1);
+  // Test hook: ?die drops my hearts to 0 two seconds in, to try spectating.
+  if (new URLSearchParams(location.search).has('die')) setTimeout(() => { if (phase === 'playing') run.hearts = 0; }, 2000);
 }
 
 function onServerMsg(m: ServerMsg): void {
@@ -1034,7 +1042,92 @@ function becomeSpectator(): void {
   }
   gnome.setDead(true);
   playSfx('hit');
-  hud.banner(`YOU PLACED #${online.placement}`, 'Spectating. The match goes on without you, as matches do. (Esc to leave.)', 4);
+  hud.banner(`YOU PLACED #${online.placement}`, 'Spectating. A/D switches gnomes, F flies a free camera. (Esc for the menu.)', 4);
+  specPos.copy(player.position);
+  specKey = null;
+  specFree = false;
+  specStep(1);
+  if (rig.view === 'first') rig.view = 'third';
+  spectateBar.show();
+}
+
+// ---------- spectating (online, after my gnome died) ----------
+const SPEC_FREE_SPEED = 14;    // free camera, units per second (x2.5 with sprint)
+const SPEC_FREE_RADIUS = 260;  // free camera stays within this distance of the lawn's centre
+let specKey: string | null = null; // puppet key being followed ('p<id>')
+let specFree = false;
+const specPos = new THREE.Vector3();
+
+/** Other players whose gnome is still alive, in join order. */
+function specCandidates(): { key: string; name: string; color: number }[] {
+  const out: { key: string; name: string; color: number }[] = [];
+  if (!online) return out;
+  for (const id of online.order) {
+    if (id === online.me) continue;
+    const key = 'p' + id;
+    if (!puppets.position(key)) continue;
+    const info = online.players.get(id);
+    out.push({ key, name: info?.name ?? '???', color: info?.color ?? 0xffffff });
+  }
+  return out;
+}
+
+/** Follow the next (dir 1) or previous (dir -1) living player; free camera when nobody is left. */
+function specStep(dir: number): void {
+  const list = specCandidates();
+  if (list.length === 0) {
+    specKey = null;
+    specFree = true;
+    return;
+  }
+  const i = list.findIndex((c) => c.key === specKey);
+  const next = i < 0 ? (dir >= 0 ? 0 : list.length - 1) : (i + dir + list.length) % list.length;
+  specKey = list[next].key;
+  specFree = false;
+}
+
+function toggleSpecFree(): void {
+  if (specFree) specStep(1);
+  else specFree = true;
+}
+
+const spectateBar = createSpectateBar(uiRoot, {
+  onPrev: () => specStep(-1),
+  onNext: () => specStep(1),
+  onToggleFree: toggleSpecFree,
+});
+
+window.addEventListener('keydown', (e) => {
+  if (!online?.spectating || online.over || phase !== 'playing' || e.repeat) return;
+  if (e.code === 'KeyF') toggleSpecFree();
+  else if (specFree) return;
+  else if (e.code === 'KeyA' || e.code === 'ArrowLeft') specStep(-1);
+  else if (e.code === 'KeyD' || e.code === 'ArrowRight' || e.code === 'Space') specStep(1);
+});
+
+/** The point the camera orbits while spectating: the followed gnome, or the free camera. */
+function spectateFocus(dt: number, inp: InputState): THREE.Vector3 {
+  if (!specFree) {
+    let pos = specKey ? puppets.position(specKey) : null;
+    if (!pos) {
+      specStep(1); // they died or left: move on
+      pos = specKey ? puppets.position(specKey) : null;
+    }
+    if (pos) specPos.lerp(pos, 1 - Math.exp(-8 * dt));
+  }
+  if (specFree) {
+    const fx = Math.sin(rig.yaw);
+    const fz = Math.cos(rig.yaw);
+    const step = SPEC_FREE_SPEED * (inp.sprint ? 2.5 : 1) * dt;
+    specPos.x += (fx * inp.moveY - fz * inp.moveX) * step;
+    specPos.z += (fz * inp.moveY + fx * inp.moveX) * step;
+    const r = Math.hypot(specPos.x, specPos.z);
+    if (r > SPEC_FREE_RADIUS) specPos.multiplyScalar(SPEC_FREE_RADIUS / r);
+    specPos.y = heightAt(specPos.x, specPos.z);
+  }
+  const t = specFree ? undefined : specCandidates().find((c) => c.key === specKey);
+  spectateBar.set(t ? { name: t.name, color: t.color } : null, online?.alive ?? 0);
+  return specPos;
 }
 
 /** Host: one gnome (or none) left. */
@@ -1153,17 +1246,20 @@ renderer.setAnimationLoop(() => {
   if (online && !online.over) netTick(dt);
   puppets.update(dt);
 
+  let focus = player.position;
   if (phase === 'lobby') {
     player.facing += dt * 0.5;
     lobbyStage.update(dt);
     camera.position.set(0.9, 1.25, 4.2);
     camera.lookAt(0.9, 0.85, 0);
   } else {
-    rig.update(player.position, phase === 'playing' ? inp : NO_INPUT, dt);
+    const camInp = phase === 'playing' ? inp : NO_INPUT;
+    if (online?.spectating && !online.over) focus = spectateFocus(dt, camInp);
+    rig.update(focus, camInp, dt);
   }
 
   juice.update(dt, camera, phase === 'playing' ? items.active() : []);
-  cullProps(dt, player.position);
+  cullProps(dt, focus);
   gnome.update(player, dt);
   // Apply the time of day to everything that is lit or coloured by it.
   const dnState = dayNight.state();
@@ -1174,7 +1270,7 @@ renderer.setAnimationLoop(() => {
   houseLights.setNight(dnState.night01);
   mowers.setNight(dnState.night01);
   world.setShadowRange(phase === 'playing' && rig.view === 'top' ? 80 : 35);
-  world.update(dt, player.position);
-  scenery.update(dt, player.position);
+  world.update(dt, focus);
+  scenery.update(dt, focus);
   postfx.render(dt);
 });
