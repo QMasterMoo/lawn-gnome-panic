@@ -11,9 +11,11 @@
  *   chunk and a failed load just means no music. Every call is wrapped in try/catch: music must
  *   never break the game. It uses its own AudioContext, separate from the SFX in audio.ts.
  *
- * - No samples. The real Amen break is not CC0, which repo rules forbid (docs/assets.md), so the kit is
- *   synthesized (MembraneSynth kick, noise + membrane snare, high-passed noise hats). The Amen is used only
- *   as a rhythm template (AMEN_A / AMEN_B: its first and fourth bars as 16th-note slices).
+ * - No samples. The classic breaks are not CC0, which repo rules forbid (docs/assets.md), so the kit is
+ *   synthesized (MembraneSynth kick, pink noise + membrane snare, high-passed noise hats). The breaks
+ *   (Amen, Think, Funky Drummer, Apache) are used only as rhythm templates: 2-bar, 16th-note grids in
+ *   BREAKS, transcribed by hand and approximate. Each run picks a main break for A/C and a different
+ *   one for B. The snare is pink noise, band-limited to 900 Hz to 4.5 kHz, after white noise sounded too bright.
  *
  * - Chopping was first fully random every bar, which played back as "too random". Now each run
  *   chops a handful of bars once and repeats them. Swaps keep the downbeat and backbeat, and only
@@ -49,21 +51,53 @@ type Tone = typeof ToneNS;
 /** One 16th-note slice of the break. g = ghost snare, o = open hat. */
 interface Slice { k?: 1; s?: 1; g?: 1; h?: 1; o?: 1 }
 
-// The Amen's first bar as a rhythm template (kick, snare, ghost notes, 8th-note ride/hat).
-const AMEN_A: Slice[] = [
-  { k: 1, h: 1 }, {}, { k: 1, h: 1 }, {},
-  { s: 1, h: 1 }, {}, { h: 1 }, { s: 1 },
-  { h: 1 }, { s: 1 }, { k: 1, h: 1 }, { k: 1 },
-  { s: 1, h: 1 }, {}, { h: 1 }, { s: 1 },
+/**
+ * A 2-bar break from text rows, 32 steps each ('x' = hit). Rows: k kick, s snare, g ghost snare,
+ * h closed hat/ride, o open hat. Blank rows mean "none".
+ */
+function grid(rows: Partial<Record<keyof Slice, string>>): Slice[] {
+  const out: Slice[] = Array.from({ length: 32 }, () => ({}));
+  for (const [key, row] of Object.entries(rows) as [keyof Slice, string][]) {
+    const r = row.replace(/[ |]/g, '');
+    for (let i = 0; i < 32; i++) if (r[i] === 'x') out[i][key] = 1;
+  }
+  return out;
+}
+
+/**
+ * Classic breaks as rhythm templates only (hand-transcribed, approximate; no audio is used).
+ * Each is 2 bars: an A bar and a variation bar that is good chop material.
+ */
+interface Break { name: string; steps: Slice[] }
+const BREAKS: Break[] = [
+  { name: 'Amen', steps: grid({ // The Winstons: bars 1 and 4
+    k: 'x.x.......xx.... | x.x........x..x.',
+    s: '....x..x.x..x..x | ....x..x.x...x..',
+    g: '................ | ...............x',
+    h: 'x.x.x.x.x.x.x.x. | x.x.x.x.x.x.x.x.',
+    o: '................ | ..........x.....',
+  }) },
+  { name: 'Think', steps: grid({ // Lyn Collins: busy kick, open hat lifts
+    k: 'x......x..x..... | x..x..x...x.....',
+    s: '....x.......x... | ....x..x....x...',
+    g: '..........x....x | .........x.....x',
+    h: 'x.x.x.x.x.x.x.x. | x.x.x.x.x.x.x...',
+    o: '......x......... | ..............x.',
+  }) },
+  { name: 'Funky Drummer', steps: grid({ // James Brown: 16th hats, ghost-note shuffle
+    k: 'x.x.......x..x.. | x.x.......x.....',
+    s: '....x.......x... | ....x.......x...',
+    g: '.......x.x.....x | .x.....x.x.x...x',
+    h: 'xxxxxx.xxxxxxxxx | xxxxxx.xxxxxxx.x',
+    o: '......x......... | ......x.......x.',
+  }) },
+  { name: 'Apache', steps: grid({ // Incredible Bongo Band: rolling, swung feel
+    k: 'x.....x...x..... | x.....x.x.x.....',
+    s: '....x.......x... | ....x.......x.x.',
+    g: '..x.......x..... | .......x.......x',
+    h: 'x.x.x.x.x.x.x.x. | x.x.x.x.x.x.x.x.',
+  }) },
 ];
-// The fourth bar, where the kick drops out late and the snare pushes: good chop material.
-const AMEN_B: Slice[] = [
-  { k: 1, h: 1 }, {}, { k: 1, h: 1 }, {},
-  { s: 1, h: 1 }, {}, { h: 1 }, { s: 1 },
-  { h: 1 }, { s: 1 }, { h: 1, o: 1 }, { k: 1 },
-  { h: 1 }, { s: 1 }, { k: 1, h: 1 }, { g: 1 },
-];
-const SOURCE = [...AMEN_A, ...AMEN_B];
 
 // ----- harmony: chord-memory style presets in minor modes -----
 // Scale steps of each mode, in semitones from the tonic.
@@ -132,14 +166,14 @@ function mulberry32(seed: number): () => number {
  * One chopped bar from the 2-bar source. `amount` is the chance each 8th gets swapped.
  * Swaps only take a slice from the same spot in the beat, so the groove keeps its shape.
  */
-function chopBar(rnd: () => number, sourceBar: 0 | 1, amount: number): Slice[] {
+function chopBar(rnd: () => number, source: Slice[], sourceBar: 0 | 1, amount: number): Slice[] {
   const out: Slice[] = [];
   for (let eighth = 0; eighth < 8; eighth++) {
     let src = eighth + sourceBar * 8;
     // Downbeat and backbeat stay put; elsewhere swap with the same 8th of a random beat.
     if (eighth !== 0 && eighth !== 2 && rnd() < amount) src = (eighth % 2) + 2 * Math.floor(rnd() * 8);
-    const a = SOURCE[src * 2];
-    const b = SOURCE[src * 2 + 1];
+    const a = source[src * 2];
+    const b = source[src * 2 + 1];
     if (eighth >= 6 && rnd() < amount * 0.3) out.push(a, a); // occasional stutter, late in the bar
     else out.push(a, b);
   }
@@ -231,8 +265,9 @@ function build(T: Tone, seed: number): void {
   const kick = keep(new T.MembraneSynth({ pitchDecay: 0.03, octaves: 6, envelope: { attack: 0.001, decay: 0.25, sustain: 0, release: 0.05 } })).connect(grit);
   const snareBody = keep(new T.MembraneSynth({ pitchDecay: 0.01, octaves: 2, envelope: { attack: 0.001, decay: 0.08, sustain: 0, release: 0.02 } })).connect(grit);
   snareBody.volume.value = -9;
-  const snareHp = keep(new T.Filter(1200, 'highpass')).fan(grit, snareRoomSend, throwSend);
-  const snare = keep(new T.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.14, sustain: 0, release: 0.03 } })).connect(snareHp);
+  const snareHp = keep(new T.Filter(900, 'highpass')).fan(grit, snareRoomSend, throwSend);
+  const snareLp = keep(new T.Filter(4500, 'lowpass')).connect(snareHp); // keeps the snare from sounding fizzy
+  const snare = keep(new T.NoiseSynth({ noise: { type: 'pink' }, envelope: { attack: 0.001, decay: 0.14, sustain: 0, release: 0.03 } })).connect(snareLp);
   snare.volume.value = -7;
   const hatHp = keep(new T.Filter(7000, 'highpass')).connect(drumBus);
   const hat = keep(new T.NoiseSynth({ noise: { type: 'white' }, envelope: { attack: 0.001, decay: 0.035, sustain: 0, release: 0.01 } })).connect(hatHp);
@@ -265,7 +300,7 @@ function build(T: Tone, seed: number): void {
   const root = 33 + Math.floor(rnd() * 12); // tonic, A1..G#2
   const preset = pick(PRESETS);
   const mode = MODES[preset.mode];
-  console.info(`[music] ${preset.name} in ${NOTE_NAMES[root % 12]} ${preset.mode}, ${transport.bpm.value} bpm`);
+  console.info(`[music] ${preset.name} in ${NOTE_NAMES[root % 12]} ${preset.mode}, ${Math.round(transport.bpm.value)} bpm`);
   // Pre-voice every chord of both progressions once, voice-leading through the whole loop.
   const voiceProg = (prog: number[], size: number, center: number): number[][] => {
     let prev: number[] | null = null;
@@ -287,10 +322,16 @@ function build(T: Tone, seed: number): void {
   const stabB = pick(stabRhythms);
   const chordBars = 2;
 
-  // Break bars: A chops lightly, B harder, C rebuilds from the straight break.
-  const straight = [chopBar(rnd, 0, 0), chopBar(rnd, 1, 0)];
-  const drumsA = [chopBar(rnd, 0, 0.15), chopBar(rnd, 1, 0.2), chopBar(rnd, 0, 0.15), chopBar(rnd, 1, 0.3)];
-  const drumsB = [chopBar(rnd, 0, 0.35), chopBar(rnd, 1, 0.4), chopBar(rnd, 0, 0.35), chopBar(rnd, 1, 0.5)];
+  // Break bars: A (and C) chop the main break lightly; B switches to a second break, chopped harder.
+  // Jungle tracks often swap breaks between sections, so B gets its own.
+  const mainIdx = Math.floor(rnd() * BREAKS.length);
+  const mainBreak = BREAKS[mainIdx].steps;
+  const altBreak = BREAKS[(mainIdx + 1 + Math.floor(rnd() * (BREAKS.length - 1))) % BREAKS.length];
+  const alt = altBreak.steps;
+  const straight = [chopBar(rnd, mainBreak, 0, 0), chopBar(rnd, mainBreak, 1, 0)];
+  const drumsA = [chopBar(rnd, mainBreak, 0, 0.15), chopBar(rnd, mainBreak, 1, 0.2), chopBar(rnd, mainBreak, 0, 0.15), chopBar(rnd, mainBreak, 1, 0.3)];
+  const drumsB = [chopBar(rnd, alt, 0, 0.35), chopBar(rnd, alt, 1, 0.4), chopBar(rnd, alt, 0, 0.35), chopBar(rnd, alt, 1, 0.5)];
+  console.info(`[music] breaks: ${BREAKS[mainIdx].name} (A/C), ${altBreak.name} (B)`);
   const fillA = withFill(rnd, drumsA[3]);
   const fillB = withFill(rnd, drumsB[3]);
 
