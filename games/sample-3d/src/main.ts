@@ -42,6 +42,7 @@ import { createViewButton } from './ui/viewButton';
 import { createPauseButton } from './ui/pauseButton';
 import { createPauseUI } from './ui/pause';
 import { createNetClient, serverUrl } from './net/client';
+import { listenForCheat } from './cheat';
 import { initTelemetry, track } from './telemetry';
 import { createPuppetSystem } from './net/puppets';
 import { checkName } from './net/textFilter';
@@ -189,6 +190,12 @@ function resumeGame(): void {
 
 function quitRun(): void {
   if (phase !== 'paused') return;
+  if (sandbox) {
+    // Nothing to score: straight back to the lobby.
+    pauseUI.hide();
+    goLobby();
+    return;
+  }
   if (online) {
     finishOnline('GIVING UP (it happens)');
     return;
@@ -300,6 +307,7 @@ let zoneDmgTimer = 0;
 let killedByText: string | null = null;
 let celebrateS = 0;
 let bestToastDone = false;
+let sandbox = false;        // the ihategrass cheat: sand, obstacles, nothing else
 
 const NO_INPUT: InputState = { moveX: 0, moveY: 0, jump: false, sprint: false, start: false, lookX: 0, lookY: 0 };
 
@@ -344,6 +352,8 @@ function clearField(): void {
 // ---------- phases ----------
 function goLobby(): void {
   phase = 'lobby';
+  sandbox = false;
+  world.setSand(false);
   if (online) {
     net?.leave();
     online = null;
@@ -427,6 +437,46 @@ function startRun(m: GameMode = 'solo', level = 1): void {
   input.setPointerLockAllowed(true);
   touch.setVisible(true);
   playSfx('start');
+}
+
+/** The ihategrass cheat: a solo walk on sand among the obstacles. No mowers, acorns, items, weapons or HUD. */
+function startSandbox(): void {
+  if (phase !== 'lobby' || online || queueing) return;
+  sandbox = true;
+  mode = 'solo';
+  dayNight.setTime(TUNING.dayStartT);
+  lastDayPhase = dayNight.state().phase;
+  lobbyUI.hide();
+  lobbyStage.setVisible(false);
+  clearField();
+  world.setSand(true);
+  run = createRun(save);
+  stats = computeStats(save, run);
+  player = createPlayerState(stats);
+  pendingLevelUps = 0;
+  victoryTimer = -1;
+  espressoS = 0;
+  celebrateS = 0;
+  rig.view = flags.view;
+  rig.reset(0);
+  viewBtn.setView(flags.view);
+  viewBtn.show();
+  pauseBtn.show();
+  hud.hide();
+  juice.toast('I HATE GRASS', 'No grass. No mowers. No acorns. Just sand. (Esc to leave.)', '#d9c18c');
+  phase = 'playing';
+  input.setPointerLockAllowed(true);
+  touch.setVisible(true);
+  playSfx('start');
+}
+listenForCheat('ihategrass', startSandbox);
+
+function tickSandbox(dt: number, inp: InputState): void {
+  dayNight.update(dt);
+  const { jumped } = updatePlayer(player, inp, rig.yaw, OBSTACLES, stats, dt);
+  if (jumped) playSfx('jump');
+  gnome.object.visible = rig.view !== 'first';
+  setEngineLevel(0);
 }
 
 function openLevelUp(): void {
@@ -573,6 +623,10 @@ function applyItem(kind: ItemKind): void {
 
 function tickRun(dt: number, inp: InputState): void {
   run.elapsedS += dt;
+  if (sandbox) {
+    tickSandbox(dt, inp);
+    return;
+  }
   // Online: sim = this browser runs the world (host); sp = my gnome is dead and I am watching.
   const sim = !online || online.isHost;
   const sp = online?.spectating ?? false;

@@ -87,12 +87,26 @@ export function buildWorld(scene: THREE.Scene): World {
   grassTex.colorSpace = THREE.SRGBColorSpace;
   grassTex.anisotropy = 8;
 
+  // Sand (the ihategrass cheat): same tiling, warm beige with darker and lighter grains.
+  const SAND = 0xd9c18c;
+  const sandCtx = make2d(TILE_PX, TILE_PX);
+  sandCtx.fillStyle = hex(SAND);
+  sandCtx.fillRect(0, 0, TILE_PX, TILE_PX);
+  for (let i = 0; i < 5000; i++) {
+    sandCtx.fillStyle = shade(SAND, 0.85 + Math.random() * 0.3);
+    sandCtx.fillRect(Math.floor(Math.random() * (TILE_PX - 2)), Math.floor(Math.random() * (TILE_PX - 2)), 1 + Math.round(Math.random()), 1);
+  }
+  const sandTex = new THREE.CanvasTexture(sandCtx.canvas);
+  sandTex.wrapS = THREE.RepeatWrapping;
+  sandTex.wrapT = THREE.RepeatWrapping;
+  sandTex.repeat.copy(grassTex.repeat);
+  sandTex.colorSpace = THREE.SRGBColorSpace;
+  sandTex.anisotropy = 8;
+
   const lawnGeo = new THREE.PlaneGeometry(LAWN_SIZE, LAWN_SIZE, 200, 200);
   displacePlane(lawnGeo, 0);
-  const lawn = new THREE.Mesh(
-    lawnGeo,
-    new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 }),
-  );
+  const lawnMat = new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 });
+  const lawn = new THREE.Mesh(lawnGeo, lawnMat);
   lawn.rotation.x = -Math.PI / 2;
   lawn.receiveShadow = true;
   scene.add(lawn);
@@ -311,5 +325,13 @@ export function buildWorld(scene: THREE.Scene): World {
     sc.updateProjectionMatrix();
   };
 
-  return { markMowed, update, reset, setShadowRange, setLighting };
+  const setSand = (on: boolean): void => {
+    lawnMat.map = on ? sandTex : grassTex;
+    lawnMat.needsUpdate = true;
+    stripes.visible = !on;
+    mowed.visible = !on;
+    outerMat.color.setHex(on ? 0xc8ad74 : 0x3f7f2b);
+  };
+
+  return { markMowed, update, reset, setShadowRange, setLighting, setSand };
 }
