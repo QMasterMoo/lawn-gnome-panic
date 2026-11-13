@@ -42,6 +42,7 @@ import { createRoyaleHud } from './ui/royaleHud';
 import { createViewButton } from './ui/viewButton';
 import { createPauseButton } from './ui/pauseButton';
 import { createMuteButton } from './ui/muteButton';
+import { createNowPlaying } from './ui/nowPlaying';
 import { createPauseUI } from './ui/pause';
 import { createNetClient, serverUrl } from './net/client';
 import { initTelemetry, track } from './telemetry';
@@ -148,6 +149,7 @@ const viewBtn = createViewButton(uiRoot, cycleView);
 const pauseBtn = createPauseButton(uiRoot, () => pauseGame());
 const muteBtn = createMuteButton(uiRoot, isMusicMuted, () => setMusicMuted(!isMusicMuted()));
 muteBtn.show();
+const nowPlaying = createNowPlaying(uiRoot);
 const pauseUI = createPauseUI(uiRoot);
 const puppets = createPuppetSystem(scene);
 
@@ -371,6 +373,7 @@ function goLobby(): void {
   input.setPointerLockAllowed(false);
   setEngineLevel(0);
   stopMusic();
+  nowPlaying.hide();
 }
 
 function startRun(m: GameMode = 'solo', level = 1): void {
@@ -434,7 +437,9 @@ function startRun(m: GameMode = 'solo', level = 1): void {
   input.setPointerLockAllowed(true);
   touch.setVisible(true);
   playSfx('start');
-  startMusic();
+  // Online matches share the server's seed, so everyone gets the same track (not beat-synced).
+  const song = startMusic(online ? online.seed : undefined);
+  if (!isMusicMuted()) nowPlaying.show(song);
 }
 
 function openLevelUp(): void {
@@ -491,6 +496,7 @@ function endRun(victory: boolean): void {
   input.setPointerLockAllowed(false);
   setEngineLevel(0);
   stopMusic();
+  nowPlaying.hide();
   gnome.object.visible = true;
   if (victory) {
     playSfx('victory');

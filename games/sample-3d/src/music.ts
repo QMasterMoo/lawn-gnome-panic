@@ -4,6 +4,9 @@
  * API: startMusic() on run start (new random seed each time), pause/resumeMusic() with the
  * pause menu, stopMusic() on run end and in the lobby. Music keeps playing during level-up picks.
  * setMusicMuted()/isMusicMuted() back the 🎵 button and the M key (src/ui/muteButton.ts).
+ * startMusic() returns a made-up artist/title (trackInfo) for the "Now playing" card (src/ui/nowPlaying.ts),
+ * drawn from its own stream of the same seed. Online matches pass the server's match seed, so every
+ * player gets the same track and name, though playback is not beat-synced between clients.
  *
  * Design decisions, and why:
  *
@@ -423,8 +426,35 @@ function unlockOnGesture(T: Tone): void {
   for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) window.addEventListener(ev, unlock, true);
 }
 
-/** Starts a brand new track. Call once per run. */
-export function startMusic(seed: number = Math.floor(Math.random() * 2 ** 31)): void {
+// ----- "Now playing": a made-up artist and title from the same seed -----
+export interface TrackInfo { artist: string; title: string; label: string; year: number }
+
+const ARTIST_SOLO = ['Mulch', 'Topsoil', 'Hedgecutter', 'Dandelion', 'Sprinkler', 'Clover', 'Grasshopper', 'Compost', 'Bramble', 'Rotary'];
+const ARTIST_PREFIX = ['DJ', 'MC', 'Dr.', 'Lord', 'Kid'];
+const ARTIST_GROUP_A = ['Turf', 'Lawn', 'Garden', 'Shed', 'Moss', 'Acorn', 'Thicket', 'Greenhouse'];
+const ARTIST_GROUP_B = ['Science', 'Soundsystem', 'Collective', 'Massive', 'Militia', 'Dubplate Crew', 'Foundation', 'Unit'];
+const TITLE_A = ['Midnight', 'Rinse', 'Concrete', 'Rotary', 'Lawn', 'Sub', 'Dawn', 'Hedge', 'Blade', 'Pressure', 'Gnome', 'Darkside', 'Sunday', 'Two-Stroke'];
+const TITLE_B = ['Runnings', 'Theory', 'Warfare', 'Patrol', 'Dread', 'Science', 'Bassline', 'Shuffle', 'Riddim', 'Steppers', 'Soldier', 'Panic', 'Ritual', 'Frequencies'];
+const TITLE_STANDALONE = ['Grass Is Greener', 'Cut The Lawn', 'Keep Off The Grass', 'Mow Down', 'Gnome Is Where The Heart Is', 'Sprinkler System', 'The Long Grass', 'Fertile Ground'];
+const MIXES = ['', '', '', ' (VIP Mix)', ' (Dub)', ' (Original Mix)', ' (Remix)', ' (\'95 Rework)', ' (Dubplate Special)'];
+const LABELS = ['Mowtown', 'Hedgerow Recordings', 'Topsoil Audio', 'Shed Dubs', 'Two-Stroke Records', 'Acorn White Label'];
+
+export function trackInfo(seed: number): TrackInfo {
+  const rnd = mulberry32((seed ^ 0x9e3779b9) >>> 0); // its own stream, so names never change the music
+  const pick = <V>(xs: V[]): V => xs[Math.floor(rnd() * xs.length)];
+  const style = rnd();
+  const artist = style < 0.4 ? `${pick(ARTIST_PREFIX)} ${pick(ARTIST_SOLO)}`
+    : style < 0.75 ? `${pick(ARTIST_GROUP_A)} ${pick(ARTIST_GROUP_B)}`
+    : `${pick(ARTIST_PREFIX)} ${pick(ARTIST_SOLO)} & ${pick(ARTIST_PREFIX)} ${pick(ARTIST_SOLO)}`;
+  const title = (rnd() < 0.3 ? pick(TITLE_STANDALONE) : `${pick(TITLE_A)} ${pick(TITLE_B)}`) + pick(MIXES);
+  return { artist, title, label: pick(LABELS), year: 1993 + Math.floor(rnd() * 11) };
+}
+
+/**
+ * Starts a brand new track and returns its made-up name. Call once per run.
+ * Pass a shared seed (online matches) so every player gets the same track and name.
+ */
+export function startMusic(seed: number = Math.floor(Math.random() * 2 ** 31)): TrackInfo {
   const gen = ++generation;
   playing = true;
   void loadTone().then((T) => {
@@ -440,6 +470,7 @@ export function startMusic(seed: number = Math.floor(Math.random() * 2 ** 31)): 
       // Music must never break the game.
     }
   });
+  return trackInfo(seed);
 }
 
 export function pauseMusic(): void {
