@@ -13,6 +13,8 @@ const mm = new Matchmaker({
   privateWaitS: Number(process.env.MM_PRIVATE_WAIT_S) || PRIVATE_FILL_WAIT_S,
   now: Date.now,
   random: Math.random,
+  matchSilentS: Number(process.env.MM_MATCH_SILENT_S) || undefined,
+  idleS: Number(process.env.MM_IDLE_S) || undefined,
 });
 
 // ---------------------------------------------------------------- HTTP
@@ -88,7 +90,7 @@ setInterval(() => {
     alive.delete(ws);
     ws.ping();
   }
-}, 20_000);
+}, 5_000); // a socket that misses one ping (5-10 s) is terminated
 
 setInterval(() => mm.tick(), 1000);
 

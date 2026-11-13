@@ -16,7 +16,7 @@ const clients = [];
 before(async () => {
   server = spawn(process.execPath, ['games/sample-3d/server/dist/server.mjs'], {
     cwd: ROOT,
-    env: { ...process.env, PORT: String(PORT), MM_PUBLIC_WAIT_S: '1', MM_PRIVATE_WAIT_S: '1' },
+    env: { ...process.env, PORT: String(PORT), MM_PUBLIC_WAIT_S: '1', MM_PRIVATE_WAIT_S: '1', MM_MATCH_SILENT_S: '2', MM_IDLE_S: '6' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stdout.resume();
@@ -99,9 +99,9 @@ test('two players are matched, relay a message, and one leaves', async () => {
   const a = await open();
   const b = await open();
   try {
-    a.send({ t: 'hello', v: 2, name: 'Alpha', character: 'gnorman' });
+    a.send({ t: 'hello', v: 3, name: 'Alpha', character: 'gnorman' });
     const wa = await a.next('welcome');
-    b.send({ t: 'hello', v: 2, name: 'Bravo', character: 'gnorman' });
+    b.send({ t: 'hello', v: 3, name: 'Bravo', character: 'gnorman' });
     const wb = await b.next('welcome');
 
     // A queues first so A is the first joiner and therefore the host.
@@ -147,7 +147,7 @@ test('hello with a wrong protocol version gets an error', async () => {
 test('a lone player is not matched', async () => {
   const a = await open();
   try {
-    a.send({ t: 'hello', v: 2, name: 'Alpha', character: 'gnorman' });
+    a.send({ t: 'hello', v: 3, name: 'Alpha', character: 'gnorman' });
     await a.next('welcome');
     a.send({ t: 'queue', code: 'LONE1', character: 'gnorman', name: 'Alpha' });
     await a.next('queued');
@@ -161,7 +161,7 @@ test('a lone player is not matched', async () => {
 test('an offensive name is rejected', async () => {
   const c = await open();
   try {
-    c.send({ t: 'hello', v: 2, name: 'Charlie', character: 'gnorman' });
+    c.send({ t: 'hello', v: 3, name: 'Charlie', character: 'gnorman' });
     await c.next('welcome');
     c.send({ t: 'queue', code: null, character: 'gnorman', name: 'fuckface' });
     const err = await c.next('error');
@@ -175,9 +175,9 @@ test('chat reaches the queue group, censored', async () => {
   const a = await open();
   const b = await open();
   try {
-    a.send({ t: 'hello', v: 2, name: 'Alpha', character: 'gnorman' });
+    a.send({ t: 'hello', v: 3, name: 'Alpha', character: 'gnorman' });
     const wa = await a.next('welcome');
-    b.send({ t: 'hello', v: 2, name: 'Bravo', character: 'gnorman' });
+    b.send({ t: 'hello', v: 3, name: 'Bravo', character: 'gnorman' });
     await b.next('welcome');
     a.send({ t: 'queue', code: 'CHAT1', character: 'gnorman', name: 'Alpha' });
     await a.next('queued');
@@ -202,7 +202,7 @@ test('chat reaches the queue group, censored', async () => {
 test('chat is rate limited', async () => {
   const c = await open();
   try {
-    c.send({ t: 'hello', v: 2, name: 'Charlie', character: 'gnorman' });
+    c.send({ t: 'hello', v: 3, name: 'Charlie', character: 'gnorman' });
     await c.next('welcome');
     c.send({ t: 'queue', code: 'CHAT2', character: 'gnorman', name: 'Charlie' });
     await c.next('queued');
@@ -212,4 +212,69 @@ test('chat is rate limited', async () => {
   } finally {
     c.close();
   }
+});
+
+/** Two clients in one match on room code; a is the host. */
+async function matchedPair(code) {
+  const a = await open();
+  const b = await open();
+  a.send({ t: 'hello', v: 3, name: 'Alpha', character: 'gnorman' });
+  const wa = await a.next('welcome');
+  b.send({ t: 'hello', v: 3, name: 'Bravo', character: 'gnorman' });
+  const wb = await b.next('welcome');
+  a.send({ t: 'queue', code, character: 'gnorman', name: 'Alpha' });
+  await a.next('queued');
+  b.send({ t: 'queue', code, character: 'gnorman', name: 'Bravo' });
+  const ma = await a.next('match');
+  await b.next('match');
+  assert.equal(ma.hostId, wa.id);
+  return { a, b, aId: wa.id, bId: wb.id };
+}
+
+test('when the host leaves, the next player becomes host', async () => {
+  const { a, b, aId, bId } = await matchedPair('HOST1');
+  try {
+    a.close();
+    const left = await b.next('left');
+    assert.equal(left.id, aId);
+    assert.equal(left.reason, 'quit');
+    const host = await b.next('host');
+    assert.equal(host.hostId, bId);
+  } finally {
+    a.close();
+    b.close();
+  }
+});
+
+test('a silent host times out and hands over hosting', async () => {
+  const { a, b, aId, bId } = await matchedPair('HOST2');
+  const keepAlive = setInterval(() => b.send({ t: 'relay', to: null, d: { k: 'died', cause: 'x' } }), 200);
+  try {
+    await b.next('beat');
+    const left = await b.next('left');
+    assert.equal(left.id, aId);
+    assert.equal(left.reason, 'timeout');
+    const host = await b.next('host');
+    assert.equal(host.hostId, bId);
+    const ended = await a.next('ended');
+    assert.equal(typeof ended.reason, 'string');
+  } finally {
+    clearInterval(keepAlive);
+    a.close();
+    b.close();
+  }
+});
+
+test('an idle connection (not queued, not in a match) is closed', async () => {
+  const ws = new WebSocket(WS_URL);
+  await new Promise((resolve) => ws.once('open', resolve));
+  ws.send(JSON.stringify({ t: 'hello', v: 3, name: 'Idler', character: 'gnorman' }));
+  const closed = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), 10000);
+    ws.once('close', () => {
+      clearTimeout(timer);
+      resolve(true);
+    });
+  });
+  assert.equal(closed, true);
 });

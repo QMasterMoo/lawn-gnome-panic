@@ -258,7 +258,7 @@ const lobbyCallbacks: LobbyCallbacks = {
   onLeaveMatch: () => {
     net?.leave();
     lobbyUI.setMatchStatus(null);
-    chat.setEnabled(false);
+    endOnlineSession();
   },
   onSetName: (name: string) => {
     save.name = name;
@@ -345,7 +345,7 @@ function goLobby(): void {
     net?.leave();
     online = null;
     setPlayerCharacter(save.character);
-    chat.setEnabled(false);
+    endOnlineSession();
   }
   dayNight.setTime(TUNING.lobbyTimeT);
   clearField();
@@ -855,6 +855,8 @@ async function findMatch(code: string | null): Promise<void> {
     }
     await net.connect();
     net.queue(code, save.character, save.name);
+    queueing = true;
+    void setAwake(true);
     if (!chat.enabled) {
       chat.setEnabled(true);
       chat.system('In the queue. Press Enter or T to chat.');
@@ -919,6 +921,7 @@ function onServerMsg(m: ServerMsg): void {
         break;
       }
       lobbyUI.setMatchStatus(null);
+      queueing = false;
       startOnline(m);
       chat.system('Match on! Press Enter or T to chat.');
       break;
@@ -928,12 +931,16 @@ function onServerMsg(m: ServerMsg): void {
     case 'chat':
       if (chat.enabled) chat.add(m.name, m.color, m.text);
       break;
+    case 'host':
+      onHostChange(m.hostId);
+      break;
     case 'left':
       if (online) {
         puppets.remove('p' + m.id);
         if (online.humansAlive.get(m.id)) {
           online.humansAlive.set(m.id, false);
-          const ev = { victim: online.players.get(m.id)?.name ?? '???', cause: 'THE EXIT BUTTON', color: online.players.get(m.id)?.color };
+          const cause = m.reason === 'timeout' ? 'A BAD CONNECTION' : 'THE EXIT BUTTON';
+          const ev = { victim: online.players.get(m.id)?.name ?? '???', cause, color: online.players.get(m.id)?.color };
           if (online.isHost) online.feed.push(ev);
           royaleHud.feed(ev);
         }
@@ -943,7 +950,7 @@ function onServerMsg(m: ServerMsg): void {
       if (online) finishOnline(m.reason);
       else if (phase === 'lobby') {
         lobbyUI.setMatchStatus(null);
-        chat.setEnabled(false);
+        endOnlineSession();
         juice.toast('MATCHMAKING STOPPED', m.reason, '#ff8a80');
       }
       break;
@@ -956,7 +963,7 @@ function onServerMsg(m: ServerMsg): void {
       else juice.toast('THE SERVER SAYS NO', m.message, '#ff8a80');
       if (phase === 'lobby') {
         lobbyUI.setMatchStatus(null);
-        chat.setEnabled(false);
+        endOnlineSession();
       }
       break;
     default:
@@ -966,9 +973,100 @@ function onServerMsg(m: ServerMsg): void {
 
 function onNetClose(): void {
   if (online) finishOnline('LOST CONNECTION TO THE LAWN');
-  else if (phase === 'lobby') lobbyUI.setMatchStatus(null);
-  chat.setEnabled(false);
+  else if (phase === 'lobby') {
+    lobbyUI.setMatchStatus(null);
+    if (queueing) juice.toast('LOST CONNECTION', 'Check your signal and press PLAY again.', '#ff8a80');
+  }
+  endOnlineSession();
 }
+
+/** The server picked a new host (the old one left or went silent). If it is me, my game takes over the world. */
+function onHostChange(hostId: number): void {
+  if (!online || online.over) return;
+  const wasHost = online.isHost;
+  online.hostId = hostId;
+  online.isHost = hostId === online.me;
+  if (online.isHost && !wasHost) {
+    mowers.setPuppet(false); // the mowers I was mirroring are now mine to simulate
+    online.hits = [];
+    online.netKills = [];
+    // Boss state only lived on the old host: a living combine means the fight is on; none after its time means it was beaten.
+    if (mowers.bossHp() !== null) levelBossSpawned = true;
+    else if (run.elapsedS - levelStartS >= TUNING.bossAtS) bossDone = true;
+    hud.banner('YOU ARE NOW HOSTING', 'The host left, so your game runs the lawn now. Please do not close the tab.', 4);
+    chat.system('You are now hosting the match.');
+  } else if (!online.isHost) {
+    chat.system(`${online.players.get(hostId)?.name ?? 'Someone'} is now hosting the match.`);
+  }
+}
+
+// ---------- connection health ----------
+// Phones lose connections silently (Wi-Fi to cellular, weak signal, screen lock): the socket looks
+// open while nothing gets through. The server sends something every second (queue status or a
+// match 'beat'), so a long silence means my connection is gone. Players who go silent are removed
+// by the server (MATCH_SILENT_S), which also hands hosting to someone else.
+const NET_STALL_MS = 4000;        // nothing from the server for this long = disconnected
+const BACKGROUND_LEAVE_MS = 6000; // tab hidden this long mid-match: everyone else saw me freeze, so leave
+
+let queueing = false;
+let hiddenAt = 0;
+
+/** Leaving online play (cancelled, back in the lobby, disconnected): chat off, the screen may sleep
+ *  again, and the socket closes so an idle tab does not keep the server machine awake. PLAY reconnects. */
+function endOnlineSession(): void {
+  queueing = false;
+  chat.setEnabled(false);
+  void setAwake(false);
+  net?.drop(); // no-op when already closed; its onClose (onNetClose) finds nothing left to end
+}
+
+/** Called every frame: drops a stalled socket (onNetClose then ends the match or the search). */
+function watchConnection(): void {
+  if (!net || !net.connected) return;
+  if (!((online && !online.over) || queueing)) return;
+  if (performance.now() - net.lastHeardAt > NET_STALL_MS) net.drop();
+}
+
+// Screen Wake Lock: keeps phone screens on while queueing or in a match, so the phone does not
+// sleep (and drop the connection) while you wait or spectate. Browsers release it when the tab
+// is hidden; it is taken again on return.
+let wakeWanted = false;
+let wakeLock: WakeLockSentinel | null = null;
+async function setAwake(on: boolean): Promise<void> {
+  wakeWanted = on;
+  if (!on) {
+    const lock = wakeLock;
+    wakeLock = null;
+    await lock?.release().catch(() => {});
+    return;
+  }
+  if (wakeLock || document.hidden || !('wakeLock' in navigator)) return;
+  try {
+    const lock = await navigator.wakeLock.request('screen');
+    if (!wakeWanted) {
+      await lock.release();
+      return;
+    }
+    wakeLock = lock;
+    lock.addEventListener('release', () => {
+      if (wakeLock === lock) wakeLock = null;
+    });
+  } catch {
+    // denied (battery saver, unsupported): play on without it
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    hiddenAt = performance.now();
+    return;
+  }
+  if (wakeWanted) void setAwake(true);
+  // My game was frozen while hidden; the others saw me stand still. Leave rather than play on out of sync.
+  if (online && !online.over && performance.now() - hiddenAt > BACKGROUND_LEAVE_MS) {
+    finishOnline('THE GAME WENT TO SLEEP (phone locked or app switched)');
+  }
+});
 
 function onGameMsg(from: number, d: GameMsg): void {
   if (!online || online.over) return;
@@ -1243,6 +1341,7 @@ renderer.setAnimationLoop(() => {
     // Online, menus do not pause the match: your gnome just stands there.
     tickRun(dt, NO_INPUT);
   }
+  watchConnection();
   if (online && !online.over) netTick(dt);
   puppets.update(dt);
 

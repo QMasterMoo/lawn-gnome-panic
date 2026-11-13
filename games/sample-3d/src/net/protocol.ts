@@ -6,7 +6,7 @@
 // Everyone runs their own gnome and weapons and reports hits on mowers to the host.
 // All messages are JSON text frames.
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** Gnomes per match. Online matches are humans only (no bots). */
 export const MAX_PLAYERS = 20;
@@ -28,6 +28,11 @@ export const PUBLIC_FILL_WAIT_S = 15;
 export const PRIVATE_FILL_WAIT_S = 45;
 /** How often clients send 'me' and the host sends 'snap'. */
 export const NET_SEND_HZ = 15;
+/** A match member who relays nothing for this long is removed (bad connection, or the game went to sleep).
+ *  If it was the host, the next player in join order becomes host. */
+export const MATCH_SILENT_S = 8;
+/** The server closes connections that are neither queued nor in a match for this long (idle lobby tabs). */
+export const IDLE_DISCONNECT_S = 180;
 /** Chat flood limit: at most this many lines per player per window. */
 export const CHAT_RATE_COUNT = 5;
 export const CHAT_RATE_WINDOW_S = 5;
@@ -61,9 +66,13 @@ export type ServerMsg =
   /** The match starts now. players includes you; hostId is one of them. */
   | { t: 'match'; matchId: string; seed: number; hostId: number; you: number; players: PlayerInfo[] }
   | { t: 'relay'; from: number; d: GameMsg }
-  /** A player left the match (closed the tab or sent leave). */
-  | { t: 'left'; id: number }
-  /** Your match or queue is over: the host left, or the server is restarting for an update. */
+  /** A player left the match: 'quit' = closed the tab or sent leave, 'timeout' = silent for MATCH_SILENT_S. */
+  | { t: 'left'; id: number; reason?: 'quit' | 'timeout' }
+  /** The host left: hostId now runs the world (sent after the 'left'). */
+  | { t: 'host'; hostId: number }
+  /** Keepalive, once a second to every match member, so clients can tell a dead connection from a quiet match. */
+  | { t: 'beat' }
+  /** Your match or queue is over: you stopped responding, the match ran too long, or the server is restarting. */
   | { t: 'ended'; reason: string }
   /** A chat line from someone in my queue group or match (my own lines come back too). Already censored. */
   | { t: 'chat'; from: number; name: string; color: number; text: string }
@@ -93,3 +102,4 @@ export type GameMsg =
   | { k: 'died'; cause: string }
   /** Host -> all: the match is over. winner = player id, or -1 when nobody survived. */
   | { k: 'over'; winner: number; winnerName: string };
+
