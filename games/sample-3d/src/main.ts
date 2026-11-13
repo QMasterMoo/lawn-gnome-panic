@@ -32,6 +32,7 @@ import { buildHouse } from './house';
 import { createDayNight } from './daynight';
 import { buildScenery } from './scenery';
 import { createItemSystem } from './items';
+import { createChat } from './ui/chat';
 import { createJuice } from './juice';
 import { createBotSystem } from './br/bots';
 import { createZone } from './br/zone';
@@ -131,6 +132,11 @@ const pickups = createPickupSystem(scene);
 const drops = createDropSystem(scene);
 const items = createItemSystem(scene);
 const juice = createJuice(uiRoot);
+// Online text chat (queue and match). Opening the box mid-run releases the mouse without pausing.
+const chat = createChat(uiRoot, (text) => net?.chat(text));
+chat.onOpenChange((open) => {
+  if (phase === 'playing') input.setPointerLockAllowed(!open);
+});
 const bots = createBotSystem(scene);
 const zone = createZone(scene);
 const royaleHud = createRoyaleHud(uiRoot);
@@ -199,7 +205,7 @@ window.addEventListener('keydown', (e) => {
 });
 // Desktop: losing the mouse lock mid-run (Esc, alt-tab) pauses. Our own unlocks happen after phase changes, so they never trigger this.
 document.addEventListener('pointerlockchange', () => {
-  if (!document.pointerLockElement && phase === 'playing') pauseGame();
+  if (!document.pointerLockElement && phase === 'playing' && !chat.isOpen) pauseGame();
 });
 const VIEW_NAMES = { third: 'THIRD PERSON', first: 'FIRST PERSON', top: 'TOP-DOWN' } as const;
 
@@ -248,6 +254,7 @@ const lobbyCallbacks: LobbyCallbacks = {
   onLeaveMatch: () => {
     net?.leave();
     lobbyUI.setMatchStatus(null);
+    chat.setEnabled(false);
   },
   onSetName: (name: string) => {
     save.name = name;
@@ -333,6 +340,7 @@ function goLobby(): void {
     net?.leave();
     online = null;
     setPlayerCharacter(save.character);
+    chat.setEnabled(false);
   }
   dayNight.setTime(TUNING.lobbyTimeT);
   clearField();
@@ -841,6 +849,10 @@ async function findMatch(code: string | null): Promise<void> {
     }
     await net.connect();
     net.queue(code, save.character, save.name);
+    if (!chat.enabled) {
+      chat.setEnabled(true);
+      chat.system('In the queue. Press Enter or T to chat.');
+    }
   } catch {
     lobbyUI.setMatchStatus(null);
     juice.toast('NO SERVER', 'The matchmaking server did not answer. It may be waking up: try again.', '#ff8a80');
@@ -900,9 +912,13 @@ function onServerMsg(m: ServerMsg): void {
       }
       lobbyUI.setMatchStatus(null);
       startOnline(m);
+      chat.system('Match on! Press Enter or T to chat.');
       break;
     case 'relay':
       onGameMsg(m.from, m.d);
+      break;
+    case 'chat':
+      if (chat.enabled) chat.add(m.name, m.color, m.text);
       break;
     case 'left':
       if (online) {
@@ -919,13 +935,21 @@ function onServerMsg(m: ServerMsg): void {
       if (online) finishOnline(m.reason);
       else if (phase === 'lobby') {
         lobbyUI.setMatchStatus(null);
+        chat.setEnabled(false);
         juice.toast('MATCHMAKING STOPPED', m.reason, '#ff8a80');
       }
       break;
     case 'error':
+      if (m.code === 'chat-rate') {
+        chat.system(m.message);
+        break;
+      }
       if (m.code === 'bad-name') juice.toast('PICK ANOTHER NAME', m.message, '#ff8a80');
       else juice.toast('THE SERVER SAYS NO', m.message, '#ff8a80');
-      if (phase === 'lobby') lobbyUI.setMatchStatus(null);
+      if (phase === 'lobby') {
+        lobbyUI.setMatchStatus(null);
+        chat.setEnabled(false);
+      }
       break;
     default:
       break;
@@ -935,6 +959,7 @@ function onServerMsg(m: ServerMsg): void {
 function onNetClose(): void {
   if (online) finishOnline('LOST CONNECTION TO THE LAWN');
   else if (phase === 'lobby') lobbyUI.setMatchStatus(null);
+  chat.setEnabled(false);
 }
 
 function onGameMsg(from: number, d: GameMsg): void {

@@ -1,8 +1,10 @@
 // Matchmaking and relay logic. No sockets and no timers here, so it can be tested directly:
 // index.ts owns the sockets and calls tick() once a second.
-import { MAX_PLAYERS, MIN_PLAYERS, PLAYER_COLORS, PROTOCOL_VERSION, ROOM_CODE_RE } from '../../src/net/protocol';
+import {
+  CHAT_RATE_COUNT, CHAT_RATE_WINDOW_S, MAX_PLAYERS, MIN_PLAYERS, PLAYER_COLORS, PROTOCOL_VERSION, ROOM_CODE_RE,
+} from '../../src/net/protocol';
 import type { GameMsg, PlayerInfo, ServerMsg } from '../../src/net/protocol';
-import { checkName } from '../../src/net/textFilter';
+import { CHAT_MAX, censorText, checkName, tidyText } from '../../src/net/textFilter';
 
 export interface Conn { readonly id: number; send(msg: ServerMsg): void; close(): void }
 export interface MatchmakerOptions { publicWaitS: number; privateWaitS: number; now: () => number /* ms */; random: () => number }
@@ -17,6 +19,8 @@ interface Player {
   character: string;
   group: string | null; // key of the waiting group, or null
   match: string | null; // matchId, or null
+  color: number | null; // 0xRRGGBB from PLAYER_COLORS, set when queued; null when not queued
+  chatTimes: number[];  // ms timestamps of recent chat lines (flood limit)
 }
 
 interface Group {
@@ -55,6 +59,7 @@ export class Matchmaker {
   connect(conn: Conn): void {
     this.players.set(conn.id, {
       id: conn.id, conn, hello: false, name: '', character: 'gnorman', group: null, match: null,
+      color: null, chatTimes: [],
     });
   }
 
@@ -69,6 +74,7 @@ export class Matchmaker {
       case 'queue': this.queue(p, msg); break;
       case 'leave': this.leave(p); break;
       case 'relay': this.relay(p, msg); break;
+      case 'chat': this.chat(p, msg); break;
     }
   }
 
@@ -164,9 +170,38 @@ export class Matchmaker {
     }
     group.members.push(p.id);
     p.group = key;
+    p.color = this.pickColor(group, p);
     if (group.members.length === MIN_PLAYERS) group.firstAt = this.opts.now();
     if (group.members.length >= MAX_PLAYERS) this.start(group);
     else this.sendQueued(group);
+  }
+
+  private chat(p: Player, msg: Record<string, unknown>): void {
+    if (typeof msg.text !== 'string') return;
+    const text = censorText(Array.from(tidyText(msg.text)).slice(0, CHAT_MAX).join(''));
+    if (text === '') return;
+    let recipients: number[];
+    if (p.match !== null) {
+      recipients = this.matches.get(p.match)?.members ?? [];
+    } else if (p.group !== null) {
+      recipients = this.groups.get(p.group)?.members ?? [];
+    } else {
+      return;
+    }
+    const now = this.opts.now();
+    const windowMs = CHAT_RATE_WINDOW_S * 1000;
+    p.chatTimes = p.chatTimes.filter((t) => now - t < windowMs);
+    if (p.chatTimes.length >= CHAT_RATE_COUNT) {
+      p.conn.send({
+        t: 'error',
+        message: `Slow down! Chat is limited to ${CHAT_RATE_COUNT} lines every ${CHAT_RATE_WINDOW_S} seconds.`,
+        code: 'chat-rate',
+      });
+      return;
+    }
+    p.chatTimes.push(now);
+    const out: ServerMsg = { t: 'chat', from: p.id, name: p.name, color: p.color ?? PLAYER_COLORS[0], text };
+    for (const id of recipients) this.sendTo(id, out);
   }
 
   private relay(p: Player, msg: Record<string, unknown>): void {
@@ -190,6 +225,7 @@ export class Matchmaker {
     if (p.group !== null) {
       const g = this.groups.get(p.group);
       p.group = null;
+      p.color = null;
       if (g) {
         g.members = g.members.filter((id) => id !== p.id);
         if (g.members.length === 0) this.groups.delete(g.key);
@@ -224,17 +260,11 @@ export class Matchmaker {
     const matchId = Array.from({ length: 8 }, () => Math.floor(this.opts.random() * 16).toString(16)).join('');
     const seed = Math.floor(this.opts.random() * 4294967296);
     const hostId = g.members[0];
-    // Fisher-Yates shuffle of the palette: each player of the match gets a different colour.
-    const palette = [...PLAYER_COLORS];
-    for (let i = palette.length - 1; i > 0; i--) {
-      const j = Math.floor(this.opts.random() * (i + 1));
-      [palette[i], palette[j]] = [palette[j], palette[i]];
-    }
     const infos: PlayerInfo[] = [];
-    g.members.forEach((id, i) => {
+    for (const id of g.members) {
       const p = this.players.get(id);
-      if (p) infos.push({ id, name: p.name, character: p.character, color: palette[i % palette.length] });
-    });
+      if (p) infos.push({ id, name: p.name, character: p.character, color: p.color ?? PLAYER_COLORS[0] });
+    }
     this.matches.set(matchId, { id: matchId, hostId, startedAt: now, members: [...g.members] });
     for (const id of g.members) {
       const p = this.players.get(id);
@@ -246,6 +276,19 @@ export class Matchmaker {
   }
 
   // ---------------------------------------------------------------- helpers
+
+  /** A random colour no other member of the group has; any random one when all are taken. */
+  private pickColor(g: Group, p: Player): number {
+    const taken = new Set<number>();
+    for (const id of g.members) {
+      if (id === p.id) continue;
+      const o = this.players.get(id);
+      if (o?.color != null) taken.add(o.color);
+    }
+    const free = PLAYER_COLORS.filter((c) => !taken.has(c));
+    const pool = free.length > 0 ? free : PLAYER_COLORS;
+    return pool[Math.min(pool.length - 1, Math.floor(this.opts.random() * pool.length))];
+  }
 
   private waitS(g: Group): number {
     return g.code === null ? this.opts.publicWaitS : this.opts.privateWaitS;

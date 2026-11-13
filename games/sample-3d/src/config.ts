@@ -1188,8 +1188,28 @@ export interface NetClient {
   queue(code: string | null, character: string, name: string): void;
   leave(): void;
   send(to: number | null, d: GameMsg): void;
+  /** Sends a chat line to my queue group or match. */
+  chat(text: string): void;
   /** Every server message, including 'welcome'. Called after connect() resolves too. */
   onMessage(fn: (m: ServerMsg) => void): void;
   /** Called once when the socket closes for any reason. */
   onClose(fn: () => void): void;
 }
+
+/** Text chat for online queues and matches (src/ui/chat.ts). */
+export interface ChatUI {
+  /** true: show the chat log and the CHAT button (in a queue or match). false: hide everything, close the box, clear the log. */
+  setEnabled(on: boolean): void;
+  readonly enabled: boolean;
+  /** True while the text box is open (typing). */
+  readonly isOpen: boolean;
+  open(): void;
+  close(): void;
+  /** A player's line: name and text in their colour on a dark chip. */
+  add(name: string, color: number, text: string): void;
+  /** A grey italic line from the game (joins, rate-limit notices). */
+  system(text: string): void;
+  /** Called whenever the text box opens or closes. */
+  onOpenChange(fn: (open: boolean) => void): void;
+}
+
