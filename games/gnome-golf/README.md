@@ -12,7 +12,7 @@ npm run dev -w games/gnome-golf    # http://localhost:5184 (also on your LAN, fo
 npm run build -w games/gnome-golf
 ```
 
-Debug: `#hole=5` in the URL starts on hole 5. `window.golf` is the game state.
+Debug: `#hole=5` in the URL starts on hole 5. `#disc` starts in Gnome Disc mode (`#disc&hole=5` works too). `window.golf` is the game state.
 
 ## Controls
 
@@ -31,6 +31,25 @@ The swing meter: the marker rises; tap to set power (past the red line is an ove
 Consumables: 3 cigarillos per round. A lit one hangs in your gnome's mouth for 3 shots and slows the swing meter to 60% speed, so timing is easier. 6 cans of golf water (it's beer): no effect at all, but your partner joins you for a sip.
 
 Every club's range is shown in the club selector, the bag list, the landing ring on the course and the minimap. Ranges are calibrated from the same physics the ball uses: a perfect full swing on flat ground with no wind carries exactly what it says.
+
+## Gnome Disc mode
+
+Pick **GNOME DISC** on the title screen (or open `#disc`). Same island, same 9 holes and pars, but there are no clubs and no ball. Disco, a living frisbee with googly eyes and noodle arms, grabs your gnome by the boots and whirls him round hammer-throw style. The gnome flies flat and spinning like a disc toward a chain basket at the pin.
+
+| | Phone | Keyboard |
+|---|---|---|
+| Aim | drag the view | ← → |
+| Tilt (hyzer bends left, anhyzer bends right) | ↶ ↷ buttons | Q / E or ↑ ↓ |
+| Throw | hold WHIRL, let go | hold Space, let go |
+| Flail mid-air (2 per throw) | tap FLAIL | Space or F |
+
+- **Whirl:** the longer you hold, the harder the throw (the ring fills; full at 2 s, a bit more past that). The gnome orbits Disco faster as power builds, so a long throw is harder to time. Let go when the gnome dot on the dial is in the green wedge. Early sends it right, late sends it left. Hold too long (about 3 s) and Disco gets dizzy and lets go on his own, in a random direction.
+- **Flight:** lift comes from spin and speed. A flat throw goes straight, then fades left at the end. Tilt banks the gnome so it bends. Wind pushes it. The orange dotted path shows a perfect release with no wind at the current power.
+- **Flail:** while the gnome is still in the air, tap to make him flap. He gets a little height and spin back but loses a little speed, so it stretches a throw that is dying.
+- **Basket:** the gnome has to reach the chains, 0.25 to 1.65 yd off the ground within 0.85 yd of the pole. Too fast (a full-power drive) and he chains out and bounces back. Below the chains he skids past.
+- Cigarillos slow the whirl. Water costs a throw, as in golf.
+
+Tuning is in `DISC` in `src/config.ts`; flight is in `src/discPhysics.ts`; Disco, the gnome, the basket and the UI are in `src/disc.ts`.
 
 ## World
 

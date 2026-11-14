@@ -12,6 +12,7 @@ import { createHud } from './hud';
 import { createMinimap } from './minimap';
 import { createMusic } from './music';
 import { createAudioSystem } from './audio';
+import { createDisc } from './disc';
 
 // No page zoom on phones: iOS Safari ignores user-scalable=no and touch-action for double taps,
 // so a fast double tap on SWING zoomed the page. Every control here runs on pointer events, which
@@ -68,11 +69,12 @@ resize();
 const state = newState();
 const ctx: Ctx = { scene, camera, renderer, canvas, state, ui, lights: { sun, hemi } };
 
-// Debug: #hole=N starts straight on hole N (1-based).
+// Debug: #hole=N starts straight on hole N (1-based). #disc starts straight into Gnome Disc (combines with #hole=N).
 const holeMatch = /hole=(\d+)/.exec(location.hash);
-if (holeMatch) {
-  newRound(state);
-  startHole(state, Math.max(0, Number(holeMatch[1]) - 1));
+const discMatch = location.hash.includes('disc');
+if (holeMatch || discMatch) {
+  newRound(state, discMatch ? 'disc' : 'golf');
+  if (holeMatch) startHole(state, Math.max(0, Number(holeMatch[1]) - 1));
 }
 (window as unknown as { golf: unknown }).golf = state; // debug handle
 
@@ -82,6 +84,7 @@ const systems: System[] = [
   createAmbient(ctx),
   createParty(ctx),
   createBall(ctx),
+  createDisc(ctx),
   createCameraRig(ctx),
   createControls(ctx),
   createHud(ctx),

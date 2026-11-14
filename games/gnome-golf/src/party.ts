@@ -383,6 +383,9 @@ export function createParty(ctx: Ctx): System {
       sip(golfer.model, canG, golferU);
       sip(partner.model, canP, partnerU);
 
+      // Gnome Disc: the golfer is the thing being thrown (disc.ts draws him); he only rides the mower here.
+      golfer.model.object.visible = s.mode !== 'disc' || riding;
+
       prevPhase = s.phase;
     },
   };
