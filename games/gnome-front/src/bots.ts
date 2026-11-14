@@ -2,7 +2,7 @@
 // alive member picks a flag for the squad and the others follow in formation. Hurt or reloading bots take cover, bots steer
 // around obstacles, keep the range their weapon likes, and drive vehicles. Aiming and shooting live in botAim.ts.
 import * as THREE from 'three';
-import { ARENA_HALF, BASES, TUNING, weaponOf } from './config';
+import { ARENA_HALF, BASES, TUNING, isBot, weaponOf } from './config';
 import type { ClassId, FlagState, Game, Obstacle, Soldier, Team, Vehicle, VehicleControl } from './config';
 import { moveSoldier } from './soldiers';
 import { spawnPoints } from './conquest';
@@ -119,10 +119,10 @@ function brainsFor(game: Game): Map<number, Brain> {
   const created = new Map<number, Brain>();
   brainsByGame.set(game, created);
   game.on((e) => {
-    if (e.type === 'spawn' && !e.soldier.isPlayer) {
+    if (e.type === 'spawn' && isBot(e.soldier)) {
       created.set(e.soldier.id, makeBrain(e.soldier));
       resetBotCombat(e.soldier);
-    } else if (e.type === 'kill' && !e.victim.isPlayer) {
+    } else if (e.type === 'kill' && isBot(e.victim)) {
       e.victim.nextClassId = pickNextClass(game, e.victim);
     }
   });
@@ -143,7 +143,7 @@ function brainOf(game: Game, s: Soldier): Brain {
 function pickNextClass(game: Game, victim: Soldier): ClassId {
   let snipers = 0;
   for (const x of game.soldiers) {
-    if (x !== victim && x.team === victim.team && !x.isPlayer && x.nextClassId === 'sniper') snipers++;
+    if (x !== victim && x.team === victim.team && isBot(x) && x.nextClassId === 'sniper') snipers++;
   }
   const pool = CLASS_WEIGHTS.filter((c) => c.id !== 'sniper' || snipers < SNIPER_CAP);
   const total = pool.reduce((a, c) => a + c.w, 0);
@@ -160,7 +160,7 @@ function buildSquads(game: Game): SquadState {
   const squads: Squad[] = [];
   const seats = new Map<number, SquadSeat>();
   for (const team of [0, 1] as const) {
-    const bots = game.soldiers.filter((x) => x.team === team && !x.isPlayer);
+    const bots = game.soldiers.filter((x) => x.team === team && isBot(x));
     for (let i = 0; i < bots.length; i += SQUAD_SIZE) {
       const members = bots.slice(i, i + SQUAD_SIZE);
       let leader: Soldier | null = null;
@@ -179,7 +179,7 @@ function buildSquads(game: Game): SquadState {
 export function updateBots(game: Game, dt: number): void {
   const sq = buildSquads(game);
   for (const s of game.soldiers) {
-    if (s.isPlayer || !s.alive) continue;
+    if (!isBot(s) || !s.alive) continue;
     const seat = sq.seats.get(s.id);
     if (!seat) continue;
     updateBot(game, s, brainOf(game, s), seat, sq, dt);

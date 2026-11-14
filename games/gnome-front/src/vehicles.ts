@@ -8,6 +8,7 @@ import {
 import { createMowerModel } from './models/mowerModels';
 import { heightAt, normalAt } from './terrain';
 import { damageSoldier } from './soldiers';
+import { netHooks, netState } from './net/state';
 
 /** Controls set this frame by driveVehicle, keyed by vehicle id. Cleared at the end of updateVehicles. */
 const controls = new Map<number, VehicleControl>();
@@ -89,6 +90,11 @@ export function driveVehicle(v: Vehicle, ctl: VehicleControl): void {
 export function damageVehicle(game: Game, v: Vehicle, amount: number, by: Soldier | null): void {
   if (!v.alive || amount <= 0) return;
   if (by && v.driver && by.team === v.team) return; // no friendly fire on a manned vehicle
+  // Online guest: the host owns vehicle health; only my own hits go out, as claims.
+  if (netState.role === 'guest') {
+    if (by && by === game.player) netHooks.sendVehicleDamage?.(v.id, amount);
+    return;
+  }
   v.hp -= amount;
   flashT.set(v.id, 0.08);
   game.emit({ type: 'vehicleHit', shooter: by, vehicle: v, damage: amount });
@@ -116,10 +122,12 @@ export function updateVehicles(game: Game, dt: number): void {
 
     if (!v.alive) {
       v.respawnT -= dt;
-      if (v.respawnT <= 0) respawnVehicle(v);
+      // Online guests never respawn vehicles: snapshots bring them back.
+      if (v.respawnT <= 0 && netState.role !== 'guest') respawnVehicle(v);
       continue;
     }
     if (v.driver && (!v.driver.alive || v.driver.vehicle !== v)) v.driver = null;
+    if (!simulatedHere(game, v)) continue;
     const ctl = v.driver ? (controls.get(v.id) ?? NO_CONTROL) : NO_CONTROL;
     driveOne(game, v, ctl, dt);
   }
@@ -128,13 +136,25 @@ export function updateVehicles(game: Game, dt: number): void {
 
   for (const v of game.vehicles) {
     if (!v.alive) continue;
-    clampToArena(v);
+    if (simulatedHere(game, v)) {
+      clampToArena(v);
+      if (v.driver) runOver(game, v);
+    }
     v.pos.y = heightAt(v.pos.x, v.pos.z);
-    if (v.driver) runOver(game, v);
     updateModel(v, dt);
   }
 
   controls.clear();
+}
+
+/**
+ * Whether this browser moves vehicle v. Solo and host: every vehicle except those driven by a remote human
+ * (their driver's browser sends the position). Guest: only the vehicle game.player drives (snapshots move the rest).
+ * Exported for the net code, which sets the position of the vehicles this returns false for.
+ */
+export function simulatedHere(game: Game, v: Vehicle): boolean {
+  if (netState.role === 'guest') return v.driver !== null && v.driver === game.player;
+  return !(v.driver && v.driver.remote);
 }
 
 function respawnVehicle(v: Vehicle): void {
