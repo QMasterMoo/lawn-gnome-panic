@@ -775,6 +775,8 @@ export interface World {
   reset(): void;
   /** Half-size of the shadowed area around the focus. */
   setShadowRange(halfExtent: number): void;
+  /** Sand instead of grass (the ihategrass cheat). */
+  setSand(on: boolean): void;
 }
 
 export interface PickupSystem {
