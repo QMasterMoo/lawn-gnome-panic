@@ -25,6 +25,7 @@ import { computeStats } from './stats';
 import { createRun, addXp, rollChoices, applyChoice } from './run';
 import { WEAPON_FACTORIES } from './weapons';
 import { playSfx, setEngineLevel } from './audio';
+import { startMusic, startMenuMusic, pauseMusic, resumeMusic, stopMusic, isMusicMuted, setMusicMuted } from './music';
 import { loadFlags, saveFlags } from './flags';
 import { createPostFX } from './postfx';
 import { buildProp } from './props';
@@ -40,8 +41,11 @@ import { createZone } from './br/zone';
 import { createRoyaleHud } from './ui/royaleHud';
 import { createViewButton } from './ui/viewButton';
 import { createPauseButton } from './ui/pauseButton';
+import { createMuteButton } from './ui/muteButton';
+import { createNowPlaying } from './ui/nowPlaying';
 import { createPauseUI } from './ui/pause';
 import { createNetClient, serverUrl } from './net/client';
+import { listenForCheat } from './cheat';
 import { initTelemetry, track } from './telemetry';
 import { createPuppetSystem } from './net/puppets';
 import { checkName } from './net/textFilter';
@@ -144,6 +148,9 @@ const zone = createZone(scene);
 const royaleHud = createRoyaleHud(uiRoot);
 const viewBtn = createViewButton(uiRoot, cycleView);
 const pauseBtn = createPauseButton(uiRoot, () => pauseGame());
+const muteBtn = createMuteButton(uiRoot, isMusicMuted, () => setMusicMuted(!isMusicMuted()));
+muteBtn.show();
+const nowPlaying = createNowPlaying(uiRoot);
 const pauseUI = createPauseUI(uiRoot);
 const puppets = createPuppetSystem(scene);
 
@@ -158,6 +165,7 @@ function pauseGame(): void {
   pauseBtn.hide();
   spectateBar.hide();
   setEngineLevel(0);
+  pauseMusic();
   pauseUI.show({
     mode,
     runNumber: save.runs + 1,
@@ -180,6 +188,7 @@ function resumeGame(): void {
   if (phase !== 'paused') return;
   pauseUI.hide();
   phase = 'playing';
+  resumeMusic();
   input.setPointerLockAllowed(true);
   touch.setVisible(true);
   viewBtn.show();
@@ -189,6 +198,12 @@ function resumeGame(): void {
 
 function quitRun(): void {
   if (phase !== 'paused') return;
+  if (sandbox) {
+    // Nothing to score: straight back to the lobby.
+    pauseUI.hide();
+    goLobby();
+    return;
+  }
   if (online) {
     finishOnline('GIVING UP (it happens)');
     return;
@@ -301,6 +316,7 @@ let zoneDmgTimer = 0;
 let killedByText: string | null = null;
 let celebrateS = 0;
 let bestToastDone = false;
+let sandbox = false;        // the ihategrass cheat: sand, obstacles, nothing else
 
 const NO_INPUT: InputState = { moveX: 0, moveY: 0, jump: false, sprint: false, start: false, lookX: 0, lookY: 0 };
 
@@ -345,6 +361,8 @@ function clearField(): void {
 // ---------- phases ----------
 function goLobby(): void {
   phase = 'lobby';
+  sandbox = false;
+  world.setSand(false);
   if (online) {
     net?.leave();
     online = null;
@@ -365,6 +383,8 @@ function goLobby(): void {
   lobbyUI.show(save);
   input.setPointerLockAllowed(false);
   setEngineLevel(0);
+  startMenuMusic();
+  nowPlaying.hide();
 }
 
 function startRun(m: GameMode = 'solo', level = 1): void {
@@ -428,6 +448,49 @@ function startRun(m: GameMode = 'solo', level = 1): void {
   input.setPointerLockAllowed(true);
   touch.setVisible(true);
   playSfx('start');
+  // Online matches share the server's seed, so everyone gets the same track (not beat-synced).
+  const song = startMusic(online ? online.seed : undefined);
+  if (!isMusicMuted()) nowPlaying.show(song);
+}
+
+/** The ihategrass cheat: a solo walk on sand among the obstacles. No mowers, acorns, items, weapons or HUD. */
+function startSandbox(): void {
+  if (phase !== 'lobby' || online || queueing) return;
+  sandbox = true;
+  mode = 'solo';
+  dayNight.setTime(TUNING.dayStartT);
+  lastDayPhase = dayNight.state().phase;
+  lobbyUI.hide();
+  lobbyStage.setVisible(false);
+  clearField();
+  world.setSand(true);
+  run = createRun(save);
+  stats = computeStats(save, run);
+  player = createPlayerState(stats);
+  pendingLevelUps = 0;
+  victoryTimer = -1;
+  espressoS = 0;
+  celebrateS = 0;
+  rig.view = flags.view;
+  rig.reset(0);
+  viewBtn.setView(flags.view);
+  viewBtn.show();
+  pauseBtn.show();
+  hud.hide();
+  juice.toast('I HATE GRASS', 'No grass. No mowers. No acorns. Just sand. (Esc to leave.)', '#d9c18c');
+  phase = 'playing';
+  input.setPointerLockAllowed(true);
+  touch.setVisible(true);
+  playSfx('start');
+}
+listenForCheat('ihategrass', startSandbox);
+
+function tickSandbox(dt: number, inp: InputState): void {
+  dayNight.update(dt);
+  const { jumped } = updatePlayer(player, inp, rig.yaw, OBSTACLES, stats, dt);
+  if (jumped) playSfx('jump');
+  gnome.object.visible = rig.view !== 'first';
+  setEngineLevel(0);
 }
 
 function openLevelUp(): void {
@@ -483,6 +546,8 @@ function endRun(victory: boolean): void {
   rig.view = 'third'; // see your gnome's fate on the results screen
   input.setPointerLockAllowed(false);
   setEngineLevel(0);
+  stopMusic();
+  nowPlaying.hide();
   gnome.object.visible = true;
   if (victory) {
     playSfx('victory');
@@ -574,6 +639,10 @@ function applyItem(kind: ItemKind): void {
 
 function tickRun(dt: number, inp: InputState): void {
   run.elapsedS += dt;
+  if (sandbox) {
+    tickSandbox(dt, inp);
+    return;
+  }
   // Online: sim = this browser runs the world (host); sp = my gnome is dead and I am watching.
   const sim = !online || online.isHost;
   const sp = online?.spectating ?? false;

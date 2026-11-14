@@ -7,6 +7,10 @@ const LEG_AIR_LEFT = 0.5;
 const LEG_AIR_RIGHT = -0.3;
 const ARM_AIR = -2.4;
 
+/** Double-jump front flip: seconds for one full turn, and the pivot height (about the belly). */
+const FLIP_DURATION = 0.45;
+const FLIP_PIVOT_Y = 0.5;
+
 /** Freckle spots as directions from the head centre. They are normalised and pushed onto the skin in code. */
 // Upper cheeks and the bridge of the nose only (between the nose at y 0 and the eyes at y +0.06):
 // lower on the face they read as stubble.
@@ -22,7 +26,15 @@ const FRECKLE_COLOR = 0xe2b49a;
 export function createGnomeModel(look: GnomeLook): GnomeModel {
   const object = new THREE.Group();
   const rig = new THREE.Group();
-  object.add(rig);
+  // object > flip (pivot at the belly) > flipOffset (back down to the feet) > rig.
+  // The flip spins round its own origin, so the gnome turns about its middle, not its boots.
+  const flip = new THREE.Group();
+  flip.position.y = FLIP_PIVOT_Y;
+  const flipOffset = new THREE.Group();
+  flipOffset.position.y = -FLIP_PIVOT_Y;
+  object.add(flip);
+  flip.add(flipOffset);
+  flipOffset.add(rig);
 
   const materials = new Map<number, THREE.MeshStandardMaterial>();
   const mat = (color: number): THREE.MeshStandardMaterial => {
@@ -187,6 +199,8 @@ export function createGnomeModel(look: GnomeLook): GnomeModel {
 
   let dead = false;
   let phase = 0;
+  let prevJumpsUsed = 0;
+  let flipT = -1; // seconds into the current flip; -1 when not flipping
   const smooth = (rate: number, dt: number): number => 1 - Math.exp(-rate * dt);
   const lerp = (a: number, b: number, k: number): number => a + (b - a) * k;
 
@@ -201,6 +215,20 @@ export function createGnomeModel(look: GnomeLook): GnomeModel {
         rig.rotation.x = lerp(rig.rotation.x, -Math.PI / 2, k);
         rig.scale.y = lerp(rig.scale.y, 0.25, k);
         return;
+      }
+
+      // Front flip on an air jump (the second or later jump before landing).
+      if (p.jumpsUsed > prevJumpsUsed && p.jumpsUsed >= 2 && !p.grounded) flipT = 0;
+      prevJumpsUsed = p.jumpsUsed;
+      if (flipT >= 0) {
+        flipT += dt;
+        const t = Math.min(1, flipT / FLIP_DURATION);
+        const eased = t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t); // ease in-out
+        flip.rotation.x = eased * Math.PI * 2; // positive x tips the head forward
+        if (t >= 1 || p.grounded) {
+          flipT = -1;
+          flip.rotation.x = 0;
+        }
       }
 
       const speed = Math.hypot(p.velocity.x, p.velocity.z);
@@ -238,6 +266,8 @@ export function createGnomeModel(look: GnomeLook): GnomeModel {
     },
     setDead(d: boolean) {
       dead = d;
+      flipT = -1;
+      flip.rotation.x = 0;
       if (!d) {
         rig.rotation.x = 0;
         rig.scale.set(1, 1, 1);
