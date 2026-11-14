@@ -1,7 +1,7 @@
 // Gnome Bowling: renderer, scene, lights and the main loop. Systems live one per file; this file only wires them.
 import * as THREE from 'three';
 import { LOOK_COLORS, LOOK_ORDER, SEAT_COLORS, type Ctx, type System } from './config';
-import { canBowlHere, makePlayer, newGame, newState, throwBall, tickGame } from './game';
+import { canBowlHere, makeNpcPlayer, makePlayer, newGame, newState, throwBall, tickGame } from './game';
 import { createNet } from './net';
 import { createLane } from './lane';
 import { createPins } from './pins';
@@ -12,6 +12,7 @@ import { createHud } from './hud';
 import { createCelebrate } from './celebrate';
 import { createMenu } from './menu';
 import { createAudio } from './audio';
+import { createAnnouncer } from './announcer';
 
 // No page zoom or scroll on phones: every control runs on pointer events, which still arrive
 // when the touch events are cancelled. Elements marked data-scroll keep native scrolling.
@@ -69,8 +70,11 @@ const state = newState();
 const net = createNet({ scene, camera, renderer, canvas, state, ui, lights: { key, hemi }, net: null as never });
 const ctx: Ctx = { scene, camera, renderer, canvas, state, ui, lights: { key, hemi }, net };
 
-// Debug: #play starts a local game for two at once. window.bowl is the game state.
-if (location.hash.includes('play')) {
+// Debug: #play starts a local game for two at once; #cpu starts a game of two CPU bowlers to watch.
+// window.bowl is the game state.
+if (location.hash.includes('cpu')) {
+  newGame(state, [makeNpcPlayer('lou'), makeNpcPlayer('chad')], 'local');
+} else if (location.hash.includes('play')) {
   newGame(state, [
     makePlayer('Gnorman', LOOK_ORDER[0], SEAT_COLORS[0]),
     makePlayer('Gnancy', LOOK_ORDER[1], SEAT_COLORS[1]),
@@ -98,6 +102,7 @@ const systems: System[] = [
   createCelebrate(ctx),
   createMenu(ctx),
   createAudio(ctx),
+  createAnnouncer(ctx),
 ];
 
 let last = performance.now();

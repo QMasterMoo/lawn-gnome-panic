@@ -145,7 +145,9 @@ export interface SimResult {
 // Players and looks
 // =====================================================================
 
-export type LookId = 'gnorman' | 'gnancy' | 'gnorbert' | 'gnelly';
+export type LookId = 'gnorman' | 'gnancy' | 'gnorbert' | 'gnelly'
+  // NPC (CPU bowler) outfits: in LOOKS but not in LOOK_ORDER, so players cannot pick them.
+  | 'lou' | 'gnertrude' | 'robo' | 'chad';
 
 /** Bowling outfits. Every look has a bowl cut. The hat colour is replaced by the player's colour. */
 export const LOOKS: Record<LookId, { name: string; look: GnomeLook }> = {
@@ -165,7 +167,26 @@ export const LOOKS: Record<LookId, { name: string; look: GnomeLook }> = {
     name: 'Gnelly',
     look: { hat: 0xff6fd0, shirt: 0x8a3ec9, pants: 0x2b2b2b, skin: 0xf1d0b0, boots: 0xffffff, beard: null, hair: null, freckles: false, dress: true, glasses: false, bowlCut: 0xf2d45c },
   },
+  lou: {
+    name: 'Big Lou',
+    look: { hat: 0x333333, shirt: 0xc0392b, pants: 0x222222, skin: 0xe0ac69, boots: 0x111111, beard: 0x9e9e9e, hair: null, freckles: false, dress: false, glasses: false, bowlCut: 0x5a5a5a },
+  },
+  gnertrude: {
+    name: 'Granny Gnertrude',
+    look: { hat: 0xb39ddb, shirt: 0xf8bbd0, pants: 0x6d4c41, skin: 0xf5d6c6, boots: 0x8d6e63, beard: null, hair: null, freckles: false, dress: true, glasses: true, bowlCut: 0xeeeeee },
+  },
+  robo: {
+    name: 'Robo-Gnome 3000',
+    look: { hat: 0x9e9e9e, shirt: 0x78909c, pants: 0x455a64, skin: 0xb0bec5, boots: 0x263238, beard: 0xcfd8dc, hair: null, freckles: false, dress: false, glasses: true, bowlCut: 0x607d8b },
+  },
+  chad: {
+    name: 'Gnome Chad',
+    look: { hat: 0xffffff, shirt: 0x00bcd4, pants: 0xf5f5f5, skin: 0xd8a47f, boots: 0xffffff, beard: null, hair: null, freckles: false, dress: false, glasses: true, bowlCut: 0xffd54f },
+  },
 };
+
+/** CPU bowlers (npc.ts holds their names, skill and personality). */
+export type NpcId = 'lou' | 'gnertrude' | 'robo' | 'chad';
 export const LOOK_ORDER: readonly LookId[] = ['gnorman', 'gnancy', 'gnorbert', 'gnelly'];
 
 /** Player colours for local play, by seat. Online players get their colour from the server. */
@@ -186,6 +207,8 @@ export interface Player {
   netId: number;
   /** Left the online match: their turns are skipped. */
   gone: boolean;
+  /** A CPU bowler (local games only): game.ts throws for them. null for a human. */
+  npc: NpcId | null;
 }
 
 // =====================================================================
@@ -221,6 +244,10 @@ export interface BallResult {
   player: number;
   /** Bumped every result so systems can spot a new one. */
   serial: number;
+  /** Id of the vintage cartoon (cartoons/index.ts) celebrate.ts plays instead of a result card, or null. */
+  cartoon: string | null;
+  /** Strikes in a row ending with this ball (0 if this ball was not a strike). */
+  streak: number;
 }
 
 export type Mode = 'local' | 'online';
@@ -274,6 +301,8 @@ export const ROUND = {
   resultSeconds: 2.6,
   /** Strikes and better stay up longer. */
   bigResultSeconds: 3.4,
+  /** A result that plays a vintage cartoon stays up this long. */
+  cartoonSeconds: 4.2,
   /** After the sim ends, wait this long before 'result' (pins settling on screen). */
   settleSeconds: 0.4,
 } as const;
@@ -309,6 +338,29 @@ export interface Ctx {
 export interface System {
   update(dt: number): void;
 }
+
+// =====================================================================
+// CPU bowlers, vintage cartoons
+// =====================================================================
+
+export const NPC_TUNING = {
+  /** Seconds a CPU bowler spends lining up (the aim slides to the target) before the run-up. */
+  thinkSeconds: 1.6,
+} as const;
+
+/**
+ * Chance that a result plays a vintage alley cartoon (if one is registered for that kind) instead of the
+ * classic result card. Kinds not listed never do. `#cartoon=<id>` in the URL forces that cartoon whenever it fits.
+ */
+export const CARTOON_CHANCE: Partial<Record<ResultKind, number>> = {
+  strike: 0.55,
+  double: 0.5,
+  turkey: 1,
+  hambone: 1,
+  spare: 0.45,
+  gutter: 0.35,
+  miss: 0.35,
+};
 
 export const LOOK_COLORS = {
   background: 0x1a1030,

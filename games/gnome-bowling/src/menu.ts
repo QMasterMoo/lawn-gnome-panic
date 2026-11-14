@@ -4,9 +4,11 @@ import { checkName } from '@lawn/mp/textFilter';
 import { sfx, startAudio } from './audio';
 import {
   LOOKS, LOOK_ORDER, MAX_LOCAL_PLAYERS, MAX_ONLINE_PLAYERS, SEAT_COLORS,
-  type Ctx, type LookId, type System,
+  type Ctx, type LookId, type NpcId, type System,
 } from './config';
-import { makePlayer, newGame, toTitle } from './game';
+import { makeNpcPlayer, makePlayer, newGame, toTitle } from './game';
+import { NPCS, NPC_ORDER, isNpcId } from './npc';
+import { announcerOn, setAnnouncerOn, speak } from './speech';
 
 const STORE_KEY = 'gnome-bowling-players';
 const NAME_INPUT_MAX = 12;
@@ -62,6 +64,13 @@ const CSS = `
 #bm-root .bm-btn.ghost { background: rgba(255,255,255,0.12); box-shadow: none; }
 #bm-root .bm-btn.big { min-height: 60px; font-size: 24px; width: 100%; }
 #bm-root .bm-wide { width: 100%; margin-top: 4px; }
+#bm-root .bm-addrow { display: flex; gap: 8px; margin-top: 4px; }
+#bm-root .bm-addrow .bm-btn { flex: 1 1 0; min-width: 0; padding: 0 8px; }
+#bm-root .bm-cpuname { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 18px; font-weight: 700; line-height: 1.2; }
+#bm-root .bm-cpuname > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+#bm-root .bm-cputitle { margin-top: 2px; color: ${GREY}; font-size: 13px; }
+#bm-root .bm-cpubadge { flex: none; font-size: 11px; font-weight: 900; padding: 2px 6px; border-radius: 6px;
+  background: #3ff0ff; color: #14082a; text-shadow: none; }
 #bm-root .bm-arrow { width: 48px; height: 48px; flex: none; border: 0; border-radius: 10px; background: rgba(255,255,255,0.14);
   color: #fff; font-size: 20px; cursor: pointer; touch-action: manipulation; }
 #bm-root .bm-remove { width: 48px; flex: none; border: 0; border-radius: 10px; background: rgba(255,255,255,0.12);
@@ -95,6 +104,8 @@ const CSS = `
 interface Seat {
   name: string;
   look: LookId;
+  /** Set for a CPU bowler (name and look come from NPCS). */
+  npc?: NpcId;
 }
 
 const hex = (c: number): string => '#' + c.toString(16).padStart(6, '0');
@@ -139,7 +150,12 @@ function loadSeats(): Seat[] {
         const seats: Seat[] = [];
         for (const s of data.slice(0, MAX_LOCAL_PLAYERS)) {
           const o = (s ?? {}) as Partial<Seat>;
-          if (typeof o.name === 'string' && isLook(o.look)) seats.push({ name: o.name.slice(0, NAME_INPUT_MAX), look: o.look });
+          if (isNpcId(o.npc)) {
+            const n = NPCS[o.npc];
+            seats.push({ name: n.name, look: n.look, npc: o.npc });
+          } else if (typeof o.name === 'string' && isLook(o.look)) {
+            seats.push({ name: o.name.slice(0, NAME_INPUT_MAX), look: o.look });
+          }
         }
         if (seats.length > 0) return seats;
       }
@@ -227,6 +243,44 @@ export function createMenu(ctx: Ctx): System {
     renderPlayers();
   }
 
+  /** The first CPU bowler no seat is using yet (the first one if all are taken). */
+  function freeNpc(): NpcId {
+    const used = new Set(seats.map((s) => s.npc));
+    return NPC_ORDER.find((id) => !used.has(id)) ?? NPC_ORDER[0];
+  }
+
+  function addCpuSeat(): void {
+    if (seats.length >= MAX_LOCAL_PLAYERS) return;
+    const id = freeNpc();
+    seats.push({ name: NPCS[id].name, look: NPCS[id].look, npc: id });
+    errors = [];
+    persist();
+    renderPlayers();
+  }
+
+  /** Steps a CPU seat to the next bowler in NPC_ORDER, skipping bowlers other seats use when possible. */
+  function cycleNpc(i: number, dir: number): void {
+    const seat = seats[i];
+    if (!seat?.npc) return;
+    const taken = new Set(seats.filter((_, j) => j !== i).map((s) => s.npc));
+    const len = NPC_ORDER.length;
+    const idx = NPC_ORDER.indexOf(seat.npc);
+    let next = NPC_ORDER[(idx + dir + len) % len];
+    for (let k = 1; k < len; k++) {
+      const cand = NPC_ORDER[(idx + dir * k + len * len) % len];
+      if (!taken.has(cand)) {
+        next = cand;
+        break;
+      }
+    }
+    seat.npc = next;
+    seat.name = NPCS[next].name;
+    seat.look = NPCS[next].look;
+    sfx('tick');
+    persist();
+    renderPlayers();
+  }
+
   function removeSeat(i: number): void {
     if (seats.length <= 1) return;
     seats.splice(i, 1);
@@ -239,35 +293,42 @@ export function createMenu(ctx: Ctx): System {
     playersBox.replaceChildren();
     seats.forEach((seat, i) => {
       const card = h('div', 'bm-card');
+      const cpu = seat.npc ? NPCS[seat.npc] : null;
       const chip = h('div', 'bm-chip');
-      chip.style.background = hex(SEAT_COLORS[i]);
+      chip.style.background = hex(cpu ? cpu.color : SEAT_COLORS[i]);
 
       const col = h('div', 'bm-col');
-      const name = h('input', 'bm-input');
-      name.maxLength = NAME_INPUT_MAX;
-      name.value = seat.name;
-      name.placeholder = 'Name';
-      name.autocomplete = 'off';
-      name.spellcheck = false;
-      name.setAttribute('aria-label', `Player ${i + 1} name`);
-      name.addEventListener('input', () => {
-        seat.name = name.value;
-        persist();
-      });
-      col.append(name);
+      if (cpu) {
+        const nameLine = h('div', 'bm-cpuname');
+        nameLine.append(h('span', undefined, cpu.name), h('span', 'bm-cpubadge', 'CPU'));
+        col.append(nameLine, h('div', 'bm-cputitle', cpu.title));
+      } else {
+        const name = h('input', 'bm-input');
+        name.maxLength = NAME_INPUT_MAX;
+        name.value = seat.name;
+        name.placeholder = 'Name';
+        name.autocomplete = 'off';
+        name.spellcheck = false;
+        name.setAttribute('aria-label', `Player ${i + 1} name`);
+        name.addEventListener('input', () => {
+          seat.name = name.value;
+          persist();
+        });
+        col.append(name);
+      }
 
       const err = errors[i];
       if (err) col.append(h('div', 'bm-err', err));
 
       const look = h('div', 'bm-look');
       const prev = h('button', 'bm-arrow', '◀');
-      prev.setAttribute('aria-label', 'Previous look');
-      tap(prev, () => cycleLook(i, -1));
+      prev.setAttribute('aria-label', cpu ? 'Previous CPU' : 'Previous look');
+      tap(prev, () => (cpu ? cycleNpc(i, -1) : cycleLook(i, -1)));
       const info = h('div', 'bm-lookinfo');
-      info.append(swatch(seat.look), h('span', 'bm-lookname', LOOKS[seat.look].name));
+      info.append(swatch(cpu ? cpu.look : seat.look), h('span', 'bm-lookname', cpu ? cpu.name : LOOKS[seat.look].name));
       const next = h('button', 'bm-arrow', '▶');
-      next.setAttribute('aria-label', 'Next look');
-      tap(next, () => cycleLook(i, 1));
+      next.setAttribute('aria-label', cpu ? 'Next CPU' : 'Next look');
+      tap(next, () => (cpu ? cycleNpc(i, 1) : cycleLook(i, 1)));
       look.append(prev, info, next);
       col.append(look);
 
@@ -281,30 +342,46 @@ export function createMenu(ctx: Ctx): System {
       playersBox.append(card);
     });
     if (seats.length < MAX_LOCAL_PLAYERS) {
-      const add = h('button', 'bm-btn ghost bm-wide', '+ ADD PLAYER');
+      const addRow = h('div', 'bm-addrow');
+      const add = h('button', 'bm-btn ghost', '+ ADD PLAYER');
       tap(add, addSeat);
-      playersBox.append(add);
+      const addCpu = h('button', 'bm-btn ghost', '+ ADD CPU');
+      tap(addCpu, addCpuSeat);
+      addRow.append(add, addCpu);
+      playersBox.append(addRow);
     }
     refreshWho();
   }
 
-  // BOWL! starts a local game.
+  // BOWL! starts a local game. CPU seats are not name-checked.
   const bowlBtn = h('button', 'bm-btn big', 'BOWL!');
   tap(bowlBtn, () => {
-    const results = seats.map((s) => checkName(s.name));
-    errors = results.map((r) => (r.ok ? null : r.reason));
+    const results = seats.map((s) => (s.npc ? null : checkName(s.name)));
+    errors = results.map((r) => (r && !r.ok ? r.reason : null));
     if (errors.some((e) => e !== null)) {
       renderPlayers();
       return;
     }
     const players = seats.map((s, i) => {
+      if (s.npc) return makeNpcPlayer(s.npc);
       const r = results[i];
-      return makePlayer(r.ok ? r.name : s.name, s.look, SEAT_COLORS[i]);
+      return makePlayer(r && r.ok ? r.name : s.name, s.look, SEAT_COLORS[i]);
     });
     errors = [];
     persist();
     sfx('click');
     newGame(ctx.state, players, 'local');
+  });
+
+  // Announcer on/off, under BOWL!.
+  const announcerLabel = (): string => `📣 ANNOUNCER: ${announcerOn() ? 'ON' : 'OFF'}`;
+  const announcerBtn = h('button', 'bm-btn ghost bm-wide', announcerLabel());
+  tap(announcerBtn, () => {
+    const on = !announcerOn();
+    setAnnouncerOn(on);
+    setText(announcerBtn, announcerLabel());
+    sfx('click');
+    if (on) speak([{ text: 'Announcer, on!', voice: 'announcer', pitch: 0.4, rate: 0.85 }], true);
   });
 
   // Online panel
@@ -313,8 +390,13 @@ export function createMenu(ctx: Ctx): System {
   const whoLine = h('p', 'bm-note');
   const onlineMsg = h('p', 'bm-note');
 
+  /** The first human seat is the online player; CPU seats never go online. */
+  function onlineSeat(): Seat {
+    return seats.find((s) => !s.npc) ?? defaultSeat(0);
+  }
+
   function refreshWho(): void {
-    const s0 = seats[0] ?? defaultSeat(0);
+    const s0 = onlineSeat();
     setText(whoLine, `Online as ${s0.name} (${LOOKS[s0.look].name}).`);
   }
 
@@ -325,7 +407,7 @@ export function createMenu(ctx: Ctx): System {
 
   /** Player 1's name and look for online play, or null (and a message) if the name is not allowed. */
   function onlineIdentity(): { name: string; look: LookId } | null {
-    const s0 = seats[0] ?? defaultSeat(0);
+    const s0 = onlineSeat();
     const r = checkName(s0.name);
     if (!r.ok) {
       setOnlineMsg(r.reason, true);
@@ -398,7 +480,7 @@ export function createMenu(ctx: Ctx): System {
     howto.append(h('li', undefined, line));
   }
 
-  titleScreen.append(cols, bowlBtn, howto);
+  titleScreen.append(cols, bowlBtn, announcerBtn, howto);
 
   // ---------------------------------------------------------------- lobby screen
   const lobby = h('div', 'bm-screen');
