@@ -1,7 +1,7 @@
 // Gnome Golf: renderer, scene, lights and the main loop. Systems live one per file; this file only wires them.
 import * as THREE from 'three';
-import { LOOK, type Ctx, type System } from './config';
-import { newRound, newState, startHole, tickRound } from './round';
+import { HOLES, LOOK, type Ctx, type System } from './config';
+import { newRound, newState, placeBall, startHole, tickRound } from './round';
 import { createWorld } from './world';
 import { createAmbient } from './ambient';
 import { createParty } from './party';
@@ -12,6 +12,7 @@ import { createHud } from './hud';
 import { createMinimap } from './minimap';
 import { createMusic } from './music';
 import { createAudioSystem } from './audio';
+import { createDisc } from './disc';
 
 // No page zoom on phones: iOS Safari ignores user-scalable=no and touch-action for double taps,
 // so a fast double tap on SWING zoomed the page. Every control here runs on pointer events, which
@@ -68,11 +69,21 @@ resize();
 const state = newState();
 const ctx: Ctx = { scene, camera, renderer, canvas, state, ui, lights: { sun, hemi } };
 
-// Debug: #hole=N starts straight on hole N (1-based).
+// Debug: #hole=N starts straight on hole N (1-based). #disc starts straight into Gnome Disc (combines with #hole=N).
 const holeMatch = /hole=(\d+)/.exec(location.hash);
-if (holeMatch) {
-  newRound(state);
-  startHole(state, Math.max(0, Number(holeMatch[1]) - 1));
+const discMatch = location.hash.includes('disc');
+if (holeMatch || discMatch) {
+  newRound(state, discMatch ? 'disc' : 'golf');
+  if (holeMatch) startHole(state, Math.max(0, Number(holeMatch[1]) - 1));
+}
+// Debug: #putt=N puts the ball N yards short of the pin, on the line in from the last fairway corner.
+const puttMatch = /putt=(\d+(?:\.\d+)?)/.exec(location.hash);
+if (puttMatch && state.phase !== 'title') {
+  const hole = HOLES[state.holeIndex];
+  const from = hole.path[hole.path.length - 2];
+  const d = Math.hypot(hole.pin.x - from.x, hole.pin.z - from.z);
+  const n = Number(puttMatch[1]);
+  placeBall(state, hole.pin.x + ((from.x - hole.pin.x) / d) * n, hole.pin.z + ((from.z - hole.pin.z) / d) * n);
 }
 (window as unknown as { golf: unknown }).golf = state; // debug handle
 
@@ -82,6 +93,7 @@ const systems: System[] = [
   createAmbient(ctx),
   createParty(ctx),
   createBall(ctx),
+  createDisc(ctx),
   createCameraRig(ctx),
   createControls(ctx),
   createHud(ctx),

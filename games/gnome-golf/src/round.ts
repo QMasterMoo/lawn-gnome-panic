@@ -1,9 +1,10 @@
 // Round flow: holes, strokes, penalties and the phase machine. Systems read GameState and call these
 // functions; only this file changes state.phase (except controls.ts, which moves 'aim' <-> 'swing').
 import * as THREE from 'three';
-import { CLUB_ORDER, CONSUMABLES, HOLES, LIES, PARTY, ROUND, type ClubId, type GameState, type HoleDef, type PartySpots, type Shot, type Spot } from './config';
+import { CLUB_ORDER, CONSUMABLES, DISC, HOLES, LIES, PARTY, ROUND, type ClubId, type DiscState, type GameMode, type GameState, type HoleDef, type PartySpots, type Shot, type Spot } from './config';
 import { distToPath, heightAt, lieAt } from './course';
 import { estimateCarry, simulateShot } from './physics';
+import { canFlail, continueThrow, simulateThrow, type DiscFlight } from './discPhysics';
 
 export function currentHole(state: GameState): HoleDef {
   return HOLES[state.holeIndex];
@@ -87,6 +88,12 @@ function prepareShot(state: GameState): void {
   state.aimYaw = defaultAim(state);
   state.club = defaultClub(state);
   state.swing = { stage: 'idle', marker: 0, power: 0 };
+  state.disc = freshDisc(state.disc.tilt);
+}
+
+/** Per-throw Gnome Disc state; the tilt carries over from throw to throw. */
+function freshDisc(tilt = 0): DiscState {
+  return { tilt, held: 0, orbit: 0, power: 0, releaseError: 0, flails: DISC.flailsPerThrow, lastFlail: -1, dizzy: false };
 }
 
 export function startHole(state: GameState, index: number): void {
@@ -107,7 +114,8 @@ export function startHole(state: GameState, index: number): void {
   setPhase(state, 'intro');
 }
 
-export function newRound(state: GameState): void {
+export function newRound(state: GameState, mode?: GameMode): void {
+  if (mode) state.mode = mode;
   state.scores = HOLES.map(() => null);
   state.cigarillos = CONSUMABLES.cigarillosPerRound;
   state.smokeShots = 0;
@@ -119,6 +127,8 @@ export function newRound(state: GameState): void {
 
 export function newState(): GameState {
   const state: GameState = {
+    mode: 'golf',
+    disc: freshDisc(),
     phase: 'title',
     phaseTime: 0,
     time: 0,
@@ -152,6 +162,13 @@ export function newState(): GameState {
   return state;
 }
 
+/** Debug: move the ball (and the party) to (x, z) and set up the next shot from there. */
+export function placeBall(state: GameState, x: number, z: number): void {
+  state.ball.set(x, 0, z);
+  prepareShot(state);
+  state.party = partySpots(state.ball, state.aimYaw);
+}
+
 /** Skip the hole intro (tap during 'intro'). */
 export function skipIntro(state: GameState): void {
   if (state.phase === 'intro') setPhase(state, 'aim');
@@ -168,9 +185,41 @@ export function takeShot(state: GameState, shot: Shot): void {
   setPhase(state, 'flight');
 }
 
+/**
+ * Gnome Disc: Disco lets go. `releaseError` is how far (radians) the gnome's orbit was past the aim line when
+ * he let go; the throw leaves that far off line, scaled by DISC.releaseSpread.
+ */
+export function takeThrow(state: GameState, power: number, releaseError: number, dizzy = false): void {
+  const hole = currentHole(state);
+  const off = Math.max(-DISC.maxReleaseOffset, Math.min(DISC.maxReleaseOffset, releaseError * DISC.releaseSpread));
+  state.strokes++;
+  state.disc.power = power;
+  state.disc.releaseError = releaseError;
+  state.disc.dizzy = dizzy;
+  state.disc.flails = DISC.flailsPerThrow;
+  state.disc.lastFlail = -1;
+  state.lastShot = { club: state.club, power, accuracy: 0, yaw: state.aimYaw + off };
+  state.flight = simulateThrow({
+    from: state.ball, yaw: state.aimYaw + off, power, tilt: state.disc.tilt, lie: state.lie, wind: state.wind, pin: hole.pin,
+  });
+  if (state.smokeShots > 0) state.smokeShots--;
+  setPhase(state, 'flight');
+}
+
+/** Gnome Disc: a mid-air flail. Only while the gnome is still airborne and has flails left. Keeps the flight clock running. */
+export function flailThrow(state: GameState): boolean {
+  const f = state.flight as DiscFlight | null;
+  if (state.mode !== 'disc' || state.phase !== 'flight' || !f || state.disc.flails <= 0 || !('vels' in f)) return false;
+  if (!canFlail(f, state.phaseTime)) return false;
+  state.flight = continueThrow(f, state.phaseTime, state.wind, currentHole(state).pin);
+  state.disc.flails--;
+  state.disc.lastFlail = state.time;
+  return true;
+}
+
 /** Score name for strokes relative to par. */
-export function scoreName(strokes: number, par: number): string {
-  if (strokes === 1) return 'Hole in one!';
+export function scoreName(strokes: number, par: number, mode: GameMode = 'golf'): string {
+  if (strokes === 1) return mode === 'disc' ? 'ACE! Gnome in the chains!' : 'Hole in one!';
   const d = strokes - par;
   const names: Record<string, string> = { '-3': 'Albatross!', '-2': 'Eagle!', '-1': 'Birdie!', '0': 'Par', '1': 'Bogey', '2': 'Double bogey', '3': 'Triple bogey' };
   return names[String(d)] ?? `+${d}`;
@@ -187,7 +236,7 @@ function finishFlight(state: GameState): void {
   if (f.holed) {
     state.ball.copy(f.end);
     state.scores[state.holeIndex] = state.strokes;
-    state.banner = scoreName(state.strokes, hole.par);
+    state.banner = scoreName(state.strokes, hole.par, state.mode);
     setPhase(state, 'holed');
     return;
   }
@@ -200,7 +249,7 @@ function finishFlight(state: GameState): void {
     const p = drop.clone();
     for (let i = 0; i < 60 && lieAt(p.x, p.z) === 'water'; i++) p.lerp(from, 0.08);
     state.ball.set(p.x, heightAt(p.x, p.z), p.z);
-    state.banner = 'Splash! +1 penalty, drop';
+    state.banner = state.mode === 'disc' ? 'Gnome overboard! +1, drop' : 'Splash! +1 penalty, drop';
   } else {
     state.ball.copy(f.end);
     state.banner = `${LIES[f.endLie].name} · ${fmtYards(f.total)}`;
