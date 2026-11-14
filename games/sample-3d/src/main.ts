@@ -304,7 +304,7 @@ let victoryTimer = -1;
 // Solo levels: the waves replay each level with harder mowers, ending in a boss fight.
 let levelIdx = 0;
 let levelStartS = 0;        // run time when the current level's wave clock started
-let sandbox = false;        // ?sandbox (demo recording): no mowers, waves or boss
+let demoSandbox = false;    // ?sandbox (demo recording): no mowers, waves or boss
 let levelBossSpawned = false;
 let bossDone = false;       // royale: its single boss is finished
 let levelsCleared = 0;
@@ -665,7 +665,7 @@ function tickRun(dt: number, inp: InputState): void {
   const L = mode === 'solo' ? SOLO_LEVELS[levelIdx] : null;
   const levelTime = Math.max(0, run.elapsedS - levelStartS);
   const wi = waveIndexAt(levelTime);
-  if (wi !== waveIndex && !sandbox) {
+  if (wi !== waveIndex && !demoSandbox) {
     waveIndex = wi;
     const b = WAVES[wi].banner;
     if (b && levelIdx === 0) hud.banner(b.title, b.sub, 3.5); // tier banners only the first time through
@@ -674,7 +674,7 @@ function tickRun(dt: number, inp: InputState): void {
     levelBannerAt = -1;
     hud.banner(L.name, L.sub, 4);
   }
-  if (sim && !sandbox && !levelBossSpawned && !bossDone && levelTime >= (L ? L.bossAtS : TUNING.bossAtS)) {
+  if (sim && !demoSandbox && !levelBossSpawned && !bossDone && levelTime >= (L ? L.bossAtS : TUNING.bossAtS)) {
     levelBossSpawned = true;
     run.bossSpawned = true;
     const count = L ? L.bossCount : 1;
@@ -693,7 +693,7 @@ function tickRun(dt: number, inp: InputState): void {
     targets.push(...others);
   }
   for (const c of bots.contestants()) if (c.alive) targets.push(c.pos);
-  let kills: MowerKill[] = sandbox ? [] : mowers.update(dt, levelTime, targets, OBSTACLES, (x, z) => world.markMowed(x, z));
+  let kills: MowerKill[] = demoSandbox ? [] : mowers.update(dt, levelTime, targets, OBSTACLES, (x, z) => world.markMowed(x, z));
   if (online) {
     if (online.isHost) for (const k of kills) online.kills.push([r2(k.x), r2(k.z), k.tier, k.by ?? -1]);
     else kills = online.netKills.splice(0);
@@ -1392,7 +1392,7 @@ goLobby();
   if (auto === 'online') lobbyCallbacks.onFindMatch(params.get('code')?.toUpperCase() ?? null);
   if (auto === 'solo' || auto === 'royale') {
     // &sandbox: an empty lawn for recording demos (tools/record-demo.mjs). No mowers, waves or boss.
-    sandbox = auto === 'solo' && params.has('sandbox');
+    demoSandbox = auto === 'solo' && params.has('sandbox');
     startRun(auto);
     // &level=2|3 starts a solo run on that level; &boss brings its boss fight in now.
     const lv = parseInt(params.get('level') ?? '', 10);
