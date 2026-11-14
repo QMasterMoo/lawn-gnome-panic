@@ -18,6 +18,11 @@ let engineSquare: OscillatorNode | null = null;
 
 let lastCutAt = -Infinity;
 let lastReelAt = -Infinity;
+let lastSplashAt = -Infinity;
+let lastChompAt = -Infinity;
+let lastGullAt = -Infinity;
+
+let rainGain: GainNode | null = null;
 
 /** Lazily create the context and master bus. Returns null if WebAudio is unavailable. */
 function ensureContext(): AudioContext | null {
@@ -144,6 +149,39 @@ function noise(
   src.stop(t + dur);
 }
 
+/** Oscillator (pitch sweep f0 -> f1) through a biquad filter, with an exponential gain envelope. */
+function filteredTone(
+  c: AudioContext,
+  out: GainNode,
+  f0: number,
+  f1: number,
+  dur: number,
+  type: OscillatorType,
+  vol: number,
+  filterType: BiquadFilterType,
+  filterFreq: number,
+  filterQ = 1,
+  delay = 0,
+): void {
+  const t = c.currentTime + delay;
+  const osc = c.createOscillator();
+  const filter = c.createBiquadFilter();
+  const gain = c.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(f0, t);
+  if (f1 !== f0) osc.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  filter.type = filterType;
+  filter.frequency.value = filterFreq;
+  filter.Q.value = filterQ;
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(out);
+  osc.start(t);
+  osc.stop(t + dur);
+}
+
 /** Play a short sound effect. No-op before startAudio(). */
 export function sfx(name: SfxName): void {
   try {
@@ -159,6 +197,15 @@ export function sfx(name: SfxName): void {
     } else if (name === 'reel') {
       if (nowMs - lastReelAt < 60) return;
       lastReelAt = nowMs;
+    } else if (name === 'splash') {
+      if (nowMs - lastSplashAt < 80) return;
+      lastSplashAt = nowMs;
+    } else if (name === 'chomp') {
+      if (nowMs - lastChompAt < 80) return;
+      lastChompAt = nowMs;
+    } else if (name === 'gull') {
+      if (nowMs - lastGullAt < 80) return;
+      lastGullAt = nowMs;
     }
 
     switch (name) {
@@ -218,6 +265,61 @@ export function sfx(name: SfxName): void {
       case 'click':
         tone(c, out, 1000, 1000, 0.005, 'square', 0.05);
         break;
+      case 'splash':
+        noise(c, out, 0.35, 0.2, 'bandpass', 800, 300);
+        break;
+      case 'thunder':
+        {
+          // Low rumble: lowpassed noise, fast attack, a second swell at 0.4 s, long decay.
+          const src = c.createBufferSource();
+          src.buffer = getNoiseBuffer(c);
+          const lp = c.createBiquadFilter();
+          lp.type = 'lowpass';
+          lp.frequency.value = 200;
+          const gain = c.createGain();
+          const t = c.currentTime;
+          gain.gain.setValueAtTime(0.0001, t);
+          gain.gain.exponentialRampToValueAtTime(0.6, t + 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.2, t + 0.4);
+          gain.gain.exponentialRampToValueAtTime(0.45, t + 0.5);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 2.5);
+          src.connect(lp);
+          lp.connect(gain);
+          gain.connect(out);
+          src.start(t, Math.random());
+          src.stop(t + 2.5);
+        }
+        break;
+      case 'gull':
+        filteredTone(c, out, 1400, 900, 0.18, 'sawtooth', 0.08, 'bandpass', 1100, 3);
+        filteredTone(c, out, 1400, 900, 0.18, 'sawtooth', 0.08, 'bandpass', 1100, 3, 0.1);
+        break;
+      case 'shark':
+        filteredTone(c, out, 82, 82, 0.25, 'sawtooth', 0.2, 'lowpass', 400);
+        filteredTone(c, out, 87, 87, 0.25, 'sawtooth', 0.2, 'lowpass', 400, 1, 0.25);
+        break;
+      case 'bonk':
+        tone(c, out, 300, 120, 0.12, 'sine', 0.25);
+        noise(c, out, 0.03, 0.12, 'highpass', 3000, 3000);
+        break;
+      case 'win':
+        // Rising fanfare; the last note is held for 0.5 s.
+        tone(c, out, 523, 523, 0.12, 'square', 0.08, 0);
+        tone(c, out, 659, 659, 0.12, 'square', 0.08, 0.12);
+        tone(c, out, 784, 784, 0.12, 'square', 0.08, 0.24);
+        tone(c, out, 1047, 1047, 0.12, 'square', 0.08, 0.36);
+        tone(c, out, 1319, 1319, 0.5, 'square', 0.08, 0.48);
+        break;
+      case 'bottle':
+        // Glassy clink, then a soft cork pop.
+        tone(c, out, 2200, 2200, 0.3, 'sine', 0.12);
+        tone(c, out, 3300, 3300, 0.3, 'sine', 0.08);
+        tone(c, out, 600, 200, 0.08, 'sine', 0.2, 0.3);
+        break;
+      case 'chomp':
+        noise(c, out, 0.12, 0.3, 'lowpass', 800, 200);
+        tone(c, out, 90, 50, 0.12, 'sine', 0.25);
+        break;
     }
   } catch {
     // Audio must never break the game.
@@ -265,6 +367,45 @@ export function setEngine(level: number): void {
     const freq = ENGINE_BASE + 25 * lvl;
     engineOsc.frequency.setTargetAtTime(freq, now, 0.1);
     engineSquare.frequency.setTargetAtTime(freq * 2, now, 0.1);
+  } catch {
+    // Audio must never break the game.
+  }
+}
+
+/** The shared audio graph once startAudio() has run, else null. Other modules (music) connect to `master`. */
+export function getAudio(): { ctx: AudioContext; master: GainNode } | null {
+  return ctx && master ? { ctx, master } : null;
+}
+
+/** Rain noise level 0..1, called every frame by the weather system. No-op before startAudio(). */
+export function setRain(level: number): void {
+  try {
+    const c = ctx;
+    const out = master;
+    if (!c || !out) return;
+    const lvl = Math.min(1, Math.max(0, level));
+
+    if (!rainGain) {
+      const src = c.createBufferSource();
+      src.buffer = getNoiseBuffer(c);
+      src.loop = true;
+      const hp = c.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 1200;
+      const lp = c.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 6000;
+      const gain = c.createGain();
+      gain.gain.value = 0;
+      src.connect(hp);
+      hp.connect(lp);
+      lp.connect(gain);
+      gain.connect(out);
+      src.start(c.currentTime);
+      rainGain = gain;
+    }
+
+    rainGain.gain.setTargetAtTime(0.1 * lvl, c.currentTime, 0.3);
   } catch {
     // Audio must never break the game.
   }

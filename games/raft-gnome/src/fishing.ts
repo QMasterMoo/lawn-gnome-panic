@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { sfx } from './audio';
 import { FISHING, ITEMS, RAFT_TOP, type Ctx, type DebrisDef, type GameState, type ItemId, type System } from './config';
-import { addItem, isWalkable, notify, pickDebris, raftVelocity } from './rules';
+import { addItem, isWalkable, notify, pickDebris, raftVelocity, revealIsland } from './rules';
 
 type HookPhase = 'idle' | 'charging' | 'flying' | 'floating' | 'reeling';
 
@@ -15,8 +15,13 @@ interface Debris {
   snagged: boolean;
   /** Horizontal offset from the hook while snagged (clamped to MAX_SNAG_OFFSET). */
   offset: { x: number; z: number };
+  /** Blinking glint on a bottle, null for other debris. */
+  sparkle: THREE.Object3D | null;
 }
 
+interface SplashRing { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; age: number }
+
+const RING_SECONDS = 0.8;
 const FLY_SECONDS = 0.6;
 const FLY_PEAK = 3;
 const HAND_HEIGHT = 1.1;
@@ -99,8 +104,38 @@ function buildTemplate(item: ItemId): THREE.Object3D {
   return g;
 }
 
+/** Message in a bottle: green glass, a cork and a rolled paper, lying on its side, with a blinking glint. */
+function buildBottle(): THREE.Object3D {
+  const g = new THREE.Group();
+  const lay = new THREE.Group();
+  lay.rotation.z = Math.PI / 2;
+  lay.position.y = 0.12;
+  g.add(lay);
+  const add = (geo: THREE.BufferGeometry, m: THREE.Material, y: number): THREE.Mesh => {
+    const mesh = new THREE.Mesh(geo, m);
+    mesh.position.set(0, y, 0);
+    mesh.castShadow = true;
+    lay.add(mesh);
+    return mesh;
+  };
+  const glass = mat(0x5fbf7f, { transparent: true, opacity: 0.6, roughness: 0.1 });
+  add(new THREE.CylinderGeometry(0.1, 0.12, 0.45, 12), glass, 0);
+  add(new THREE.CylinderGeometry(0.04, 0.05, 0.15, 10), glass, 0.3);
+  add(new THREE.CylinderGeometry(0.045, 0.045, 0.06, 10), mat(0x6d4c2e), 0.405);
+  add(new THREE.CylinderGeometry(0.03, 0.03, 0.2, 8), mat(0xffffff), 0);
+
+  const glint = new THREE.Mesh(
+    new THREE.SphereGeometry(0.06, 8, 6),
+    new THREE.MeshBasicMaterial({ color: 0xffffff }),
+  );
+  glint.name = 'sparkle';
+  glint.position.set(0, 0.55, 0);
+  g.add(glint);
+  return g;
+}
+
 export function createFishing(ctx: Ctx): System {
-  const templates = new Map<ItemId, THREE.Object3D>();
+  const templates = new Map<string, THREE.Object3D>();
   const debris: Debris[] = [];
   let t = 0;
   let spawnTimer = 0;
@@ -139,17 +174,37 @@ export function createFishing(ctx: Ctx): System {
   bar.appendChild(fill);
   ctx.ui.appendChild(bar);
 
-  const templateFor = (item: ItemId): THREE.Object3D => {
-    let tpl = templates.get(item);
+  // ---- splash rings (pooled, flat on the water)
+  const ringGeo = new THREE.RingGeometry(0.2, 0.3, 32);
+  const rings: SplashRing[] = [];
+  const ringPool: SplashRing[] = [];
+  const spawnRing = (x: number, z: number): void => {
+    let r = ringPool.pop();
+    if (!r) {
+      const m = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false });
+      r = { mesh: new THREE.Mesh(ringGeo, m), mat: m, age: 0 };
+      r.mesh.rotation.x = -Math.PI / 2;
+    }
+    r.age = 0;
+    r.mat.opacity = 0.8;
+    r.mesh.scale.setScalar(1);
+    r.mesh.position.set(x, 0.05, z);
+    ctx.scene.add(r.mesh);
+    rings.push(r);
+  };
+
+  const templateFor = (def: DebrisDef): THREE.Object3D => {
+    const key = def.bottle ? 'bottle' : def.item;
+    let tpl = templates.get(key);
     if (!tpl) {
-      tpl = buildTemplate(item);
-      templates.set(item, tpl);
+      tpl = def.bottle ? buildBottle() : buildTemplate(def.item);
+      templates.set(key, tpl);
     }
     return tpl;
   };
 
   const makeDebris = (def: DebrisDef, x: number, z: number): void => {
-    const mesh = templateFor(def.item).clone();
+    const mesh = templateFor(def).clone();
     ctx.scene.add(mesh);
     debris.push({
       mesh,
@@ -158,6 +213,7 @@ export function createFishing(ctx: Ctx): System {
       phase: Math.random() * Math.PI * 2,
       snagged: false,
       offset: { x: 0, z: 0 },
+      sparkle: mesh.getObjectByName('sparkle') ?? null,
     });
   };
 
@@ -199,6 +255,21 @@ export function createFishing(ctx: Ctx): System {
       if (spawnTimer >= FISHING.debrisSpawnSeconds) {
         spawnTimer = 0;
         if (debris.length < FISHING.debrisMax) spawnUpstream(s, flow);
+      }
+
+      // ---- splash rings: grow and fade over RING_SECONDS, then return to the pool
+      for (let k = rings.length - 1; k >= 0; k--) {
+        const r = rings[k];
+        r.age += dt;
+        const u = r.age / RING_SECONDS;
+        if (u >= 1) {
+          ctx.scene.remove(r.mesh);
+          rings.splice(k, 1);
+          ringPool.push(r);
+          continue;
+        }
+        r.mesh.scale.setScalar(1 + 5 * u);
+        r.mat.opacity = 0.8 * (1 - u);
       }
 
       // ---- drift, and despawn debris that has gone far downstream
@@ -255,6 +326,10 @@ export function createFishing(ctx: Ctx): System {
           if (u >= 1) {
             hookPos.copy(flyTo);
             phase = 'floating';
+            if (!isWalkable(s, flyTo.x, flyTo.z)) {
+              spawnRing(flyTo.x, flyTo.z);
+              sfx('splash');
+            }
           }
         }
 
@@ -313,12 +388,19 @@ export function createFishing(ctx: Ctx): System {
           const pp = s.player.position;
           const dist = Math.hypot(hookPos.x - pp.x, hookPos.z - pp.z);
           if (dist <= FISHING.collectDistance) {
+            if (debris.some((d) => d.snagged)) spawnRing(hookPos.x, hookPos.z);
             for (let k = debris.length - 1; k >= 0; k--) {
               const d = debris[k];
               if (!d.snagged) continue;
-              addItem(s, d.def.item, d.def.amount);
-              notify(s, `+${d.def.amount} ${ITEMS[d.def.item].name}`);
-              sfx('catch');
+              if (d.def.bottle) {
+                revealIsland(s);
+                sfx('bottle');
+              } else {
+                addItem(s, d.def.item, d.def.amount);
+                notify(s, `+${d.def.amount} ${ITEMS[d.def.item].name}`);
+                sfx('catch');
+              }
+              s.stats.caught++;
               ctx.scene.remove(d.mesh);
               debris.splice(k, 1);
             }
@@ -336,6 +418,7 @@ export function createFishing(ctx: Ctx): System {
         d.pos.y = 0.05 + Math.sin(t * 2 + d.phase) * 0.08;
         d.mesh.position.copy(d.pos);
         d.mesh.rotation.y = t * 0.5 + d.phase;
+        if (d.sparkle) d.sparkle.visible = Math.sin(t * 6 + d.phase) > 0.3;
       }
 
       // ---- hook, line and charge bar visuals
@@ -345,6 +428,9 @@ export function createFishing(ctx: Ctx): System {
       if (showHook) {
         const pp = s.player.position;
         bobber.position.copy(hookPos);
+        // bite: while floating with something snagged, the bobber dips for 0.3 s of every 0.6 s
+        const hasSnag = debris.some((d) => d.snagged);
+        if (phase === 'floating' && hasSnag && t % 0.6 < 0.3) bobber.position.y -= 0.08;
         const hx = pp.x;
         const hy = pp.y + HAND_HEIGHT;
         const hz = pp.z;

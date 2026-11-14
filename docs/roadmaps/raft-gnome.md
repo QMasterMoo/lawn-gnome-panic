@@ -6,6 +6,8 @@ Goal: a 3D Raft-like prototype. A gnome adrift on a little patch of floating gra
 |---|---|---|
 | 1. Foundation (written directly) | `config.ts` (types, tuning, tables), `rules.ts` (pure rules), `input.ts`, `main.ts` loop, stubs for every system, copied `gnome.ts` / `mowerModels.ts`; game builds | 0 |
 | 2. Systems | Ocean, raft tiles, player, mowing, fishing, building, navigation, HUD, audio all real; game builds and smoke test passes | 9 |
-| 3+. Feature rounds | Extra features on top of v1, one file per worker | see below |
+| 3. Feature round 1 | Day/night, weather, seagull, shark, minimap, goals + victory, music, save, sprinkler/flamingo props, raft polish, bottles + splashes, zoom/sprint, new sounds, HUD clock; build, smoke and #selftest pass | 14 |
 
 Epic 2 issues are in `docs/roadmaps/raft-gnome/epic2-*.md`, each one being `_common.md` (environment and world conventions) plus the issue body.
+
+Epic 3 issues are `docs/roadmaps/raft-gnome/epic3-*.md`. Before epic 3 the planner added the contracts directly: new GameState fields, rules (props, growth multipliers, shark/bottle helpers), input wheel, `getAudio`/`setRain`, light handles in Ctx and stubs for every new system.

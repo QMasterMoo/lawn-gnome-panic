@@ -1,10 +1,10 @@
 // HUD: title screen, inventory and tool readout, mode hints, crosshair, toasts and the craft menu.
 // All DOM is appended to ctx.ui; #ui itself is never restyled.
 import {
-  BUILD_COSTS, ITEM_IDS, ITEMS, KEYS, RECIPES, RECIPE_ORDER, TOOLS,
+  BUILD_COSTS, DAY, ITEM_IDS, ITEMS, KEYS, RECIPES, RECIPE_ORDER, TOOLS,
   type Ctx, type ItemId, type RecipeId, type System,
 } from './config';
-import { costText, craft, hasItems } from './rules';
+import { costText, craft, hasItems, nightAmount } from './rules';
 import { sfx, startAudio } from './audio';
 
 const TEXT = 'color:#fff;text-shadow:0 1px 3px #000;font-family:system-ui,sans-serif;';
@@ -67,14 +67,21 @@ export function createHud(ctx: Ctx): System {
     'Tab: craft',
     'T: telescope',
     'C: chart course / cast off',
+    'Shift: sprint',
+    'Mouse wheel: zoom',
+    'F: bonk a shark or seagull',
+    'R in build mode: turf / seeded dirt / sprinkler / flamingo',
+    'M: music on/off',
   ];
   const controls = el('ul', 'margin:0;padding:0;list-style:none;font-size:15px;line-height:1.6;');
   for (const line of controlLines) controls.append(el('li', '', line));
+  // A save was loaded when the HUD is created if game time has already advanced.
+  const hasSave = state.time > 0;
   const startButton = el(
     'button',
     `pointer-events:auto;${TEXT}font-size:20px;margin-top:8px;padding:10px 28px;cursor:pointer;` +
       'border:2px solid #fff;border-radius:10px;background:rgba(47,143,196,0.9);',
-    'Click to start',
+    hasSave ? 'Continue' : 'Click to start',
   );
   startButton.onclick = () => {
     state.mode = 'play';
@@ -89,6 +96,8 @@ export function createHud(ctx: Ctx): System {
   const hud = el('div', `position:absolute;inset:0;pointer-events:none;display:none;${TEXT}`);
 
   const invBox = el('div', `position:absolute;left:12px;bottom:12px;min-width:180px;${PANEL}${TEXT}`);
+  const clockLine = el('div', 'margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.2);');
+  invBox.append(clockLine);
   const itemRows = {} as Record<ItemId, HTMLElement>;
   for (const id of ITEM_IDS) {
     const row = el('div', '');
@@ -212,7 +221,26 @@ export function createHud(ctx: Ctx): System {
   let craftTimer = 0;
   let wasCrafting = false;
 
+  let lastClockKey = '';
+
+  /** Clock line: day number, hh:mm (dayTime 0 = 06:00), weather and night icon. */
+  function updateClock(): void {
+    const hours = (6 + state.dayTime * 24) % 24;
+    const hh = Math.floor(hours);
+    const mm = Math.floor((hours - hh) * 60);
+    const day = Math.floor((state.time + DAY.startTime * DAY.lengthSeconds) / DAY.lengthSeconds) + 1;
+    const night = nightAmount(state) > 0.5;
+    const icon = state.raining ? '🌧️' : night ? '🌙' : '☀️';
+    const key = `${day}|${hh}|${mm}|${icon}|${state.raining}`;
+    if (key === lastClockKey) return;
+    lastClockKey = key;
+    const time = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+    const rain = state.raining ? ' · Rain: grass x2' : '';
+    setText(clockLine, `${icon} Day ${day} · ${time}${rain}`);
+  }
+
   function updateInventory(): void {
+    updateClock();
     for (const id of ITEM_IDS) {
       const n = state.inv[id];
       const row = itemRows[id];
@@ -228,7 +256,7 @@ export function createHud(ctx: Ctx): System {
   function hintText(): string {
     switch (state.mode) {
       case 'play':
-        return 'LMB fish · E cut · B build · Tab craft · Q tool · T telescope';
+        return 'LMB fish · E cut · F bonk · B build · Tab craft · Q tool · T telescope';
       case 'build': {
         const def = BUILD_COSTS[state.buildKind];
         return `Building ${def.name} (${costText(def.cost)}) · R switch · B exit`;

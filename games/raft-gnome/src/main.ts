@@ -11,6 +11,14 @@ import { createFishing } from './fishing';
 import { createBuilding } from './building';
 import { createNavigation } from './navigation';
 import { createHud } from './hud';
+import { createDayNight } from './daynight';
+import { createWeather } from './weather';
+import { createSeagull } from './seagull';
+import { createShark } from './shark';
+import { createMinimap } from './minimap';
+import { createObjectives } from './objectives';
+import { createMusic } from './music';
+import { createSave, loadGame } from './save';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ui = document.getElementById('ui') as HTMLElement;
@@ -26,7 +34,8 @@ scene.fog = new THREE.Fog(COLORS.sky, SEA.fogNear, SEA.fogFar);
 
 const camera = new THREE.PerspectiveCamera(TELESCOPE.normalFov, 1, 0.1, SEA.cameraFar);
 
-scene.add(new THREE.HemisphereLight(0xdff3ff, 0x2a5d7a, 1.2));
+const hemi = new THREE.HemisphereLight(0xdff3ff, 0x2a5d7a, 1.2);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffffff, 2.2);
 sun.position.set(30, 50, 20);
 sun.castShadow = true;
@@ -46,8 +55,9 @@ window.addEventListener('resize', resize);
 resize();
 
 const state = newState();
+if (!location.hash) loadGame(state);
 const input = createInput(canvas);
-const ctx: Ctx = { scene, camera, renderer, state, input, ui };
+const ctx: Ctx = { scene, camera, renderer, state, input, ui, lights: { sun, hemi } };
 (window as unknown as { raft: unknown }).raft = state; // debug handle
 
 canvas.addEventListener('click', () => {
@@ -57,12 +67,20 @@ canvas.addEventListener('click', () => {
 // Update order matters: the player sets the camera, then the telescope may override it.
 const systems: System[] = [
   createOcean(ctx),
+  createDayNight(ctx),
+  createWeather(ctx),
   createRaft(ctx),
   createPlayer(ctx),
   createMowing(ctx),
   createFishing(ctx),
   createBuilding(ctx),
+  createSeagull(ctx),
+  createShark(ctx),
   createNavigation(ctx),
+  createMinimap(ctx),
+  createObjectives(ctx),
+  createMusic(ctx),
+  createSave(ctx),
   createHud(ctx),
 ];
 

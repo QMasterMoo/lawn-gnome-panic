@@ -2,7 +2,7 @@
 // Drives the real systems with synthetic key events and rule calls, then logs SELFTEST OK or console.error per failure.
 // tools/smoke.sh <url>#selftest rg-selftest-ok
 import { ISLANDS, ISLAND_ORDER, TILE_SIZE, type GameState, type IslandId } from './config';
-import { chartCourse, castOff, craft, lootCrate, placeTile, raftExtent } from './rules';
+import { chartCourse, castOff, craft, edgeTiles, growthMult, lootCrate, placeTile, raftExtent, removeTile, revealIsland } from './rules';
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const key = (type: 'keydown' | 'keyup', code: string) => window.dispatchEvent(new KeyboardEvent(type, { code }));
@@ -36,6 +36,16 @@ export async function runSelfTest(state: GameState, ui: HTMLElement): Promise<vo
   check(placeTile(state, 2, 0, 'turf'), 'place turf tile');
   check(placeTile(state, 2, 1, 'seeded'), 'place seeded tile');
   check(!placeTile(state, 9, 9, 'turf'), 'cannot place detached tile');
+  check(placeTile(state, 0, 0, 'sprinkler'), 'place sprinkler on a tile');
+  check(!placeTile(state, 0, 0, 'flamingo'), 'one prop per tile');
+  check(!placeTile(state, 5, 5, 'flamingo'), 'props need a tile');
+  check(placeTile(state, 1, 1, 'flamingo'), 'place flamingo');
+  const near = state.tiles.get('1,0')!;
+  check(growthMult(state, near) >= 2, 'sprinkler boosts nearby growth');
+  check(removeTile(state, 2, 1, 4), 'shark can remove a tile');
+  check(!state.tiles.has('2,1'), 'removed tile is gone');
+  check(edgeTiles(state).length > 0, 'edge tiles exist');
+  const day0 = state.dayTime;
 
   for (const r of ['telescope', 'push', 'gas', 'riding'] as const) check(craft(state, r), 'craft ' + r);
   check(state.equipped === 'riding', 'crafting a mower equips it');
@@ -72,6 +82,9 @@ export async function runSelfTest(state: GameState, ui: HTMLElement): Promise<vo
   await tap('Tab');
   check((state.mode as string) === 'play', 'Tab closes craft menu');
 
+  check(state.dayTime !== day0, 'day time advances');
+  check(revealIsland(state) !== null, 'bottle reveals an island');
+
   // Sail to every island, dock, loot.
   for (const id of ISLAND_ORDER as readonly IslandId[]) {
     state.islands[id].spotted = true;
@@ -101,14 +114,23 @@ export async function runSelfTest(state: GameState, ui: HTMLElement): Promise<vo
 
 /**
  * Headless screenshots skip the WebGL canvas, so #snap=<scenario> copies the canvas into an <img> after a moment.
- * Scenarios: raft (default), island, mower, build, telescope, big.
+ * Scenarios: raft (default), island, mower, build, telescope, big, props, night, rain.
  */
 export async function runSnap(state: GameState, ui: HTMLElement, canvas: HTMLCanvasElement, scenario: string): Promise<void> {
   state.mode = 'play';
   Object.assign(state.inv, { grass: 60, dirt: 10, seed: 10, scrap: 40, fuel: 30, parts: 5 });
-  if (scenario === 'big' || scenario === 'mower') {
+  if (scenario === 'night') state.dayTime = 0.62;
+  if (scenario === 'rain') state.raining = true;
+  if (scenario === 'big' || scenario === 'mower' || scenario === 'props') {
     for (let i = -2; i <= 3; i++) for (let j = -2; j <= 3; j++) placeTile(state, i, j, 'turf');
     for (let i = -2; i <= 3; i++) for (let j = -2; j <= 3; j++) placeTile(state, i, j, 'turf');
+  }
+  if (scenario === 'props') {
+    state.inv.grass = 100;
+    placeTile(state, 0, 2, 'sprinkler');
+    placeTile(state, 2, 2, 'flamingo');
+    placeTile(state, -1, 2, 'flamingo');
+    for (const t of state.tiles.values()) t.growth = (t.i + t.j) % 3 === 0 ? 0.1 : 1;
   }
   if (scenario === 'mower') {
     for (const r of ['telescope', 'push', 'gas', 'riding'] as const) craft(state, r);

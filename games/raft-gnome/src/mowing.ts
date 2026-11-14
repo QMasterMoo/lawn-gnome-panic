@@ -1,7 +1,7 @@
 // Cutting grass: by hand with E, or automatically by pushing/driving an owned mower over grown tiles. Q cycles tools.
 import type { Ctx, MowerModel, System, ToolId } from './config';
 import { KEYS, TILE_SIZE, TOOL_ORDER, TOOLS } from './config';
-import { cutTile, notify, tileAt, toolHasFuel } from './rules';
+import { cutTile, notify, tileAt, toolHasFuel, nightAmount } from './rules';
 import { createMowerModel } from './mowerModels';
 import { sfx, setEngine } from './audio';
 
@@ -67,6 +67,7 @@ export function createMowing(ctx: Ctx): System {
       const shown = modelFor(equipped);
       if (shown) {
         shown.group.visible = true;
+        shown.setNight(nightAmount(state));
         if (equipped === 'riding') {
           shown.group.position.set(pos.x, pos.y, pos.z);
         } else {

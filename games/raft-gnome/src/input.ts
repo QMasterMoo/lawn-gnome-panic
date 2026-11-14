@@ -11,6 +11,8 @@ export interface Input {
   mouseReleased(button: number): boolean;
   /** Mouse movement since last frame, in pixels (works with pointer lock). */
   look(): { dx: number; dy: number };
+  /** Mouse wheel deltaY summed since last frame (positive = scroll down / zoom out). */
+  wheel(): number;
   locked(): boolean;
   requestLock(): void;
   exitLock(): void;
@@ -25,6 +27,8 @@ export function createInput(canvas: HTMLCanvasElement): Input {
   const btnReleased = new Set<number>();
   let dx = 0;
   let dy = 0;
+  let wheel = 0;
+  window.addEventListener('wheel', (e) => { wheel += e.deltaY; }, { passive: true });
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Tab' || e.code === 'Space') e.preventDefault();
@@ -52,6 +56,7 @@ export function createInput(canvas: HTMLCanvasElement): Input {
     mousePressed: (b) => btnPressed.has(b),
     mouseReleased: (b) => btnReleased.has(b),
     look: () => ({ dx, dy }),
+    wheel: () => wheel,
     locked: () => document.pointerLockElement === canvas,
     requestLock: () => {
       if (document.pointerLockElement !== canvas) canvas.requestPointerLock?.();
@@ -65,6 +70,7 @@ export function createInput(canvas: HTMLCanvasElement): Input {
       btnReleased.clear();
       dx = 0;
       dy = 0;
+      wheel = 0;
     },
   };
 }

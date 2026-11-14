@@ -83,6 +83,9 @@ export const TUNING = {
   mouseSensitivity: 0.0025,
   cameraDistance: 7,
   cameraHeight: 3,
+  sprintMult: 1.6,      // speed multiplier while holding KEYS.sprint
+  zoomMin: 3.5,         // camera distance range for the mouse wheel
+  zoomMax: 14,
 } as const;
 
 /** Raft grid: tile (i, j) has its centre at world (i * TILE_SIZE, RAFT_TOP, j * TILE_SIZE). */
@@ -183,12 +186,19 @@ export const RECIPES: Record<RecipeId, Recipe> = {
   riding: { name: 'Riding Mower', desc: 'Huge cut, fast, 2.5x yield. Burns fuel.', cost: { parts: 3, scrap: 10, fuel: 6 } },
 };
 
-/** Building: what a new raft tile costs. */
-export type BuildKind = 'turf' | 'seeded';
-export const BUILD_COSTS: Record<BuildKind, { name: string; cost: Partial<Record<ItemId, number>> }> = {
-  turf: { name: 'Turf tile', cost: { grass: 4 } },
-  seeded: { name: 'Seeded dirt tile', cost: { dirt: 2, seed: 1 } },
+/** Building: new raft tiles go on water next to the raft; props go on top of an existing tile. */
+export type TileKind = 'turf' | 'seeded';
+export type PropKind = 'sprinkler' | 'flamingo';
+export type BuildKind = TileKind | PropKind;
+export const BUILD_ORDER: readonly BuildKind[] = ['turf', 'seeded', 'sprinkler', 'flamingo'];
+export const BUILD_COSTS: Record<BuildKind, { name: string; cost: Partial<Record<ItemId, number>>; onTile: boolean }> = {
+  turf: { name: 'Turf tile', cost: { grass: 4 }, onTile: false },
+  seeded: { name: 'Seeded dirt tile', cost: { dirt: 2, seed: 1 }, onTile: false },
+  sprinkler: { name: 'Sprinkler', cost: { scrap: 3, grass: 4 }, onTile: true },
+  flamingo: { name: 'Lawn Flamingo', cost: { grass: 3, scrap: 1 }, onTile: true },
 };
+/** A sprinkler doubles growth on tiles whose centre is within this radius of it. */
+export const SPRINKLER = { radius: 3.2, growthMult: 2 } as const;
 
 // =====================================================================
 // Debris and islands
@@ -196,14 +206,26 @@ export const BUILD_COSTS: Record<BuildKind, { name: string; cost: Partial<Record
 
 /** When a debris kind starts appearing. */
 export type Unlock = 'start' | 'tiles3' | 'island1' | 'island2';
-export interface DebrisDef { item: ItemId; amount: number; weight: number; unlock: Unlock }
+/** bottle = a message in a bottle: no item, it reveals (spots) the nearest unspotted island. */
+export interface DebrisDef { item: ItemId; amount: number; weight: number; unlock: Unlock; bottle?: boolean }
 export const DEBRIS: readonly DebrisDef[] = [
   { item: 'grass', amount: 2, weight: 6, unlock: 'start' },
   { item: 'dirt', amount: 1, weight: 3, unlock: 'tiles3' },
   { item: 'seed', amount: 1, weight: 2, unlock: 'tiles3' },
   { item: 'scrap', amount: 1, weight: 2, unlock: 'island1' },
   { item: 'fuel', amount: 1, weight: 1, unlock: 'island2' },
+  { item: 'grass', amount: 0, weight: 0.4, unlock: 'tiles3', bottle: true },
 ];
+
+// =====================================================================
+// Day, weather, pests
+// =====================================================================
+
+/** dayTime 0 = sunrise, 0.25 = noon, 0.5 = sunset, 0.75 = midnight. */
+export const DAY = { lengthSeconds: 360, startTime: 0.08 } as const;
+export const WEATHER = { clearMin: 90, clearMax: 180, rainMin: 30, rainMax: 60, growthMult: 2 } as const;
+export const SEAGULL = { firstAfter: 60, intervalMin: 45, intervalMax: 90, eatRate: 0.25, scareDistance: 2.2, flySpeed: 9 } as const;
+export const SHARK = { firstAfter: 150, intervalMin: 80, intervalMax: 140, biteSeconds: 8, bonkDistance: 3, circleRadius: 9, minTiles: 4 } as const;
 
 export type IslandId = 'scrapyard' | 'fuelDepot' | 'mowerGraveyard';
 export const ISLAND_ORDER: readonly IslandId[] = ['scrapyard', 'fuelDepot', 'mowerGraveyard'];
@@ -230,6 +252,9 @@ export const ISLANDS: Record<IslandId, IslandDef> = {
 
 export type Mode = 'title' | 'play' | 'build' | 'telescope' | 'craft';
 
+export interface Prop { kind: PropKind; i: number; j: number }
+export interface Stats { cut: number; caught: number; tilesLost: number; gullsScared: number; sharksBonked: number }
+
 export interface Tile { i: number; j: number; growth: number }
 
 export interface IslandState { spotted: boolean; visited: boolean; looted: boolean[] }
@@ -252,13 +277,24 @@ export interface GameState {
   islands: Record<IslandId, IslandState>;
   /** Toast messages; the HUD shows and removes them. */
   messages: string[];
+  /** 0..1, advanced by tickWorld. See DAY. */
+  dayTime: number;
+  /** Set by the weather system. Rain multiplies grass growth by WEATHER.growthMult. */
+  raining: boolean;
+  /** Sprinklers and decorations standing on tiles (at most one per tile). */
+  props: Prop[];
+  stats: Stats;
+  /** True once the final objective is complete. */
+  won: boolean;
 }
 
 // =====================================================================
 // System contract
 // =====================================================================
 
-export type SfxName = 'throw' | 'reel' | 'catch' | 'place' | 'cut' | 'craft' | 'spot' | 'dock' | 'loot' | 'error' | 'click';
+export type SfxName =
+  | 'throw' | 'reel' | 'catch' | 'place' | 'cut' | 'craft' | 'spot' | 'dock' | 'loot' | 'error' | 'click'
+  | 'splash' | 'thunder' | 'gull' | 'shark' | 'bonk' | 'win' | 'bottle' | 'chomp';
 
 /** Everything a system gets. Systems may add objects to scene and elements under ui, never restyle #ui. */
 export interface Ctx {
@@ -267,6 +303,8 @@ export interface Ctx {
   renderer: THREE.WebGLRenderer;
   state: GameState;
   input: import('./input').Input;
+  /** Scene lights, created by main.ts. The day/night system animates them. */
+  lights: { sun: THREE.DirectionalLight; hemi: THREE.HemisphereLight };
   /** The shared #ui element. Append your own container to it. */
   ui: HTMLElement;
 }
@@ -280,9 +318,12 @@ export const KEYS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space',
   interact: 'KeyE',      // cut the tile under you by hand / open an island crate
   build: 'KeyB',         // toggle build mode
-  buildKind: 'KeyR',     // in build mode: turf <-> seeded
+  buildKind: 'KeyR',     // in build mode: cycle BUILD_ORDER
   tool: 'KeyQ',          // cycle owned tools
   telescope: 'KeyT',     // toggle telescope (if crafted)
   chart: 'KeyC',         // telescope: chart course to aimed island; docked: cast off
   craft: 'Tab',          // open/close the craft menu
+  bonk: 'KeyF',          // bonk a shark or seagull that is close
+  sprint: 'ShiftLeft',
+  music: 'KeyM',         // mute/unmute music
 } as const;
