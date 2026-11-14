@@ -31,8 +31,9 @@ export interface GameRules {
 export const GAMES: Record<GameId, GameRules> = {
   // Online royale: humans only, everyone starts together.
   'lawn-gnome-panic': { minPlayers: 2, maxPlayers: 20, publicWaitS: 15, privateWaitS: 45, lateJoin: false },
-  // Conquest FPS: 12 a side, bots fill the rest; friends can drop into a running match.
-  'gnome-front': { minPlayers: 2, maxPlayers: 24, publicWaitS: 15, privateWaitS: 45, lateJoin: true },
+  // Conquest FPS: 12 a side, bots fill the rest, so one player is enough to start; later players (public or room code)
+  // drop into the running match.
+  'gnome-front': { minPlayers: 1, maxPlayers: 24, publicWaitS: 15, privateWaitS: 45, lateJoin: true },
   // Co-op raft: the first player starts the raft at once (and hosts it), friends join with the room code.
   'gnaft': { minPlayers: 1, maxPlayers: 8, publicWaitS: 0, privateWaitS: 0, lateJoin: true },
   // Golf and Gnome Disc: the first player opens a lobby at once (and hosts it); others join it, even mid-round.
