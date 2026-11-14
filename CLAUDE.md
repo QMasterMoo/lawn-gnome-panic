@@ -23,6 +23,7 @@ Read [SOUL.md](SOUL.md) first. It sets the priorities: playable over polished, c
 
 - `npm run build -w games/<name>` must pass before a change to that game is done.
 - tsc does not catch runtime breakage (a module that hides the whole UI passed every type-check). With the dev server running, `bash tools/smoke.sh <url> <dom-marker>...` loads the page in headless Edge and reports console errors and missing elements. Run it at the end of every epic.
+- Browser tests: `npm test -- <name>` runs `games/<name>/tests/*.test.mjs` in one headless Edge, and a game with no tests is skipped. Add a test when a feature has a state you can check. See [docs/testing.md](docs/testing.md).
 - UI modules get the shared `#ui` element as a parent: append your own container to it, never restyle or hide `#ui` itself.
 - Do not edit a game other than the one you were asked to work on.
 - Assets: CC0 or self-generated only. Every external file gets a line in that game's `CREDITS.md` (source URL, author, license).

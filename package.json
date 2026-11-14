@@ -8,7 +8,8 @@
   "scripts": {
     "new": "node tools/new-game.mjs",
     "site": "node tools/build-site.mjs",
-    "demo": "node tools/record-demo.mjs"
+    "demo": "node tools/record-demo.mjs",
+    "test": "node tools/test.mjs"
   },
   "devDependencies": {
     "@ffmpeg-installer/ffmpeg": "1.1.0",

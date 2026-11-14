@@ -12,3 +12,5 @@ unity/*/[Uu]serSettings/
 site/
 # Demo recordings (tools/record-demo.mjs)
 games/*/demos/out/
+# Failure screenshots (tools/test.mjs)
+test-results/
