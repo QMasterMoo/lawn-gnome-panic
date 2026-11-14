@@ -1,20 +1,17 @@
 // Floating debris and the fishing hook. Junk drifts past the raft; the gnome throws a hook on a line,
 // snags debris and reels it in for items. E grabs nearby junk by hand (from the raft or while swimming).
+// Co-op: the junk is shared (state.debris, spawned by the host); my hook is published in state.hook for net.ts.
 import * as THREE from 'three';
 import { sfx } from './audio';
-import { FISHING, FUN, GRAB, ITEMS, KEYS, RAFT_TOP, type Ctx, type DebrisDef, type FunId, type GameState, type ItemId, type System } from './config';
-import { collectDebris, isWalkable, notify, pickDebris, raftVelocity, tileAt } from './rules';
+import { FISHING, FUN, GRAB, ITEMS, KEYS, RAFT_TOP, type Ctx, type DebrisDef, type FloatingDebris, type FunId, type GameState, type ItemId, type System } from './config';
+import { catchDebris, isWalkable, notify, pickDebris, raftVelocity, tileAt } from './rules';
 
 type HookPhase = 'idle' | 'charging' | 'flying' | 'floating' | 'reeling';
 
-interface Debris {
+/** The mesh for one piece of state.debris. `phase` offsets its bob and spin. */
+interface DebrisMesh {
   mesh: THREE.Object3D;
-  def: DebrisDef;
-  pos: THREE.Vector3;
   phase: number;
-  snagged: boolean;
-  /** Horizontal offset from the hook while snagged (clamped to MAX_SNAG_OFFSET). */
-  offset: { x: number; z: number };
   /** Blinking glint on a bottle or chest, null for other debris. */
   sparkle: THREE.Object3D | null;
 }
@@ -24,12 +21,12 @@ interface SplashRing { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; age: numb
 const RING_SECONDS = 0.8;
 const FLY_SECONDS = 0.6;
 const FLY_PEAK = 3;
-const HAND_HEIGHT = 1.1;
+export const HAND_HEIGHT = 1.1;
 const MAX_SNAG_OFFSET = 0.6;
 const REEL_SOUND_EVERY = 0.25;
 const PRESPAWN = 6;
 const PRESPAWN_MIN_DIST = 6;
-const LINE_POINTS = 12;
+export const LINE_POINTS = 12;
 const BEACHBALL_LIFT = 0.1;
 
 function mat(color: number, extra: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial {
@@ -248,7 +245,11 @@ function buildBottle(): THREE.Object3D {
 
 export function createFishing(ctx: Ctx): System {
   const templates = new Map<string, THREE.Object3D>();
-  const debris: Debris[] = [];
+  /** One mesh per piece of state.debris, keyed by its id. */
+  const meshes = new Map<number, DebrisMesh>();
+  /** Debris on my hook: id -> horizontal offset from the hook (clamped to MAX_SNAG_OFFSET). */
+  const mySnags = new Map<number, { x: number; z: number }>();
+  let lastId = 0;
   let t = 0;
   let spawnTimer = 0;
   let phase: HookPhase = 'idle';
@@ -324,18 +325,11 @@ export function createFishing(ctx: Ctx): System {
     return tpl;
   };
 
-  const makeDebris = (def: DebrisDef, x: number, z: number): void => {
-    const mesh = templateFor(def).clone();
-    ctx.scene.add(mesh);
-    debris.push({
-      mesh,
-      def,
-      pos: new THREE.Vector3(x, 0.05, z),
-      phase: Math.random() * Math.PI * 2,
-      snagged: false,
-      offset: { x: 0, z: 0 },
-      sparkle: mesh.getObjectByName('sparkle') ?? null,
-    });
+  /** Host / solo: adds a piece of junk to the shared sea. Ids stay unique even after a host change. */
+  const makeDebris = (s: GameState, def: DebrisDef, x: number, z: number): void => {
+    for (const d of s.debris) lastId = Math.max(lastId, d.id);
+    lastId += 1;
+    s.debris.push({ id: lastId, def, x, z, held: false });
   };
 
   const spawnUpstream = (s: GameState, flow: { x: number; z: number }): void => {
@@ -343,24 +337,42 @@ export function createFishing(ctx: Ctx): System {
     const perp = { x: -up.z, z: up.x };
     const across = (Math.random() - 0.5) * FISHING.spawnSpread;
     makeDebris(
+      s,
       pickDebris(s),
       up.x * FISHING.spawnDistance + perp.x * across,
       up.z * FISHING.spawnDistance + perp.z * across,
     );
   };
 
-  const releaseSnagged = (): void => {
-    for (const d of debris) d.snagged = false;
+  /** Makes the meshes match state.debris (the host's snapshot may add or remove pieces at any time). */
+  const syncMeshes = (s: GameState): void => {
+    const live = new Set<number>();
+    for (const d of s.debris) {
+      live.add(d.id);
+      if (meshes.has(d.id)) continue;
+      const mesh = templateFor(d.def).clone();
+      mesh.position.set(d.x, 0.05, d.z);
+      ctx.scene.add(mesh);
+      meshes.set(d.id, { mesh, phase: Math.random() * Math.PI * 2, sparkle: mesh.getObjectByName('sparkle') ?? null });
+    }
+    for (const [id, m] of meshes) {
+      if (live.has(id)) continue;
+      ctx.scene.remove(m.mesh);
+      meshes.delete(id);
+    }
+    for (const id of [...mySnags.keys()]) if (!live.has(id)) mySnags.delete(id); // someone else caught it
   };
 
-  // Pre-spawn along the flow line so the sea is not empty at the start.
+  const catchSfx = (def: DebrisDef): void => sfx(def.bottle ? 'bottle' : def.fun === 'duck' ? 'quack' : 'catch');
+
+  // Pre-spawn along the flow line so the sea is not empty at the start. (A guest replaces it with the host's sea.)
   {
     const s = ctx.state;
     const up = upstreamOf(flowOf(s));
     for (let k = 0; k < PRESPAWN; k++) {
       let d = (Math.random() * 2 - 1) * FISHING.spawnDistance;
       if (Math.abs(d) < PRESPAWN_MIN_DIST) d = d < 0 ? -PRESPAWN_MIN_DIST : PRESPAWN_MIN_DIST;
-      makeDebris(pickDebris(s), up.x * d, up.z * d);
+      makeDebris(s, pickDebris(s), up.x * d, up.z * d);
     }
   }
 
@@ -368,14 +380,15 @@ export function createFishing(ctx: Ctx): System {
     update(dt: number): void {
       const s = ctx.state;
       const input = ctx.input;
+      const guest = s.netRole === 'guest';
       t += dt;
       const flow = flowOf(s);
 
-      // ---- spawning (all modes)
+      // ---- spawning (all modes; the host spawns for everyone)
       spawnTimer += dt;
       if (spawnTimer >= FISHING.debrisSpawnSeconds) {
         spawnTimer = 0;
-        if (debris.length < FISHING.debrisMax) spawnUpstream(s, flow);
+        if (!guest && s.debris.length < FISHING.debrisMax) spawnUpstream(s, flow);
       }
 
       // ---- splash rings: grow and fade over RING_SECONDS, then return to the pool
@@ -393,30 +406,28 @@ export function createFishing(ctx: Ctx): System {
         r.mat.opacity = 0.8 * (1 - u);
       }
 
-      // ---- drift, and despawn debris that has gone far downstream
-      for (let k = debris.length - 1; k >= 0; k--) {
-        const d = debris[k];
-        if (d.snagged) continue;
-        d.pos.x += flow.x * dt;
-        d.pos.z += flow.z * dt;
-        const far = Math.hypot(d.pos.x, d.pos.z) > FISHING.despawnDistance;
-        const away = d.pos.x * flow.x + d.pos.z * flow.z > 0;
-        if (far && away) {
-          ctx.scene.remove(d.mesh);
-          debris.splice(k, 1);
-        }
+      // ---- drift (guests too, between snapshots), and the host despawns debris that has gone far downstream
+      for (let k = s.debris.length - 1; k >= 0; k--) {
+        const d = s.debris[k];
+        if (d.held || mySnags.has(d.id)) continue;
+        d.x += flow.x * dt;
+        d.z += flow.z * dt;
+        const far = Math.hypot(d.x, d.z) > FISHING.despawnDistance;
+        const away = d.x * flow.x + d.z * flow.z > 0;
+        if (!guest && far && away) s.debris.splice(k, 1);
       }
+      syncMeshes(s);
 
       // ---- hook state machine
       if (s.mode !== 'play') {
         if (phase !== 'idle') {
-          releaseSnagged();
+          mySnags.clear();
           phase = 'idle';
         }
       } else {
         // no fishing while swimming: a hook out when the gnome falls in is reeled back in
         if (s.player.swimming && phase !== 'idle') {
-          releaseSnagged();
+          mySnags.clear();
           phase = 'idle';
         }
 
@@ -486,17 +497,15 @@ export function createFishing(ctx: Ctx): System {
             hookPos.z += flow.z * dt;
           }
 
-          // snag unsnagged debris under the hook
-          for (const d of debris) {
-            if (d.snagged) continue;
-            const dx = d.pos.x - hookPos.x;
-            const dz = d.pos.z - hookPos.z;
+          // snag free debris under the hook (not what is on another player's hook)
+          for (const d of s.debris) {
+            if (d.held || mySnags.has(d.id)) continue;
+            const dx = d.x - hookPos.x;
+            const dz = d.z - hookPos.z;
             const len = Math.hypot(dx, dz);
             if (len <= FISHING.hookRadius) {
-              d.snagged = true;
               const k = len > MAX_SNAG_OFFSET ? MAX_SNAG_OFFSET / len : 1;
-              d.offset.x = dx * k;
-              d.offset.z = dz * k;
+              mySnags.set(d.id, { x: dx * k, z: dz * k });
             }
           }
 
@@ -505,42 +514,41 @@ export function createFishing(ctx: Ctx): System {
             : 0.05 + Math.sin(t * 2) * 0.08;
 
           // snagged debris follows the hook
-          for (const d of debris) {
-            if (!d.snagged) continue;
-            d.pos.x = hookPos.x + d.offset.x;
-            d.pos.z = hookPos.z + d.offset.z;
+          for (const d of s.debris) {
+            const off = mySnags.get(d.id);
+            if (!off) continue;
+            d.x = hookPos.x + off.x;
+            d.z = hookPos.z + off.z;
           }
 
           // collect or snap
           const pp = s.player.position;
           const dist = Math.hypot(hookPos.x - pp.x, hookPos.z - pp.z);
           if (dist <= FISHING.collectDistance) {
-            if (debris.some((d) => d.snagged)) spawnRing(hookPos.x, hookPos.z);
-            for (let k = debris.length - 1; k >= 0; k--) {
-              const d = debris[k];
-              if (!d.snagged) continue;
-              collectDebris(s, d.def);
-              sfx(d.def.bottle ? 'bottle' : d.def.fun === 'duck' ? 'quack' : 'catch');
-              ctx.scene.remove(d.mesh);
-              debris.splice(k, 1);
+            if (mySnags.size > 0) spawnRing(hookPos.x, hookPos.z);
+            for (const id of [...mySnags.keys()]) {
+              const d = s.debris.find((e) => e.id === id);
+              if (d && catchDebris(s, id) !== null) catchSfx(d.def);
             }
+            mySnags.clear();
             phase = 'idle';
           } else if (dist > FISHING.despawnDistance) {
             notify(s, 'The line snapped!');
-            releaseSnagged();
+            mySnags.clear();
             phase = 'idle';
           }
         }
       }
+      syncMeshes(s);
 
-      // ---- grab by hand (E): the nearest unsnagged junk within GRAB.reach, on the raft or while swimming
-      let grabTarget: Debris | null = null;
+      // ---- grab by hand (E): the nearest free junk within GRAB.reach, on the raft or while swimming
+      let grabTarget: FloatingDebris | null = null;
       if (s.mode === 'play') {
         const pp = s.player.position;
         let best = Infinity;
-        for (const d of debris) {
-          if (d.snagged) continue;
-          const dd = Math.hypot(d.pos.x - pp.x, d.pos.z - pp.z);
+        for (const d of s.debris) {
+          if (d.held || mySnags.has(d.id)) continue;
+          const dd = Math.hypot(d.x - pp.x, d.z - pp.z);
           if (dd <= GRAB.reach && dd < best) {
             best = dd;
             grabTarget = d;
@@ -549,11 +557,11 @@ export function createFishing(ctx: Ctx): System {
       }
       if (grabTarget && input.pressed(KEYS.interact)) {
         const g = grabTarget;
-        collectDebris(s, g.def);
-        sfx(g.def.bottle ? 'bottle' : g.def.fun === 'duck' ? 'quack' : 'catch');
-        spawnRing(g.pos.x, g.pos.z);
-        ctx.scene.remove(g.mesh);
-        debris.splice(debris.indexOf(g), 1);
+        if (catchDebris(s, g.id) !== null) {
+          catchSfx(g.def);
+          spawnRing(g.x, g.z);
+        }
+        syncMeshes(s);
         grabTarget = null;
       }
       s.canGrab = grabTarget !== null;
@@ -565,15 +573,16 @@ export function createFishing(ctx: Ctx): System {
         grabEl.style.display = 'none';
       }
 
-      // ---- debris pose (snagged debris were moved above)
-      for (const d of debris) {
+      // ---- debris pose
+      for (const d of s.debris) {
+        const m = meshes.get(d.id);
+        if (!m) continue;
         // junk drifting over the raft slides across the grass instead of bobbing under it
-        const base = tileAt(s, d.pos.x, d.pos.z) ? RAFT_TOP + 0.03 : 0.05 + Math.sin(t * 2 + d.phase) * 0.08;
-        d.pos.y = base + (d.def.fun === 'beachball' ? BEACHBALL_LIFT : 0);
-        d.mesh.position.copy(d.pos);
-        d.mesh.rotation.y = t * 0.5 + d.phase;
-        d.mesh.scale.setScalar(d === grabTarget ? 1 + 0.15 * Math.sin(t * 8) : 1);
-        if (d.sparkle) d.sparkle.visible = Math.sin(t * 6 + d.phase) > 0.3;
+        const base = tileAt(s, d.x, d.z) ? RAFT_TOP + 0.03 : 0.05 + Math.sin(t * 2 + m.phase) * 0.08;
+        m.mesh.position.set(d.x, base + (d.def.fun === 'beachball' ? BEACHBALL_LIFT : 0), d.z);
+        m.mesh.rotation.y = t * 0.5 + m.phase;
+        m.mesh.scale.setScalar(d === grabTarget ? 1 + 0.15 * Math.sin(t * 8) : 1);
+        if (m.sparkle) m.sparkle.visible = Math.sin(t * 6 + m.phase) > 0.3;
       }
 
       // ---- hook, line and charge bar visuals
@@ -584,24 +593,12 @@ export function createFishing(ctx: Ctx): System {
         const pp = s.player.position;
         bobber.position.copy(hookPos);
         // bite: while floating with something snagged, the bobber dips for 0.3 s of every 0.6 s
-        const hasSnag = debris.some((d) => d.snagged);
-        if (phase === 'floating' && hasSnag && t % 0.6 < 0.3) bobber.position.y -= 0.08;
-        const hx = pp.x;
-        const hy = pp.y + HAND_HEIGHT;
-        const hz = pp.z;
-        const span = Math.hypot(hookPos.x - hx, hookPos.y - hy, hookPos.z - hz);
-        const sag = Math.min(1.2, span * 0.08);
-        for (let k = 0; k < LINE_POINTS; k++) {
-          const u = k / (LINE_POINTS - 1);
-          linePos.setXYZ(
-            k,
-            hx + (hookPos.x - hx) * u,
-            hy + (hookPos.y - hy) * u - sag * 4 * u * (1 - u),
-            hz + (hookPos.z - hz) * u,
-          );
-        }
-        linePos.needsUpdate = true;
+        if (phase === 'floating' && mySnags.size > 0 && t % 0.6 < 0.3) bobber.position.y -= 0.08;
+        drawLine(linePos, pp.x, pp.y + HAND_HEIGHT, pp.z, bobber.position);
       }
+      // Shared with the other players (net.ts sends it with my position).
+      s.hook = showHook ? { x: bobber.position.x, y: bobber.position.y, z: bobber.position.z } : null;
+      s.hookSnags = [...mySnags.keys()];
 
       if (phase === 'charging') {
         bar.style.display = 'block';
@@ -611,4 +608,21 @@ export function createFishing(ctx: Ctx): System {
       }
     },
   };
+}
+
+/** Fills a fishing line from the hand (hx, hy, hz) to the hook, sagging in the middle. Also used for other players' lines. */
+export function drawLine(attr: THREE.BufferAttribute, hx: number, hy: number, hz: number, hook: { x: number; y: number; z: number }): void {
+  const n = attr.count;
+  const span = Math.hypot(hook.x - hx, hook.y - hy, hook.z - hz);
+  const sag = Math.min(1.2, span * 0.08);
+  for (let k = 0; k < n; k++) {
+    const u = k / (n - 1);
+    attr.setXYZ(
+      k,
+      hx + (hook.x - hx) * u,
+      hy + (hook.y - hy) * u - sag * 4 * u * (1 - u),
+      hz + (hook.z - hz) * u,
+    );
+  }
+  attr.needsUpdate = true;
 }

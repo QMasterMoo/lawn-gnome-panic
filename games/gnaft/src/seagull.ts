@@ -1,7 +1,8 @@
 // Seagull pest: now and then a gull lands on the tallest grass and eats it until the player shoos it away.
+// Co-op: the host (or solo) simulates it into state.gull; every player renders it and can shoo it.
 import * as THREE from 'three';
-import { KEYS, RAFT_TOP, SEAGULL, TILE_SIZE, type Ctx, type GameState, type System, type Tile } from './config';
-import { addItem, notify, tileKey } from './rules';
+import { KEYS, RAFT_TOP, SEAGULL, TILE_SIZE, type Ctx, type GameState, type GullPhase, type System, type Tile } from './config';
+import { notify, shooGull, tileKey } from './rules';
 import { sfx } from './audio';
 
 const MIN_GROWTH = 0.3;     // a tile must be at least this grown to attract a gull
@@ -98,31 +99,31 @@ export function createSeagull(ctx: Ctx): System {
   const gull = buildGull();
   gull.group.visible = false;
   ctx.scene.add(gull.group);
+  const view = ctx.state.gull;
 
+  // ---------------------------------------------------------------- simulation (host / solo only)
   const pos = new THREE.Vector3();
   const vel = new THREE.Vector3();
-  let phase: Phase = 'away';
   let gullsSpawned = 0;
   let wait = 0;                 // away: seconds until the next spawn attempt
   let target: TileRef = { i: 0, j: 0 };
-  let clock = 0;                // animation time
   let phaseTime = 0;            // seconds spent in the current phase
-  let sfxWait = 0;              // seconds until the next eating squawk
   let hop: { from: THREE.Vector3; to: THREE.Vector3; t: number } | null = null;
+  /** The phase the simulation last set; null right after this player became host (it then takes over view). */
+  let simPhase: GullPhase | null = null;
 
-  function scared(): boolean {
-    const p = ctx.state.player.position;
-    const d = Math.hypot(p.x - pos.x, p.z - pos.z);
-    return d <= SEAGULL.scareDistance || (d <= BONK_DISTANCE && ctx.input.pressed(KEYS.bonk));
+  function setPhase(p: GullPhase): void {
+    view.phase = p;
+    simPhase = p;
+    phaseTime = 0;
   }
 
   function startFlee(): void {
-    phase = 'flee';
-    phaseTime = 0;
+    setPhase('flee');
     hop = null;
-    const p = ctx.state.player.position;
-    let dx = pos.x - p.x;
-    let dz = pos.z - p.z;
+    // Away from the raft centre (whoever shooed it, it heads out to sea).
+    let dx = pos.x;
+    let dz = pos.z;
     let len = Math.hypot(dx, dz);
     if (len < 0.01) {
       const a = Math.random() * Math.PI * 2;
@@ -133,14 +134,107 @@ export function createSeagull(ctx: Ctx): System {
     vel.set((dx / len) * FLEE_SPEED, FLEE_CLIMB, (dz / len) * FLEE_SPEED);
   }
 
-  function shoo(): void {
-    const s = ctx.state;
-    sfx('gull');
-    s.stats.gullsScared++;
-    addItem(s, 'seed', 1);
-    notify(s, 'Shoo! The gull dropped a grass seed.');
-    startFlee();
+  function faceVelocity(): void {
+    if (Math.hypot(vel.x, vel.z) > 0.01) view.heading = Math.atan2(vel.x, vel.z);
   }
+
+  function simulate(dt: number): void {
+    const s = ctx.state;
+    if (simPhase === null) {
+      // Just became host: carry on from the shared view.
+      pos.set(view.x, view.y, view.z);
+      simPhase = view.phase;
+      if (view.phase === 'eating' || view.phase === 'flyIn') {
+        target = { i: Math.round(view.x / TILE_SIZE), j: Math.round(view.z / TILE_SIZE) };
+        if (view.phase === 'eating' && !s.tiles.has(tileKey(target.i, target.j))) startFlee();
+        if (view.phase === 'flyIn') {
+          const t = findTile(s, null, Infinity);
+          if (t) target = { i: t.i, j: t.j };
+          else startFlee();
+        }
+      } else if (view.phase === 'flee') startFlee();
+    }
+    if (view.phase !== simPhase) {
+      if (view.phase === 'flee') startFlee(); // shooed (rules.shooGull, here or by a guest)
+      else setPhase(view.phase);
+    }
+    phaseTime += dt;
+
+    if (view.phase === 'away') {
+      view.flying = true;
+      if (s.mode === 'title' || s.sea.docked) return;
+      if (wait > 0) { wait -= dt; return; }
+      if (gullsSpawned === 0 && s.time < SEAGULL.firstAfter) return;
+
+      const tile = findTile(s, null, Infinity);
+      if (!tile) { wait = RETRY_WAIT; return; }
+
+      const a = Math.random() * Math.PI * 2;
+      pos.set(Math.sin(a) * SPAWN_RADIUS, SPAWN_HEIGHT, Math.cos(a) * SPAWN_RADIUS);
+      target = { i: tile.i, j: tile.j };
+      gullsSpawned++;
+      setPhase('flyIn');
+    }
+
+    if (view.phase === 'flyIn') {
+      const goal = tileCentre(target);
+      const dir = goal.clone().sub(pos);
+      const dist = dir.length();
+      const step = SEAGULL.flySpeed * dt;
+      if (dist <= step) {
+        pos.copy(goal);
+        vel.set(0, 0, 0);
+        setPhase('eating');
+      } else {
+        vel.copy(dir).multiplyScalar(SEAGULL.flySpeed / dist);
+        pos.addScaledVector(vel, dt);
+        faceVelocity();
+      }
+      view.flying = true;
+    } else if (view.phase === 'eating') {
+      if (hop) {
+        hop.t = Math.min(1, hop.t + dt / HOP_TIME);
+        pos.lerpVectors(hop.from, hop.to, hop.t);
+        pos.y = RAFT_TOP + Math.sin(Math.PI * hop.t) * 0.6;
+        if (hop.t >= 1) { pos.copy(hop.to); hop = null; }
+      } else {
+        const tile = s.tiles.get(tileKey(target.i, target.j));
+        if (!tile) { startFlee(); } // grass is gone: no reward
+        else {
+          tile.growth = Math.max(0, tile.growth - SEAGULL.eatRate * dt);
+          if (tile.growth < EAT_DONE) {
+            const next = findTile(s, target, HOP_RANGE);
+            if (!next) { startFlee(); }
+            else {
+              const to = tileCentre(next);
+              hop = { from: pos.clone(), to, t: 0 };
+              vel.copy(to).sub(pos);
+              faceVelocity();
+              target = { i: next.i, j: next.j };
+            }
+          }
+        }
+      }
+      view.flying = hop !== null;
+    } else if (view.phase === 'flee') {
+      pos.addScaledVector(vel, dt);
+      faceVelocity();
+      view.flying = true;
+      if (phaseTime >= FLEE_TIME) {
+        setPhase('away');
+        wait = nextInterval();
+      }
+    }
+    view.x = pos.x;
+    view.y = pos.y;
+    view.z = pos.z;
+  }
+
+  // ---------------------------------------------------------------- presentation (everyone)
+  let clock = 0;                // animation time
+  let sfxWait = 0;              // seconds until the next eating squawk
+  let seenPhase: GullPhase = view.phase;
+  let landings = 0;
 
   function setPose(flying: boolean): void {
     const flap = Math.sin(clock * 14) * 0.8;
@@ -151,108 +245,54 @@ export function createSeagull(ctx: Ctx): System {
     gull.body.rotation.x = flying ? 0.1 : 0.2 + 0.25 * Math.sin(clock * 6); // landed: peck
   }
 
-  function faceVelocity(): void {
-    if (Math.hypot(vel.x, vel.z) > 0.01) gull.group.rotation.y = Math.atan2(vel.x, vel.z);
+  function render(dt: number, smooth: boolean): void {
+    const s = ctx.state;
+    if (view.phase !== seenPhase) {
+      const from = seenPhase;
+      seenPhase = view.phase;
+      if (from === 'away') gull.group.position.set(view.x, view.y, view.z); // appear where it spawned
+      if (view.phase === 'eating') {
+        landings++;
+        sfxWait = 3 + Math.random() * 2;
+        sfx('gull');
+        notify(s, landings === 1 ? 'A seagull is eating your lawn! Walk up to it or press F.' : 'Seagull!');
+      }
+    }
+    gull.group.visible = view.phase !== 'away';
+    if (!gull.group.visible) return;
+
+    // A guest only gets the host's position a few times a second, so it eases toward it.
+    const k = smooth ? 1 - Math.exp(-10 * dt) : 1;
+    const g = gull.group.position;
+    g.set(g.x + (view.x - g.x) * k, g.y + (view.y - g.y) * k, g.z + (view.z - g.z) * k);
+    const turn = Math.atan2(Math.sin(view.heading - gull.group.rotation.y), Math.cos(view.heading - gull.group.rotation.y));
+    gull.group.rotation.y += turn * k;
+    setPose(view.flying);
+
+    if (view.phase === 'eating' && !view.flying) {
+      sfxWait -= dt;
+      if (sfxWait <= 0) { sfx('gull'); sfxWait = 3 + Math.random() * 2; }
+    }
   }
 
   return {
     update(dt: number): void {
       const s = ctx.state;
       clock += dt;
-      phaseTime += dt;
 
-      if (phase === 'away') {
-        gull.group.visible = false;
-        if (s.mode === 'title' || s.sea.docked) return;
-        if (wait > 0) { wait -= dt; return; }
-        if (gullsSpawned === 0 && s.time < SEAGULL.firstAfter) return;
-
-        const tile = findTile(s, null, Infinity);
-        if (!tile) { wait = RETRY_WAIT; return; }
-
-        const a = Math.random() * Math.PI * 2;
-        pos.set(Math.sin(a) * SPAWN_RADIUS, SPAWN_HEIGHT, Math.cos(a) * SPAWN_RADIUS);
-        target = { i: tile.i, j: tile.j };
-        gullsSpawned++;
-        gull.group.visible = true;
-        phase = 'flyIn';
-        phaseTime = 0;
-      }
-
-      if (phase === 'flyIn') {
-        if (scared()) { shoo(); }
-        else {
-          const goal = tileCentre(target);
-          const dir = goal.clone().sub(pos);
-          const dist = dir.length();
-          const step = SEAGULL.flySpeed * dt;
-          if (dist <= step) {
-            pos.copy(goal);
-            vel.set(0, 0, 0);
-            phase = 'eating';
-            phaseTime = 0;
-            sfxWait = 3 + Math.random() * 2;
-            sfx('gull');
-            notify(s, gullsSpawned === 1
-              ? 'A seagull is eating your lawn! Walk up to it or press F.'
-              : 'Seagull!');
-          } else {
-            vel.copy(dir).multiplyScalar(SEAGULL.flySpeed / dist);
-            pos.addScaledVector(vel, dt);
-            faceVelocity();
-          }
-        }
-        gull.group.position.copy(pos);
-        setPose(true);
-        return;
-      }
-
-      if (phase === 'eating') {
-        if (scared()) { shoo(); }
-        else if (hop) {
-          hop.t = Math.min(1, hop.t + dt / HOP_TIME);
-          pos.lerpVectors(hop.from, hop.to, hop.t);
-          pos.y = RAFT_TOP + Math.sin(Math.PI * hop.t) * 0.6;
-          if (hop.t >= 1) { pos.copy(hop.to); hop = null; }
-        } else {
-          const tile = s.tiles.get(tileKey(target.i, target.j));
-          if (!tile) { startFlee(); } // grass is gone: no reward
-          else {
-            tile.growth = Math.max(0, tile.growth - SEAGULL.eatRate * dt);
-            sfxWait -= dt;
-            if (sfxWait <= 0) { sfx('gull'); sfxWait = 3 + Math.random() * 2; }
-            if (tile.growth < EAT_DONE) {
-              const next = findTile(s, target, HOP_RANGE);
-              if (!next) { startFlee(); }
-              else {
-                const to = tileCentre(next);
-                hop = { from: pos.clone(), to, t: 0 };
-                vel.copy(to).sub(pos);
-                faceVelocity();
-                target = { i: next.i, j: next.j };
-              }
-            }
-          }
-        }
-        if (phase === 'eating') {
-          gull.group.position.copy(pos);
-          setPose(hop !== null);
-        }
-        return;
-      }
-
-      if (phase === 'flee') {
-        pos.addScaledVector(vel, dt);
-        gull.group.position.copy(pos);
-        faceVelocity();
-        setPose(true);
-        if (phaseTime >= FLEE_TIME) {
-          gull.group.visible = false;
-          phase = 'away';
-          phaseTime = 0;
-          wait = nextInterval();
+      // Any player can shoo it: walk up to it, or press F close by. A guest's shoo is sent to the host.
+      if (view.phase === 'flyIn' || view.phase === 'eating') {
+        const p = s.player.position;
+        const g = gull.group.position;
+        const d = Math.hypot(p.x - g.x, p.z - g.z);
+        if (d <= SEAGULL.scareDistance || (d <= BONK_DISTANCE && ctx.input.pressed(KEYS.bonk))) {
+          if (shooGull(s)) sfx('gull');
         }
       }
+
+      if (s.netRole === 'guest') simPhase = null;
+      else simulate(dt);
+      render(dt, s.netRole === 'guest');
     },
   };
 }

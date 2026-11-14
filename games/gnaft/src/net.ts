@@ -2,19 +2,23 @@
 // The first player in a room hosts (runs the world); later players are guests. See docs/roadmaps/gnaft/epic5-01-net.md.
 import * as THREE from 'three';
 import {
-  CHARACTERS, COOP, RAFT_TOP, TILE_SIZE,
-  type Ctx, type CoopPlayer, type CoopState, type GnomeModel, type PlayerState, type System, type Tile,
+  CHARACTERS, COOP, RAFT_TOP, TILE_SIZE, TOOLS,
+  type Ctx, type CoopPlayer, type CoopState, type GnomeModel, type MowerModel, type PlayerState, type System, type Tile, type ToolId,
 } from './config';
 import { createGnomeModel } from './gnome';
+import { createMowerModel } from './mowerModels';
+import { drawLine, HAND_HEIGHT, LINE_POINTS } from './fishing';
+import { RIDING_SEAT_Y } from './player';
 import { startAudio } from './audio';
-import { applyNetAction, applyWorld, netHook, notify, snapshotWorld, type NetAction, type WorldSnap } from './rules';
+import { applyNetAction, applyWorld, netHook, nightAmount, notify, snapshotWorld, type NetAction, type WorldSnap } from './rules';
 import { createNetClient, serverUrl, type NetClient } from '@lawn/mp/client';
 import type { PlayerInfo, ServerMsg } from '@lawn/mp/protocol';
 
 /** Relay payloads between the players of one raft. */
 type CoopMsg =
   | { k: 'snap'; w: WorldSnap; acks: Record<string, number> } // host -> all, COOP.snapHz; acks[playerId] = last action seq applied
-  | { k: 'me'; x: number; y: number; z: number; f: number; sw: 0 | 1 } // everyone -> all, COOP.meHz
+  // everyone -> all, COOP.meHz: my gnome, equipped tool, fishing hook ([x, y, z] or 0) and the debris ids on it
+  | { k: 'me'; x: number; y: number; z: number; f: number; sw: 0 | 1; tl: ToolId; h: [number, number, number] | 0; sn: number[] }
   | { k: 'act'; seq: number; a: NetAction };                   // guest -> host, one per action
 
 /** How fast a puppet catches up with its latest 'me' target (1/s, exponential). */
@@ -34,7 +38,22 @@ interface Puppet {
   target: THREE.Vector3 | null;
   targetFacing: number;
   targetSwim: boolean;
+  /** Their equipped tool and its model (null for hands). */
+  tool: ToolId;
+  mower: MowerModel | null;
+  /** Their fishing hook: latest target (null when not out), the eased position, bobber and line. */
+  hookTarget: THREE.Vector3 | null;
+  hookPos: THREE.Vector3;
+  bobber: THREE.Mesh;
+  line: THREE.Line;
+  linePos: THREE.BufferAttribute;
+  /** Debris ids on their hook. */
+  snags: number[];
 }
+
+const bobberGeo = new THREE.SphereGeometry(0.12, 10, 8);
+const bobberMat = new THREE.MeshStandardMaterial({ color: 0xd93636, roughness: 0.5 });
+const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff });
 
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
@@ -125,7 +144,25 @@ export function createNet(ctx: Ctx): System {
     const { sprite, tex, mat } = makeLabel(p.name, p.color);
     sprite.visible = false;
     scene.add(sprite);
+    const bobber = new THREE.Mesh(bobberGeo, bobberMat);
+    bobber.visible = false;
+    scene.add(bobber);
+    const linePos = new THREE.BufferAttribute(new Float32Array(LINE_POINTS * 3), 3);
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute('position', linePos);
+    const line = new THREE.Line(lineGeo, lineMat);
+    line.frustumCulled = false;
+    line.visible = false;
+    scene.add(line);
     puppets.set(p.id, {
+      tool: 'hands',
+      mower: null,
+      hookTarget: null,
+      hookPos: new THREE.Vector3(),
+      bobber,
+      line,
+      linePos,
+      snags: [],
       model, sprite, tex, mat,
       fake: {
         position: new THREE.Vector3(),
@@ -144,7 +181,9 @@ export function createNet(ctx: Ctx): System {
   function removePuppet(id: number): void {
     const pu = puppets.get(id);
     if (!pu) return;
-    scene.remove(pu.model.object, pu.sprite);
+    scene.remove(pu.model.object, pu.sprite, pu.bobber, pu.line);
+    if (pu.mower) scene.remove(pu.mower.group);
+    pu.line.geometry.dispose();
     pu.tex.dispose();
     pu.mat.dispose();
     puppets.delete(id);
@@ -180,7 +219,67 @@ export function createNet(ctx: Ctx): System {
       p.swimming = pu.targetSwim;
       p.facing += wrapAngle(pu.targetFacing - p.facing) * k;
       pu.model.update(p, dt);
+      if (pu.tool === 'riding' && !p.swimming) pu.model.object.position.y += RIDING_SEAT_Y;
       pu.sprite.position.set(p.position.x, p.position.y + LABEL_HEIGHT, p.position.z);
+      poseMower(pu, dt);
+      poseHook(pu, k);
+    }
+  }
+
+  /** Shows their equipped mower in front of them (or under them, for the riding mower), like mowing.ts does for me. */
+  function poseMower(pu: Puppet, dt: number): void {
+    const def = TOOLS[pu.tool];
+    if (def.model === null) {
+      if (pu.mower) {
+        scene.remove(pu.mower.group);
+        pu.mower = null;
+      }
+      return;
+    }
+    if (!pu.mower || pu.mower.group.userData.tool !== pu.tool) {
+      if (pu.mower) scene.remove(pu.mower.group);
+      pu.mower = createMowerModel(def.model);
+      pu.mower.group.scale.setScalar(def.modelScale);
+      pu.mower.group.userData.tool = pu.tool;
+      scene.add(pu.mower.group);
+    }
+    const p = pu.fake;
+    const m = pu.mower;
+    m.group.visible = pu.model.object.visible && !p.swimming;
+    if (!m.group.visible) return;
+    const off = pu.tool === 'riding' ? 0 : 0.9 * def.modelScale;
+    m.group.position.set(p.position.x + Math.sin(p.facing) * off, p.position.y, p.position.z + Math.cos(p.facing) * off);
+    m.group.rotation.y = p.facing;
+    m.setNight(nightAmount(state));
+    m.animate(dt, Math.hypot(p.velocity.x, p.velocity.z));
+  }
+
+  /** Their bobber and line, eased toward the latest hook position they sent. */
+  function poseHook(pu: Puppet, k: number): void {
+    const show = pu.hookTarget !== null && pu.model.object.visible;
+    pu.bobber.visible = show;
+    pu.line.visible = show;
+    if (!show || !pu.hookTarget) return;
+    pu.hookPos.lerp(pu.hookTarget, k);
+    pu.bobber.position.copy(pu.hookPos);
+    const p = pu.fake.position;
+    drawLine(pu.linePos, p.x, p.y + HAND_HEIGHT, p.z, pu.hookPos);
+  }
+
+  /** Debris on someone else's hook hangs from their bobber and is off limits to everyone else. */
+  function pinHeldDebris(): void {
+    for (const d of state.debris) d.held = false;
+    if (puppets.size === 0) return;
+    const byId = new Map(state.debris.map((d) => [d.id, d]));
+    for (const pu of puppets.values()) {
+      if (!pu.hookTarget) continue;
+      for (const id of pu.snags) {
+        const d = byId.get(id);
+        if (!d) continue;
+        d.held = true;
+        d.x = pu.hookPos.x;
+        d.z = pu.hookPos.z;
+      }
     }
   }
 
@@ -225,6 +324,9 @@ export function createNet(ctx: Ctx): System {
       z: round2(p.position.z),
       f: round2(p.facing),
       sw: p.swimming ? 1 : 0,
+      tl: state.equipped,
+      h: state.hook ? [round2(state.hook.x), round2(state.hook.y), round2(state.hook.z)] : 0,
+      sn: state.hookSnags,
     });
   }
 
@@ -259,6 +361,15 @@ export function createNet(ctx: Ctx): System {
         pu.target.set(d.x, d.y, d.z);
         pu.targetFacing = d.f;
         pu.targetSwim = d.sw === 1;
+        pu.tool = d.tl in TOOLS ? d.tl : 'hands';
+        pu.snags = Array.isArray(d.sn) ? d.sn : [];
+        if (Array.isArray(d.h)) {
+          if (!pu.hookTarget) {
+            pu.hookTarget = new THREE.Vector3();
+            pu.hookPos.set(d.h[0], d.h[1], d.h[2]); // a fresh cast starts where it is, not where the last one was
+          }
+          pu.hookTarget.set(d.h[0], d.h[1], d.h[2]);
+        } else pu.hookTarget = null;
         if (first) {
           pu.fake.position.copy(pu.target);
           pu.fake.facing = d.f;
@@ -461,6 +572,7 @@ export function createNet(ctx: Ctx): System {
       }
 
       movePuppets(dt);
+      pinHeldDebris();
     },
   };
 }
