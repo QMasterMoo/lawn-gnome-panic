@@ -3,7 +3,7 @@
 A gnome adrift on a little patch of floating grass. Fish junk out of the sea, grow and mow your lawn-boat to
 expand it, and use a telescope to find islands with better mower tech.
 
-Run: `npm run dev -w games/gnaft` (http://localhost:5182). Build: `npm run build -w games/gnaft`.
+Run: `npm run dev -w games/gnaft` (http://localhost:5183). Build: `npm run build -w games/gnaft`.
 
 ## Controls
 
@@ -47,6 +47,6 @@ Fuel Depot Key (fuel: gas mower) → Mower Graveyard (parts: riding mower).
 
 ## Debug
 
-- `http://localhost:5182/#selftest`: scripted playthrough; logs `SELFTEST OK` (check with `bash tools/smoke.sh "http://localhost:5182/#selftest" rg-selftest-ok`).
+- `http://localhost:5183/#selftest`: scripted playthrough; logs `SELFTEST OK` (check with `bash tools/smoke.sh "http://localhost:5183/#selftest" rg-selftest-ok`).
 - `bash games/gnaft/snap.sh <scenario> out.png`: headless screenshot (scenarios: raft, island, mower, build, telescope, big, props, night, rain, shed, swim).
 - `window.raft` in the console is the live game state.

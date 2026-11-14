@@ -22,6 +22,8 @@ export const MODES = {
   dorian:   [0, 2, 3, 5, 7, 9, 10],
   phrygian: [0, 1, 3, 5, 7, 8, 10],
   harmonic: [0, 2, 3, 5, 7, 8, 11], // harmonic minor: the raised 7th gives a major V
+  lydian:     [0, 2, 4, 6, 7, 9, 11],
+  mixolydian: [0, 2, 4, 5, 7, 9, 10],
 } as const;
 export type ModeName = keyof typeof MODES;
 
