@@ -130,6 +130,7 @@ const CSS = `
 .gf-ammo{font-size:46px;line-height:46px}
 .gf-reload{font-size:18px;color:#ffd23f;min-height:20px}
 .gf-gren{font-size:15px}
+.gf-lockhint{left:50%;top:38%;transform:translateX(-50%);font-size:26px;letter-spacing:2px;color:#ffd23f;white-space:nowrap;display:none}
 .gf-prompt{left:50%;top:62%;transform:translateX(-50%);font-size:20px;white-space:nowrap;min-height:24px}
 .gf-feed{top:12px;right:16px;text-align:right;font-size:15px}
 .gf-row{display:inline-block;background:rgba(0,0,0,.35);padding:3px 8px;border-radius:4px;margin-top:3px}
@@ -248,6 +249,8 @@ export function createHud(root: HTMLElement, game: Game, onPlay: () => void): Hu
 
   // Prompt (centre-low)
   const prompt = el('div', 'gf-abs gf-prompt');
+  // Shown while playing with a mouse that is not locked (online matches start without a click).
+  const lockHint = el('div', 'gf-abs gf-lockhint', 'CLICK TO AIM');
 
   // Bottom left: minimap, health, vehicle
   const bl = el('div', 'gf-abs gf-bl');
@@ -304,7 +307,7 @@ export function createHud(root: HTMLElement, game: Game, onPlay: () => void): Hu
   endBox.append(endH, endSub, endStats, again);
   end.appendChild(endBox);
 
-  hudEl.append(top, toasts, cross, scope, hitm, vig, prompt, bl, br, feed, death, score, end);
+  hudEl.append(top, toasts, cross, scope, hitm, vig, prompt, lockHint, bl, br, feed, death, score, end);
 
   /** Touch screen: prompts name the RIDE button instead of the E key. */
   const coarse = window.matchMedia('(pointer: coarse)').matches;
@@ -334,18 +337,8 @@ export function createHud(root: HTMLElement, game: Game, onPlay: () => void): Hu
   pickers.push(titlePicker);
   const pickNote = el('p', 'gf-pick-note', 'Your class applies the next time you spawn.');
   pickNote.style.display = 'none';
-  play.onclick = () => {
-    // Before the match starts, PLAY applies the picked class straight away.
-    const p = game.player;
-    if (game.time === 0 && p.nextClassId !== p.classId) {
-      p.classId = p.nextClassId;
-      const w = weaponOf(p);
-      p.ammo = w.magSize;
-      p.reserve = w.reserveAmmo;
-      p.grenades = CLASSES[p.classId].grenades;
-    }
-    onPlay();
-  };
+  // onPlay (main.ts) applies the picked class when the match has not started yet.
+  play.onclick = () => onPlay();
   tBox.append(tH, tTag, controls, touchHelp, titlePicker.root, pickNote, play);
   title.appendChild(tBox);
 
@@ -603,6 +596,7 @@ export function createHud(root: HTMLElement, game: Game, onPlay: () => void): Hu
         }
       }
       prompt.textContent = promptText;
+      lockHint.style.display = !coarse && !input.locked && overlay === 'none' && !game.over ? 'block' : 'none';
 
       // Health and vehicle bars
       const hpFrac = Math.max(0, Math.min(1, p.hp / TUNING.maxHp));

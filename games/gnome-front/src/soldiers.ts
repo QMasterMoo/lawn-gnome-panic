@@ -202,6 +202,21 @@ export function respawnSoldier(game: Game, s: Soldier): void {
 }
 
 /**
+ * Switches a living soldier to classId right now, with that class's full weapon and grenades
+ * (used before a match starts and when a human first takes over a slot online).
+ */
+export function applyClassNow(s: Soldier, classId: ClassId): void {
+  s.classId = classId;
+  s.nextClassId = classId;
+  const weapon = weaponOf(s);
+  s.ammo = weapon.magSize;
+  s.reserve = weapon.reserveAmmo;
+  s.reloadT = 0;
+  s.fireT = 0;
+  s.grenades = CLASSES[classId].grenades;
+}
+
+/**
  * Brings a soldier back to life at exactly (x, y, z) facing yaw, as classId, with full health, ammo and grenades,
  * and emits 'spawn'. respawnSoldier uses it; online guests call it for spawns the host reports.
  */

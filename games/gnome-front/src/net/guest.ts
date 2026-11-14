@@ -3,7 +3,7 @@
 // and grenades to the host. The guest's own soldier is moved by player.ts locally; this file only places it once.
 import * as THREE from 'three';
 import { type Game, type Soldier, type Team, type Vehicle } from '../config';
-import { markDead, placeSpawned } from '../soldiers';
+import { applyClassNow, markDead, placeSpawned } from '../soldiers';
 import { spawnGrenade } from '../combat';
 import { exitVehicle, simulatedHere } from '../vehicles';
 import { applyHumans, lobby, netHooks, netLink, netState, r2, soldierInterp, vehicleInterp } from './state';
@@ -191,15 +191,19 @@ export function createGuestSync(game: Game): GuestSync {
       p.pos.set(row[0], row[1], row[2]);
       p.yaw = row[3];
       p.pitch = row[4];
+      // applyHumans carried the class picked on the title screen over to p.nextClassId; keep it.
+      const pick = p.nextClassId;
       p.classId = CLASS_IDS[row[8]];
-      p.nextClassId = CLASS_IDS[row[8]];
       if (row[6] === 0) {
-        markDead(p);
+        markDead(p); // respawns as the pick: 'me' sends it to the host as cls
       } else {
         p.alive = true;
         p.hp = row[5];
         p.model.setDead(false);
+        // The host switches this soldier to the pick on our first 'me' (host.ts); do the same here.
+        applyClassNow(p, pick);
       }
+      p.nextClassId = pick;
       lobby.status = 'in';
       netHooks.startMatch?.();
     }
