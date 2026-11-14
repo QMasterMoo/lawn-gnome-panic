@@ -383,3 +383,28 @@ test('gnaft: a lone player starts at once, a friend drops into the running raft'
     b.close();
   }
 });
+
+test('gnome-front: a lone player starts after the public wait, a later player drops into that match', async () => {
+  const a = await open();
+  const b = await open();
+  try {
+    a.send({ t: 'hello', v: 3, name: 'Alpha', character: 'gnorman', game: 'gnome-front' });
+    const wa = await a.next('welcome');
+    a.send({ t: 'queue', code: null, character: 'gnorman', name: 'Alpha' });
+    const ma = await a.next('match');
+    assert.equal(ma.hostId, wa.id);
+    assert.equal(ma.players.length, 1);
+
+    b.send({ t: 'hello', v: 3, name: 'Bravo', character: 'gnorman', game: 'gnome-front' });
+    const wb = await b.next('welcome');
+    b.send({ t: 'queue', code: null, character: 'gnorman', name: 'Bravo' });
+    const mb = await b.next('match');
+    assert.equal(mb.matchId, ma.matchId);
+    assert.equal(mb.hostId, wa.id);
+    const j = await a.next('joined');
+    assert.equal(j.player.id, wb.id);
+  } finally {
+    a.close();
+    b.close();
+  }
+});

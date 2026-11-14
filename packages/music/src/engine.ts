@@ -45,9 +45,28 @@ export function setMuted(m: boolean): void {
 function loadTone(): Promise<Tone | null> {
   if (tone) return Promise.resolve(tone);
   loading ??= import('tone')
-    .then((m) => (tone = m))
+    .then((m) => {
+      useFixedRateContext(m);
+      return (tone = m);
+    })
     .catch(() => null);
   return loading;
+}
+
+/**
+ * By default the AudioContext runs at the output device's rate. On a 192 kHz device every synth,
+ * reverb and compressor does 4x the work of 48 kHz, and the render quantum (128 frames) is only
+ * 0.67 ms, so the audio thread misses deadlines and the music crackles. Pin the rate to 48 kHz
+ * (the browser resamples to the device) and use the larger "playback" buffer: music doesn't need
+ * low latency, since notes are scheduled ahead on the Transport.
+ */
+function useFixedRateContext(T: Tone): void {
+  try {
+    const raw = new AudioContext({ sampleRate: 48000, latencyHint: 'playback' });
+    T.setContext(new T.Context(raw));
+  } catch {
+    // Fall back to Tone's default context.
+  }
 }
 
 function teardown(T: Tone): void {

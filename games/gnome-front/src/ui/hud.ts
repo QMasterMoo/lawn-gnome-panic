@@ -362,34 +362,33 @@ export function createHud(root: HTMLElement, game: Game, onPlay: () => void): Hu
   let endShown = false;
   const killFeed: { t: number; killer: Soldier | null; victim: Soldier; cause: DamageCause; weapon: WeaponId | null; headshot: boolean }[] = [];
   const toastList: { t: number; text: string; team: Team }[] = [];
-  const player = game.player;
 
   game.on((e: GameEvent) => {
     switch (e.type) {
       case 'hit':
-        if (e.shooter === player && !(hitT > 0 && hitKill)) {
+        if (e.shooter === game.player && !(hitT > 0 && hitKill)) {
           hitT = HIT_S;
           hitKill = false;
         }
-        if (e.victim === player) {
+        if (e.victim === game.player) {
           vigT = VIGNETTE_S;
           vigMax = Math.min(0.9, 0.35 + e.damage / 80);
         }
         break;
       case 'vehicleHit':
-        if (e.shooter === player && !(hitT > 0 && hitKill)) {
+        if (e.shooter === game.player && !(hitT > 0 && hitKill)) {
           hitT = HIT_S;
           hitKill = false;
         }
         break;
       case 'kill':
-        if (e.killer === player) {
+        if (e.killer === game.player) {
           hitT = HIT_S;
           hitKill = true;
         }
         killFeed.push({ t: now, killer: e.killer, victim: e.victim, cause: e.cause, weapon: e.weapon, headshot: e.headshot });
         while (killFeed.length > KILL_FEED_MAX) killFeed.shift();
-        if (e.victim === player) {
+        if (e.victim === game.player) {
           lastDeath = { name: killerName(e.killer), verb: verbFor(e.cause, e.weapon) };
         }
         break;
@@ -423,13 +422,13 @@ export function createHud(root: HTMLElement, game: Game, onPlay: () => void): Hu
   }
 
   function captureLine(): string {
-    if (!player.alive) return '';
+    if (!game.player.alive) return '';
     for (const f of game.flags) {
-      const dx = player.pos.x - f.def.x;
-      const dz = player.pos.z - f.def.z;
+      const dx = game.player.pos.x - f.def.x;
+      const dz = game.player.pos.z - f.def.z;
       if (Math.hypot(dx, dz) > TUNING.captureRadius) continue;
       if (f.contested) return 'CONTESTED';
-      return `${f.owner === player.team ? 'DEFENDING' : 'CAPTURING'} ${f.def.id}`;
+      return `${f.owner === game.player.team ? 'DEFENDING' : 'CAPTURING'} ${f.def.id}`;
     }
     return '';
   }
@@ -459,9 +458,9 @@ export function createHud(root: HTMLElement, game: Game, onPlay: () => void): Hu
     }
 
     for (const s2 of game.soldiers) {
-      if (!s2.alive || s2 === player) continue;
-      const dist = Math.hypot(s2.pos.x - player.pos.x, s2.pos.z - player.pos.z);
-      if (s2.team !== player.team && dist > MINIMAP_ENEMY_RANGE) continue;
+      if (!s2.alive || s2 === game.player) continue;
+      const dist = Math.hypot(s2.pos.x - game.player.pos.x, s2.pos.z - game.player.pos.z);
+      if (s2.team !== game.player.team && dist > MINIMAP_ENEMY_RANGE) continue;
       mctx.beginPath();
       mctx.arc(mx(s2.pos.x), mz(s2.pos.z), 3, 0, Math.PI * 2);
       mctx.fillStyle = TEAM_CSS[s2.team];
@@ -474,11 +473,11 @@ export function createHud(root: HTMLElement, game: Game, onPlay: () => void): Hu
       mctx.fillRect(mx(v.pos.x) - 4, mz(v.pos.z) - 4, 8, 8);
     }
 
-    if (player.alive) {
-      const dx = Math.sin(player.yaw);
-      const dy = Math.cos(player.yaw);
-      const cx = mx(player.pos.x);
-      const cy = mz(player.pos.z);
+    if (game.player.alive) {
+      const dx = Math.sin(game.player.yaw);
+      const dy = Math.cos(game.player.yaw);
+      const cx = mx(game.player.pos.x);
+      const cy = mz(game.player.pos.z);
       const tipX = cx + dx * 8;
       const tipY = cy + dy * 8;
       const bX = cx - dx * 4;
@@ -521,7 +520,7 @@ export function createHud(root: HTMLElement, game: Game, onPlay: () => void): Hu
     feed.replaceChildren();
     for (const k of killFeed) {
       const row = el('div', 'gf-row');
-      if (k.killer === player || k.victim === player) row.classList.add('you');
+      if (k.killer === game.player || k.victim === game.player) row.classList.add('you');
       if (k.killer) row.appendChild(teamSpan(k.killer.team, k.killer.name));
       else row.appendChild(document.createTextNode('a mower'));
       row.appendChild(document.createTextNode(` ${verbFor(k.cause, k.weapon)} `));
@@ -543,11 +542,11 @@ export function createHud(root: HTMLElement, game: Game, onPlay: () => void): Hu
 
   function renderEnd(): void {
     const winner = game.winner;
-    const won = winner !== null && winner === player.team;
+    const won = winner !== null && winner === game.player.team;
     endH.textContent = winner === null ? 'DRAW' : won ? 'VICTORY' : 'DEFEAT';
     endH.style.color = winner === null ? '#fff' : TEAM_CSS[winner];
     endSub.textContent = winner === null ? '' : `${TEAM_NAMES[winner]} WIN`;
-    endStats.textContent = `Kills ${player.kills}   Deaths ${player.deaths}`;
+    endStats.textContent = `Kills ${game.player.kills}   Deaths ${game.player.deaths}`;
     end.style.display = 'flex';
     if (!endShown) {
       endShown = true;
@@ -558,7 +557,7 @@ export function createHud(root: HTMLElement, game: Game, onPlay: () => void): Hu
   return {
     update(dt: number, input: InputState): void {
       now += dt;
-      const p = player;
+      const p = game.player;
 
       // Timers
       hitT = Math.max(0, hitT - dt);

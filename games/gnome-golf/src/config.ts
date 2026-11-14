@@ -271,7 +271,7 @@ export interface Spot {
 export interface FlightEvent {
   /** Seconds after impact. */
   t: number;
-  kind: 'bounce' | 'roll' | 'cup' | 'water' | 'rest';
+  kind: 'bounce' | 'roll' | 'cup' | 'water' | 'rest' | 'chains';
   lie: Lie;
   /** Impact speed in yd/s (bounces), for sound volume. */
   speed: number;
@@ -321,7 +321,31 @@ export interface Wind {
   mph: number;
 }
 
+/** 'golf': the classic game. 'disc': Gnome Disc, where Disco the living frisbee hurls a gnome at a chain basket. */
+export type GameMode = 'golf' | 'disc';
+
+export interface DiscState {
+  /** Release tilt in tilt steps, -DISC.maxTilt..DISC.maxTilt. Positive = hyzer (curves left), negative = anhyzer (curves right). */
+  tilt: number;
+  /** Seconds the whirl has been held (phase 'swing'). */
+  held: number;
+  /** Orbit angle of the gnome round Disco, as the yaw its velocity points along. */
+  orbit: number;
+  /** Power locked in at release, 0..DISC.maxPower. */
+  power: number;
+  /** Release error in radians (0 = let go exactly on the aim line). */
+  releaseError: number;
+  /** Mid-air flails left on the current throw. */
+  flails: number;
+  /** state.time of the last flail (for the arm flap animation), -1 if none. */
+  lastFlail: number;
+  /** True when Disco got dizzy and let go on his own. */
+  dizzy: boolean;
+}
+
 export interface GameState {
+  mode: GameMode;
+  disc: DiscState;
   phase: Phase;
   /** Seconds since phase started. */
   phaseTime: number;
@@ -362,7 +386,11 @@ export interface GameState {
   beersDrunk: number;
   /** Seconds since the current sip started; -1 when not drinking. Drinking lasts CONSUMABLES.drinkSeconds. */
   drinkTime: number;
+  /** What the party drives: the mower cart, or the secret 2008 Nissan 350Z (type 350z on the title screen). */
+  ride: Ride;
 }
+
+export type Ride = 'mower' | '350z';
 
 // =====================================================================
 // Consumables (round.ts rules, controls.ts buttons, party.ts props)
@@ -384,6 +412,60 @@ export interface PartySpots {
   mower: Spot;
   partner: Spot;
 }
+
+// =====================================================================
+// Gnome Disc (discPhysics.ts, disc.ts)
+// =====================================================================
+
+export const DISC = {
+  /** Full-power carry on flat ground with no wind and a flat (0) tilt, yards. discPhysics calibrates launch speed to it. */
+  carry: 140,
+  /** Launch angle, degrees. */
+  launchDeg: 7,
+  /** Release height above the ground, yards. */
+  releaseHeight: 1.1,
+  drag: 0.0021,           // per yard, like PHYS.drag
+  lift: 0.0034,           // per yard: up accel = lift * spin * horizontalSpeed² * cos(bank)
+  /** Spin left after one second of flight (spin decays exponentially; lift scales with it). */
+  spinKeep: 0.78,
+  /** Sideways accel from bank: lift * spin * vh² * sin(bank) toward the low side. One tilt step is this many degrees of bank. */
+  tiltStepDeg: 15,
+  maxTilt: 3,
+  /** High-speed turn (right) and low-speed fade (left), yd/s² at full and zero relative speed. */
+  turn: 1.6,
+  fade: 6,
+  /** Whirl: seconds of holding for full power; overwhirl past maxPower; Disco gets dizzy at dizzyPower and lets go himself. */
+  windupSeconds: 2.0,
+  maxPower: 1.1,
+  dizzyPower: 1.45,
+  /** Orbit speed of the gnome round Disco, rad/s, at zero and full power. */
+  orbitMin: 2.5,
+  orbitMax: 10.5,
+  /** Radius of the gnome's orbit round Disco's middle, yards. */
+  orbitRadius: 1.15,
+  /** Release error (radians, orbit vs aim) to launch direction offset; and the clamp on the offset. */
+  releaseSpread: 0.4,
+  maxReleaseOffset: 1.3,
+  /** |release error| under this counts as a perfect release. */
+  perfectWindow: 0.28,
+  /** Flails per throw: each one adds upward speed, a little spin, and costs a little forward speed. */
+  flailsPerThrow: 2,
+  flailUp: 2.7,
+  flailSpin: 0.35,
+  flailKeep: 0.93,
+  /** Basket catch zone round the pin: horizontal radius, and height band above the ground, yards. */
+  basketRadius: 0.85,
+  basketLow: 0.25,
+  basketHigh: 1.65,
+  /** Faster than this into the chains and the gnome chains out (bounces back off), yd/s. */
+  catchSpeed: 34,
+  /** Ground contact: bounce restitution and horizontal keep on a skip, then a skid that stops at skidDecel + lie roll. */
+  bounce: 0.25,
+  keep: 0.6,
+  skidDecel: 10,
+  /** Power multiplier by lie: Disco cannot get his footing in sand. */
+  liePower: { tee: 1, fairway: 1, fringe: 1, green: 1, rough: 0.9, sand: 0.72, water: 0.9 } as Record<Lie, number>,
+} as const;
 
 // =====================================================================
 // Look
@@ -442,4 +524,9 @@ export type SfxName =
   | 'cheer'      // small gnome cheer (birdie or better)
   | 'light'      // lighter flick and a first puff (cigarillo lit)
   | 'crack'      // can of golf water cracked open
-  | 'sip';       // gulp
+  | 'sip'        // gulp
+  | 'whirl'      // Gnome Disc: one whoosh per turn of the whirl
+  | 'wheee'      // Gnome Disc: the gnome yells as he is let go
+  | 'flail'      // Gnome Disc: mid-air arm flap and a "hup!"
+  | 'chains'     // Gnome Disc: gnome hits the basket chains
+  | 'thud';      // Gnome Disc: gnome lands face first

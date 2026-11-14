@@ -215,7 +215,7 @@ export function createControls(ctx: Ctx): System {
   let flashColor = '#fff';
 
   function changeClub(delta: number): void {
-    if (state.phase !== 'aim') return;
+    if (state.phase !== 'aim' || state.mode === 'disc') return;
     const before = state.club;
     cycleClub(state, delta);
     if (state.club !== before) sfx('tick');
@@ -293,6 +293,7 @@ export function createControls(ctx: Ctx): System {
   // and then fire a full hook straight away).
   let lastTapAt = -1e9;
   function tapSwing(): void {
+    if (state.mode === 'disc') return; // disc.ts runs the whirl
     const now = performance.now();
     if (now - lastTapAt < MIN_TAP_GAP_MS) return;
     lastTapAt = now;
@@ -469,7 +470,8 @@ export function createControls(ctx: Ctx): System {
     if (!aim) bagOpen = false;
 
     // Club selector and bag list.
-    club.classList.toggle('gc-hidden', hidden);
+    const disc = s.mode === 'disc';
+    club.classList.toggle('gc-hidden', hidden || disc);
     setDisabled(club, aim);
     bag.classList.toggle('gc-hidden', !bagOpen);
     setText(name, CLUBS[s.club].name);
@@ -488,7 +490,7 @@ export function createControls(ctx: Ctx): System {
     smoke.classList.toggle('gc-hidden', s.smokeShots <= 0);
 
     // Swing button and VIEW.
-    swing.classList.toggle('gc-hidden', hidden);
+    swing.classList.toggle('gc-hidden', hidden || disc);
     setDisabled(swing, active);
     actions.classList.toggle('gc-hidden', hidden);
     setDisabled(view, aim);
@@ -496,7 +498,7 @@ export function createControls(ctx: Ctx): System {
 
     // Meter: shown while aiming or swinging, and briefly after a shot for the result text.
     const flashing = flashT > 0 && flashText !== '';
-    const meterOn = !hidden && (active || flashing);
+    const meterOn = !hidden && !disc && (active || flashing);
     meter.classList.toggle('gc-hidden', !meterOn);
     if (meterOn) {
       const sw = s.swing;

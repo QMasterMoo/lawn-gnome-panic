@@ -1,7 +1,7 @@
 // src/botAim.ts: how a bot picks targets, aims and pulls the trigger.
 import * as THREE from 'three';
 import type { Game, GameEvent, Soldier } from './config';
-import { TUNING, weaponOf } from './config';
+import { TUNING, isBot, weaponOf } from './config';
 import { lineOfSight, startReload, throwGrenade, tryFire } from './combat';
 
 export interface BotCombatInfo {
@@ -112,7 +112,7 @@ function segDist(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3): number {
 function onEvent(game: Game, e: GameEvent): void {
   if (e.type === 'hit') {
     lastHitT.set(e.victim.id, game.time);
-    if (!e.victim.isPlayer && e.shooter && e.shooter.team !== e.victim.team) {
+    if (isBot(e.victim) && e.shooter && e.shooter.team !== e.victim.team) {
       const m = memOf(e.victim.id);
       m.lastHurtT = game.time;
       m.threat = { x: e.shooter.pos.x, z: e.shooter.pos.z };
@@ -121,7 +121,7 @@ function onEvent(game: Game, e: GameEvent): void {
     }
   } else if (e.type === 'shot') {
     for (const b of game.soldiers) {
-      if (!b.alive || b.isPlayer || b.team === e.shooter.team) continue;
+      if (!b.alive || !isBot(b) || b.team === e.shooter.team) continue;
       const chest = new THREE.Vector3(b.pos.x, b.pos.y + CHEST, b.pos.z);
       if (segDist(chest, e.from, e.to) > 6) continue;
       const m = memOf(b.id);
