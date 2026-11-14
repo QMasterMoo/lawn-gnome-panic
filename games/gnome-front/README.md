@@ -52,7 +52,18 @@ Numbers live in `src/config.ts`: `TUNING`, `RIFLE`, `GRENADE`, `VEHICLES`, `FLAG
 - The terrain is adapted from Lawn Gnome Panic.
 - Music comes from the shared `@lawn/music` package (`packages/music`).
 
+## Online
+
+The title screen's PLAY ONLINE panel joins the shared matchmaking server (`packages/mp-server`): QUICK MATCH for the
+public queue, or a room code for friends. Up to 24 players; humans take over bot slots (team with fewer humans first),
+bots fill the rest, and friends can join a running match. One browser hosts: it runs bots, flags, health and respawns
+and sends snapshots 15 times a second. Everyone moves, aims and fires their own gnome locally and sends hits to the
+host. If the host leaves, another player takes over. Code: `src/net/` (state, protocol, session, host, guest) and
+`src/ui/online.ts`. Plan: `docs/roadmaps/gnome-front-multiplayer.md`.
+
+Local test: `npm run dev -w packages/mp-server`, `npm run dev -w games/gnome-front`, open two tabs, QUICK MATCH in
+both (the public queue starts 15 s after the first player). Headless check: `node tools/gnome-front-mp-e2e.mjs`.
+
 ## Not done yet
 
 - No ragdolls, no destructible cover, no crouch or prone.
-- Offline only: you plus 23 bots.

@@ -200,6 +200,11 @@ export function weaponOf(s: Soldier): WeaponDef {
   return WEAPONS[CLASSES[s.classId].weapon];
 }
 
+/** True for a soldier driven by bots.ts (not this browser's player, not a remote human). */
+export function isBot(s: Soldier): boolean {
+  return !s.isPlayer && !s.remote;
+}
+
 /** Thrown pinecone grenade. */
 export const GRENADE = {
   name: 'Pinecone',
@@ -261,8 +266,10 @@ export const VEHICLE_SLOTS: readonly { kind: VehicleKind; team: Team; x: number;
 export interface Soldier {
   readonly id: number;
   readonly team: Team;
-  readonly name: string;
-  readonly isPlayer: boolean;
+  name: string;             // shown in the kill feed and scoreboard; net code renames human-controlled slots
+  readonly botName: string; // the name this slot goes back to when it is a bot again
+  isPlayer: boolean;        // controlled by this browser (game.player)
+  remote: boolean;          // controlled by another browser over the network (never true in solo)
   classId: ClassId;         // class of the current life
   nextClassId: ClassId;     // class used at the next respawn (the player picks it in the HUD; bots in bots.ts)
   ads: boolean;             // wants to aim down sights this frame (set by player.ts / bots)
@@ -319,7 +326,7 @@ export type GameEvent =
   | { type: 'hit'; shooter: Soldier | null; victim: Soldier; damage: number; headshot: boolean }
   | { type: 'vehicleHit'; shooter: Soldier | null; vehicle: Vehicle; damage: number }
   | { type: 'kill'; killer: Soldier | null; victim: Soldier; cause: DamageCause; weapon: WeaponId | null; headshot: boolean } // weapon set when cause is 'gun'
-  | { type: 'grenadeThrown'; thrower: Soldier }
+  | { type: 'grenadeThrown'; thrower: Soldier; pos: THREE.Vector3; vel: THREE.Vector3 } // start position and velocity
   | { type: 'explosion'; pos: THREE.Vector3; radius: number }
   | { type: 'vehicleDestroyed'; vehicle: Vehicle; by: Soldier | null }
   | { type: 'enterVehicle'; soldier: Soldier; vehicle: Vehicle }
@@ -371,7 +378,7 @@ export interface Game {
   readonly vehicles: Vehicle[];
   readonly flags: FlagState[];
   readonly obstacles: readonly Obstacle[];
-  readonly player: Soldier;
+  player: Soldier;           // the soldier this browser controls; net code may move it to another slot
   tickets: [number, number];
   time: number;              // seconds since the match started
   over: boolean;
@@ -385,4 +392,5 @@ export const DOM_IDS = {
   hud: 'gf-hud',
   title: 'gf-title',
   play: 'gf-play',
+  online: 'gf-online', // the online panel on the title screen (ui/online.ts)
 } as const;

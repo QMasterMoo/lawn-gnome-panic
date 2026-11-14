@@ -12,6 +12,7 @@ import {
   type Team,
 } from './config';
 import { heightAt } from './terrain';
+import { netState } from './net/state';
 
 interface FlagVisual {
   group: THREE.Group;
@@ -120,6 +121,12 @@ export function updateConquest(game: Game, dt: number): void {
   clock += dt;
   const r2 = TUNING.captureRadius * TUNING.captureRadius;
 
+  // Online guests take flags, tickets and the end of the match from snapshots: only the visuals run here.
+  if (netState.role === 'guest') {
+    updateFlagVisuals(game);
+    return;
+  }
+
   // Capture progress and ownership.
   for (const f of game.flags) {
     let n0 = 0;
@@ -188,7 +195,11 @@ export function updateConquest(game: Game, dt: number): void {
     }
   }
 
-  // Visuals.
+  updateFlagVisuals(game);
+}
+
+/** Cloth colour and height, ring pulse. */
+function updateFlagVisuals(game: Game): void {
   for (const f of game.flags) {
     const v = visuals.get(f.def.id);
     if (!v) continue;

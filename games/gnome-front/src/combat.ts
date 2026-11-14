@@ -239,20 +239,29 @@ export function startReload(game: Game, s: Soldier): void {
 export function throwGrenade(game: Game, s: Soldier, origin: THREE.Vector3, dir: THREE.Vector3): boolean {
   if (!s.alive || s.grenades <= 0) return false;
   s.grenades--;
+  const pos = origin.clone().addScaledVector(dir, 0.6);
+  const vel = dir.clone().multiplyScalar(GRENADE.throwSpeed).add(new THREE.Vector3(0, 3, 0)).add(s.vel);
+  spawnGrenade(game, s, pos, vel);
+  return true;
+}
+
+/**
+ * Starts a pinecone in flight at pos with velocity vel and emits 'grenadeThrown'. throwGrenade uses it; online
+ * code calls it to show other players' throws. Its explosion damages nobody when the thrower is remote
+ * (that thrower's own browser reports the damage).
+ */
+export function spawnGrenade(game: Game, s: Soldier, pos: THREE.Vector3, vel: THREE.Vector3): void {
   subscribe(game);
 
   const geo = new THREE.ConeGeometry(PINE_R, 0.3, 8);
   const mat = new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.9 });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.castShadow = true;
-  const pos = origin.clone().addScaledVector(dir, 0.6);
   mesh.position.copy(pos);
   game.scene.add(mesh);
 
-  const vel = dir.clone().multiplyScalar(GRENADE.throwSpeed).add(new THREE.Vector3(0, 3, 0)).add(s.vel);
-  grenades.push({ thrower: s, mesh, pos, vel, fuseT: GRENADE.fuseS });
-  game.emit({ type: 'grenadeThrown', thrower: s });
-  return true;
+  grenades.push({ thrower: s, mesh, pos: pos.clone(), vel: vel.clone(), fuseT: GRENADE.fuseS });
+  game.emit({ type: 'grenadeThrown', thrower: s, pos: pos.clone(), vel: vel.clone() });
 }
 
 /** Distance along the ray to the first obstacle or the ground, or maxDist. */
@@ -316,6 +325,7 @@ export function lineOfSight(game: Game, a: THREE.Vector3, b: THREE.Vector3): boo
 function explode(game: Game, g: Grenade): void {
   const blast = g.pos.clone();
   game.emit({ type: 'explosion', pos: blast.clone(), radius: GRENADE.radius });
+  if (g.thrower.remote) return; // shown here, damaged on the thrower's own browser
 
   const eye = blast.clone().add(new THREE.Vector3(0, 0.3, 0));
   for (const s of game.soldiers) {

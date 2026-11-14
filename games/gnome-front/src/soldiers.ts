@@ -1,21 +1,22 @@
 // src/soldiers.ts: soldier creation, movement, damage, death and respawn.
 import * as THREE from 'three';
 import {
-  ARENA_HALF, CLASSES, TUNING, WEAPONS, weaponOf, type ClassId, type DamageCause, type Game, type Soldier, type Team, type WeaponId,
+  ARENA_HALF, CLASSES, TUNING, WEAPONS, isBot, weaponOf, type ClassId, type DamageCause, type Game, type Soldier, type Team, type WeaponId,
 } from './config';
 import type { GnomeLook, PlayerState } from './models/config';
 import { createGnomeModel } from './models/gnome';
 import { heightAt } from './terrain';
 import { spawnPoints } from './conquest';
+import { netHooks, netState } from './net/state';
 
 /** Creates a dead soldier (alive = false, respawnT = 0) and adds its gnome model to the scene. Call respawnSoldier to place it. */
-export function createSoldier(scene: THREE.Scene, opts: { id: number; team: Team; name: string; isPlayer: boolean; look: GnomeLook; classId: ClassId }): Soldier {
+export function createSoldier(scene: THREE.Scene, opts: { id: number; team: Team; name: string; botName: string; isPlayer: boolean; look: GnomeLook; classId: ClassId }): Soldier {
   const cls = CLASSES[opts.classId];
   const weapon = WEAPONS[cls.weapon];
   const model = createGnomeModel(opts.look);
   scene.add(model.object);
   return {
-    id: opts.id, team: opts.team, name: opts.name, isPlayer: opts.isPlayer,
+    id: opts.id, team: opts.team, name: opts.name, botName: opts.botName, isPlayer: opts.isPlayer, remote: false,
     classId: opts.classId, nextClassId: opts.classId, ads: false, adsT: 0,
     pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, pitch: 0,
     grounded: true, jumpsUsed: 0, sprinting: false,
@@ -123,6 +124,11 @@ export function moveSoldier(game: Game, s: Soldier, wishX: number, wishZ: number
 export function damageSoldier(game: Game, victim: Soldier, amount: number, attacker: Soldier | null, cause: DamageCause, headshot: boolean, weapon: WeaponId | null = null): void {
   if (!victim.alive || amount <= 0) return;
   if (attacker && attacker !== victim && attacker.team === victim.team) return;
+  // Online guest: the host owns health. Only my own hits go out, as claims; everything else arrives in snapshots.
+  if (netState.role === 'guest') {
+    if (attacker && attacker === game.player) netHooks.sendDamage?.({ victim, amount, cause, headshot, weapon });
+    return;
+  }
 
   victim.hp -= amount;
   victim.sinceDamageS = 0;
@@ -130,21 +136,26 @@ export function damageSoldier(game: Game, victim: Soldier, amount: number, attac
 
   if (victim.hp > 0) return;
 
-  victim.hp = 0;
-  victim.alive = false;
-  victim.respawnT = TUNING.respawnS;
+  markDead(victim);
   victim.deaths++;
   if (attacker && attacker.team !== victim.team) attacker.kills++;
   game.tickets[victim.team] = Math.max(0, game.tickets[victim.team] - TUNING.deathTicketCost);
-  if (victim.vehicle) {
-    victim.vehicle.driver = null;
-    victim.vehicle = null;
-  }
-  victim.reloadT = 0;
-  victim.ads = false;
-  victim.adsT = 0;
-  victim.model.setDead(true);
   game.emit({ type: 'kill', killer: attacker, victim, cause, weapon, headshot });
+}
+
+/** The state change of a death, without events, counts or tickets: hp 0, not alive, respawn timer, out of any vehicle, ragdoll model. Online guests call it for kills the host reports. */
+export function markDead(s: Soldier): void {
+  s.hp = 0;
+  s.alive = false;
+  s.respawnT = TUNING.respawnS;
+  if (s.vehicle) {
+    s.vehicle.driver = null;
+    s.vehicle = null;
+  }
+  s.reloadT = 0;
+  s.ads = false;
+  s.adsT = 0;
+  s.model.setDead(true);
 }
 
 /** Brings a soldier back to life at one of its team's spawn points with full health, ammo and grenades. */
@@ -153,8 +164,8 @@ export function respawnSoldier(game: Game, s: Soldier): void {
   const owned = pts.slice(1);
   let base: { x: number; z: number; yaw: number };
 
-  if (s.isPlayer) {
-    // The owned flag closest to the map centre, or the HQ if none.
+  if (!isBot(s)) {
+    // Humans: the owned flag closest to the map centre, or the HQ if none.
     base = pts[0];
     let bestD = Infinity;
     for (const p of owned) {
@@ -187,16 +198,24 @@ export function respawnSoldier(game: Game, s: Soldier): void {
   x = Math.max(-limit, Math.min(limit, x));
   z = Math.max(-limit, Math.min(limit, z));
 
-  s.pos.set(x, heightAt(x, z), z);
+  placeSpawned(game, s, x, heightAt(x, z), z, base.yaw, s.nextClassId);
+}
+
+/**
+ * Brings a soldier back to life at exactly (x, y, z) facing yaw, as classId, with full health, ammo and grenades,
+ * and emits 'spawn'. respawnSoldier uses it; online guests call it for spawns the host reports.
+ */
+export function placeSpawned(game: Game, s: Soldier, x: number, y: number, z: number, yaw: number, classId: ClassId): void {
+  s.pos.set(x, y, z);
   s.vel.set(0, 0, 0);
-  s.yaw = base.yaw;
+  s.yaw = yaw;
   s.pitch = 0;
   s.hp = TUNING.maxHp;
   s.alive = true;
   s.respawnT = 0;
   s.sinceDamageS = 99;
   s.vehicle = null;
-  s.classId = s.nextClassId;
+  s.classId = classId;
   s.ads = false;
   s.adsT = 0;
   const weapon = weaponOf(s);
@@ -231,7 +250,8 @@ export function updateSoldiers(game: Game, dt: number): void {
   for (const s of game.soldiers) {
     if (!s.alive) {
       s.respawnT -= dt;
-      if (s.respawnT <= 0 && !game.over) respawnSoldier(game, s);
+      // Online guests never respawn anyone themselves: the host's 'spawn' events do.
+      if (s.respawnT <= 0 && !game.over && netState.role !== 'guest') respawnSoldier(game, s);
     } else {
       s.sinceDamageS += dt;
       if (s.sinceDamageS >= TUNING.regenDelayS) {

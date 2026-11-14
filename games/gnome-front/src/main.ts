@@ -13,6 +13,11 @@ import { createSoldier, respawnSoldier, updateSoldiers } from './soldiers';
 import { createHud } from './ui/hud';
 import { createTouchControls } from './ui/touch';
 import { createVehicles, updateVehicles } from './vehicles';
+import { createGuestSync } from './net/guest';
+import { createHostSync } from './net/host';
+import { createSession } from './net/session';
+import { lobby, netHooks, netState } from './net/state';
+import { createOnlinePanel } from './ui/online';
 import { buildWorld } from './world';
 
 const BOT_NAMES = [
@@ -56,10 +61,11 @@ for (const team of [0, 1] as Team[]) {
     const isPlayer = team === PLAYER_TEAM && i === 0;
     const build = isPlayer ? CHARACTERS.gnorman.look : i % 3 === 2 ? CHARACTERS.gnancy.look : CHARACTERS.gnorman.look;
     const look = { ...build, hat: TEAM_COLORS[team], shirt: isPlayer ? build.shirt : SHIRTS[(i + team * 3) % SHIRTS.length] };
-    const name = isPlayer ? 'YOU' : BOT_NAMES[(nextId * 7) % BOT_NAMES.length];
+    const botName = BOT_NAMES[(nextId * 7) % BOT_NAMES.length];
+    const name = isPlayer ? 'YOU' : botName;
     // The player starts as a Rifleman (changeable in the HUD); bots get a spread of classes.
     const classId = isPlayer ? 'rifleman' : CLASS_ORDER[(i + team) % CLASS_ORDER.length];
-    soldiers.push(createSoldier(scene, { id: nextId++, team, name, isPlayer, look, classId }));
+    soldiers.push(createSoldier(scene, { id: nextId++, team, name, botName, isPlayer, look, classId }));
   }
 }
 
@@ -95,7 +101,10 @@ let running = false;
 const autoplay = new URLSearchParams(location.search).get('autoplay') === '1';
 
 function start(): void {
+  // Solo PLAY while waiting in the online queue: leave the queue.
+  if (netState.role === 'solo' && (lobby.status === 'connecting' || lobby.status === 'queued')) lobby.request = 'leave';
   running = true;
+  onlinePanel.setVisible(false);
   hud.setOverlay('none');
   audio.start();
   touch.setVisible(true);
@@ -113,9 +122,17 @@ function start(): void {
 const hud = createHud(uiRoot, game, start);
 hud.setOverlay('title');
 
+// Online play: the session runs the connection; host.ts or guest.ts keeps the world in sync.
+const onlinePanel = createOnlinePanel(uiRoot);
+onlinePanel.setVisible(true);
+const session = createSession(game, createHostSync(game), createGuestSync(game));
+netHooks.startMatch = () => {
+  if (!running) start();
+};
+
 document.addEventListener('pointerlockchange', () => {
   if (!document.pointerLockElement && running && !game.over && !autoplay) {
-    running = false;
+    running = false; // online, the match keeps going (see frame); only this player's controls stop
     touch.setVisible(false);
     hud.setOverlay('paused');
   }
@@ -140,16 +157,22 @@ document.addEventListener('touchend', (e) => {
 const clock = new THREE.Clock();
 function frame(): void {
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (running && !game.over) {
+  // Online, the match runs on while this player is paused (others are still playing); solo pauses everything.
+  const online = netState.role !== 'solo' && lobby.status === 'in';
+  if ((running || online) && !game.over) {
     game.time += dt;
-    touch.update();
-    player.update(input.state, dt);
-    updateBots(game, dt);
+    if (running) {
+      touch.update();
+      player.update(input.state, dt);
+    }
+    if (netState.role !== 'guest') updateBots(game, dt);
     updateVehicles(game, dt);
     updateSoldiers(game, dt);
     updateCombat(game, dt);
     updateConquest(game, dt);
   }
+  session.update(dt);
+  onlinePanel.update();
   if (game.over) touch.setVisible(false); // uncovers the PLAY AGAIN button
   hud.update(dt, input.state);
   audio.update(dt);
