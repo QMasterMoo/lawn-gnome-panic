@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { CONSUMABLES, GOLFER_LOOK, HOLES, PARTNER_LOOK, type Ctx, type GameState, type System } from './config';
 import { createCartModel } from './cartModel';
+import { createZ33Model } from './z33Model';
 import { createGnomeModel } from './models/gnome';
 import type { GnomeModel, PlayerState } from './models/config';
 import { mowerPose } from './round';
@@ -199,7 +200,10 @@ function sip(model: GnomeModel, can: THREE.Object3D, u: number): void {
 export function createParty(ctx: Ctx): System {
   const golfer: Actor = { model: createGnomeModel(GOLFER_LOOK), ps: makePlayerState() };
   const partner: Actor = { model: createGnomeModel(PARTNER_LOOK), ps: makePlayerState() };
-  const cart = createCartModel();
+  // Both rides are built up front; state.ride (the 350z title cheat) picks which one is shown.
+  const mowerCart = createCartModel();
+  const z33 = createZ33Model();
+  let cart = mowerCart;
 
   // Golf club in the golfer's right hand: the shaft continues the arm down, the head sits at its end.
   const shaftMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.4, metalness: 0.5 });
@@ -212,7 +216,7 @@ export function createParty(ctx: Ctx): System {
   head.castShadow = true;
   golfer.model.arms.right.add(shaft, head);
 
-  ctx.scene.add(golfer.model.object, partner.model.object, cart.group);
+  ctx.scene.add(golfer.model.object, partner.model.object, mowerCart.group, z33.group);
 
   // Cigarillo in the golfer's mouth, lit while state.smokeShots > 0.
   const cig = makeCigarillo();
@@ -291,6 +295,10 @@ export function createParty(ctx: Ctx): System {
       const s = ctx.state;
       const pose = mowerPose(s);
       const riding = s.phase === 'drive';
+
+      cart = s.ride === '350z' ? z33 : mowerCart;
+      mowerCart.group.visible = cart === mowerCart;
+      z33.group.visible = cart === z33;
 
       // Cart: parked at state.party.mower, or moving during 'drive' (mowerPose handles both).
       cart.group.position.set(pose.x, pose.y, pose.z);

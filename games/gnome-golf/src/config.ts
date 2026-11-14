@@ -386,7 +386,11 @@ export interface GameState {
   beersDrunk: number;
   /** Seconds since the current sip started; -1 when not drinking. Drinking lasts CONSUMABLES.drinkSeconds. */
   drinkTime: number;
+  /** What the party drives: the mower cart, or the secret 2008 Nissan 350Z (type 350z on the title screen). */
+  ride: Ride;
 }
+
+export type Ride = 'mower' | '350z';
 
 // =====================================================================
 // Consumables (round.ts rules, controls.ts buttons, party.ts props)

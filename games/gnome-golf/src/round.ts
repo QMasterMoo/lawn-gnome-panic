@@ -1,7 +1,7 @@
 // Round flow: holes, strokes, penalties and the phase machine. Systems read GameState and call these
 // functions; only this file changes state.phase (except controls.ts, which moves 'aim' <-> 'swing').
 import * as THREE from 'three';
-import { CLUB_ORDER, CONSUMABLES, DISC, HOLES, LIES, PARTY, ROUND, type ClubId, type DiscState, type GameMode, type GameState, type HoleDef, type PartySpots, type Shot, type Spot } from './config';
+import { CLUB_ORDER, CONSUMABLES, DISC, HOLES, LIES, PARTY, ROUND, type ClubId, type DiscState, type GameMode, type GameState, type HoleDef, type PartySpots, type Ride, type Shot, type Spot } from './config';
 import { distToPath, heightAt, lieAt } from './course';
 import { estimateCarry, simulateShot } from './physics';
 import { canFlail, continueThrow, simulateThrow, type DiscFlight } from './discPhysics';
@@ -125,6 +125,29 @@ export function newRound(state: GameState, mode?: GameMode): void {
   startHole(state, 0);
 }
 
+const RIDE_KEY = 'gnome-golf.ride';
+
+/** The saved ride; the mower when nothing is saved or storage is blocked. Debug: #350z forces the 350Z. */
+function loadRide(): Ride {
+  if (typeof location !== 'undefined' && location.hash.includes('350z')) return '350z';
+  try {
+    return localStorage.getItem(RIDE_KEY) === '350z' ? '350z' : 'mower';
+  } catch {
+    return 'mower';
+  }
+}
+
+/** Swap between the mower cart and the 350Z (the title-screen cheat). Remembered across visits. */
+export function toggleRide(state: GameState): Ride {
+  state.ride = state.ride === '350z' ? 'mower' : '350z';
+  try {
+    localStorage.setItem(RIDE_KEY, state.ride);
+  } catch {
+    // Storage blocked: the choice lasts until reload.
+  }
+  return state.ride;
+}
+
 export function newState(): GameState {
   const state: GameState = {
     mode: 'golf',
@@ -153,6 +176,7 @@ export function newState(): GameState {
     beers: CONSUMABLES.beersPerRound,
     beersDrunk: 0,
     drinkTime: -1,
+    ride: loadRide(),
   };
   // Park the camera's subject at hole 1 for the title screen.
   const hole = HOLES[0];
