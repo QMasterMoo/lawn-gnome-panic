@@ -3,7 +3,7 @@
 // sends a snapshot with the latest events to everyone SNAP_HZ times a second.
 import * as THREE from 'three';
 import { weaponOf, type Game, type Soldier } from '../config';
-import { damageSoldier } from '../soldiers';
+import { applyClassNow, damageSoldier } from '../soldiers';
 import { damageVehicle, enterVehicle, exitVehicle, simulatedHere } from '../vehicles';
 import { spawnGrenade } from '../combat';
 import { applyHumans, freeSlot, lobby, netLink, netState, r2, soldierInterp, vehicleInterp } from './state';
@@ -40,6 +40,8 @@ export function createHostSync(game: Game): HostSync {
   const sOut = [0, 0, 0, 0, 0];
   const vOut = [0, 0, 0, 0];
   let snapAcc = 0;
+  /** Players given a slot whose class pick has not arrived yet: their first 'me' switches the slot to it right away. */
+  const freshSlots = new Set<number>();
 
   game.on((e) => {
     if (netState.role !== 'host' || lobby.status !== 'in') return;
@@ -106,6 +108,7 @@ export function createHostSync(game: Game): HostSync {
       if (!s) break;
       if (s.vehicle) exitVehicle(game, s);
       netState.humans.push({ soldierId: s.id, playerId: p.id, name: p.name });
+      freshSlots.add(p.id);
       applyHumans(game, me);
     }
 
@@ -127,7 +130,12 @@ export function createHostSync(game: Game): HostSync {
 
     switch (d.k) {
       case 'me': {
-        if (CLASS_IDS[d.cls]) s.nextClassId = CLASS_IDS[d.cls];
+        const cls = CLASS_IDS[d.cls];
+        if (cls) {
+          s.nextClassId = cls;
+          // A bot slot a guest just took keeps the bot's class otherwise: use the class the guest picked on the title screen.
+          if (freshSlots.delete(from) && d.a === 1 && s.alive && s.classId !== cls) applyClassNow(s, cls);
+        }
         // Ignore the rest unless the guest thinks it is alive, the soldier is alive, and the life matches.
         if (d.a !== 1 || !s.alive || d.life !== (netState.lives.get(s.id) ?? 0)) return;
 
@@ -246,6 +254,7 @@ export function createHostSync(game: Game): HostSync {
 
   function reset(): void {
     pending = [];
+    freshSlots.clear();
     targets.clear();
     vTargets.clear();
     snapAcc = 0;

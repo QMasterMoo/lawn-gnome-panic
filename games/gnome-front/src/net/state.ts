@@ -82,7 +82,7 @@ export const lobby: Lobby = { status: 'off', message: '', players: 0, startsInS:
 /**
  * Applies netState.humans to the soldiers: the slot whose playerId is `me` becomes game.player (isPlayer, named 'YOU'),
  * other human slots become remote (named after the player), every other slot is a bot again (botName).
- * If no slot is mine, game.player stays where it is. Call after every change to netState.humans.
+ * If no slot is mine, game.player stays where it is. A new game.player takes over the old one's nextClassId. Call after every change to netState.humans.
  */
 export function applyHumans(game: Game, me: number): void {
   const bySoldier = new Map<number, HumanSlot>();
@@ -108,7 +108,11 @@ export function applyHumans(game: Game, me: number): void {
       s.name = h.name;
     }
   }
-  if (mine) game.player = mine;
+  if (mine && mine !== game.player) {
+    // The class picked on the title screen follows this player to the soldier they now control.
+    mine.nextClassId = game.player.nextClassId;
+    game.player = mine;
+  }
 }
 
 /** Slots a host can give a new human: bots, lowest id first, on the team with fewer humans (team 0 on a tie). */

@@ -9,7 +9,7 @@ import { createFlags, updateConquest } from './conquest';
 import { createInput } from './input';
 import { CHARACTERS } from './models/config';
 import { createPlayerController } from './player';
-import { createSoldier, respawnSoldier, updateSoldiers } from './soldiers';
+import { applyClassNow, createSoldier, respawnSoldier, updateSoldiers } from './soldiers';
 import { createHud } from './ui/hud';
 import { createTouchControls } from './ui/touch';
 import { createVehicles, updateVehicles } from './vehicles';
@@ -100,24 +100,38 @@ const audio = initAudio(game);
 let running = false;
 const autoplay = new URLSearchParams(location.search).get('autoplay') === '1';
 
+/** Locks the mouse to the canvas for aiming. Phones and tablets have no pointer lock: the touch controls drive the look. */
+function lockPointer(): void {
+  if (autoplay || touch.active || document.pointerLockElement === canvas) return;
+  try {
+    const req = canvas.requestPointerLock() as unknown;
+    if (req instanceof Promise) req.catch(() => {});
+  } catch {
+    /* no pointer lock */
+  }
+}
+
 function start(): void {
   // Solo PLAY while waiting in the online queue: leave the queue.
   if (netState.role === 'solo' && (lobby.status === 'connecting' || lobby.status === 'queued')) lobby.request = 'leave';
+  // Before the match starts, the class picked on the title screen applies straight away (solo PLAY and an online
+  // host; a guest's pick is applied in guest.ts when the host places it).
+  const p = game.player;
+  if (netState.role !== 'guest' && game.time === 0 && p.nextClassId !== p.classId) applyClassNow(p, p.nextClassId);
   running = true;
   onlinePanel.setVisible(false);
   hud.setOverlay('none');
   audio.start();
   touch.setVisible(true);
-  // Phones and tablets have no pointer lock: the touch controls drive the look instead.
-  if (!autoplay && !touch.active) {
-    try {
-      const req = canvas.requestPointerLock() as unknown;
-      if (req instanceof Promise) req.catch(() => {});
-    } catch {
-      /* no pointer lock */
-    }
-  }
+  // An online match starts from a server message, not a click, so the browser refuses this lock; the HUD then
+  // shows CLICK TO AIM and the click on the canvas below takes the lock.
+  lockPointer();
 }
+
+// Clicking the game while playing without the mouse locked (an online start, or a refused lock) locks it.
+canvas.addEventListener('mousedown', () => {
+  if (running && !game.over) lockPointer();
+});
 
 const hud = createHud(uiRoot, game, start);
 hud.setOverlay('title');
