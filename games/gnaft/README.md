@@ -28,7 +28,9 @@ Walk off the edge to swim. Swim back into the raft or any island to climb out. D
 
 On the title screen, **Play together**: type a name and a room code and press *Start / join raft*. The first player
 in a room code hosts (their raft and save are the world); friends who type the same code drop into the running raft.
-Everyone shares the inventory and the raft; seagulls, the shark and the weather run on the host. If the host leaves,
+Everyone shares the inventory, the raft and the floating junk (first to catch a piece gets it). The host simulates the
+seagull, the shark and the weather and everyone sees them; anyone can shoo the gull or bonk the shark. You see each
+other's mowers, fishing lines and the junk on them. If the host leaves,
 the next player takes over. It uses the shared matchmaking server (`packages/mp-server`, see `packages/mp/README.md`):
 run `npm run dev -w packages/mp-server` locally, or open the game with `?mp=wss://host/ws`.
 
@@ -63,6 +65,6 @@ Fuel Depot Key (fuel: gas mower) → Mower Graveyard (parts: riding mower).
 
 - `http://localhost:5183/#selftest`: scripted playthrough; logs `SELFTEST OK` (check with `bash tools/smoke.sh "http://localhost:5183/#selftest" rg-selftest-ok`).
 - `bash games/gnaft/snap.sh <scenario> out.png`: headless screenshot (scenarios: raft, island, mower, build, telescope, big, props, night, rain, shed, swim).
-- `bash games/gnaft/cooptest.sh [game-port] [ws-url]`: two headless browsers join one room through a running matchmaking server; the host and the guest each check they see the other's building.
+- `bash games/gnaft/cooptest.sh [game-port] [ws-url]`: two headless browsers join one room through a running matchmaking server; the host and the guest each check they see the other's building, a shared plank the guest catches, and a shark the guest bonks.
 - `snap.sh` takes `[WxH] [query]` too: `bash games/gnaft/snap.sh raft phone.png 5183 844,390 touch=1`.
 - `window.raft` in the console is the live game state.

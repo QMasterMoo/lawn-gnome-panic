@@ -17,7 +17,7 @@ const STEP_HEIGHT = 0.3;
 /** Interval between swimming splashes while moving through the water. */
 const SWIM_SFX_INTERVAL = 0.5;
 /** Height the gnome is raised by while sitting on the riding mower. */
-const RIDING_SEAT_Y = 0.55;
+export const RIDING_SEAT_Y = 0.55;
 /** Camera: look-at point above the feet, and the lowest the camera may go. */
 const CAMERA_TARGET_HEIGHT = 1.2;
 const CAMERA_MIN_Y = 0.5;

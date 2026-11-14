@@ -360,12 +360,40 @@ export interface GameState {
   canGrab: boolean;
   /**
    * Co-op role (net.ts sets it). 'solo' and 'host' run the whole world; a 'guest' forwards its actions to the host
-   * (rules.netHook) and takes the host's world snapshots. Seagulls, the shark and the weather timer run only off-guest.
+   * (rules.netHook) and takes the host's world snapshots. Seagulls, the shark, debris spawning and the weather timer
+   * are simulated only off-guest; guests render them from the snapshot.
    */
   netRole: NetRole;
   /** Co-op lobby state shared by net.ts (owner) and coopUi.ts (the panel). See CoopState. */
   coop: CoopState;
+  /** Floating junk in the sea. The host (or solo) spawns, drifts and despawns it; guests mirror the host's list. */
+  debris: FloatingDebris[];
+  /** The lawn shark as everyone sees it. shark.ts simulates it off-guest and renders it everywhere. */
+  shark: SharkView;
+  /** The seagull as everyone sees it. seagull.ts simulates it off-guest and renders it everywhere. */
+  gull: GullView;
+  /** My own fishing hook (set by fishing.ts every frame): position, or null when not out. Sent to the other players. */
+  hook: { x: number; y: number; z: number } | null;
+  /** Ids of the debris snagged on my hook (set by fishing.ts). Sent to the other players. */
+  hookSnags: number[];
 }
+
+/** One piece of floating junk. `held`: snagged on another player's hook (the host sets it from their 'me' updates). */
+export interface FloatingDebris { id: number; def: DebrisDef; x: number; z: number; held: boolean }
+
+export type SharkPhase = 'circling' | 'approach' | 'biting' | 'fleeing';
+/** Shared shark state. rules.bonkShark switches it to 'fleeing'; the simulation picks up phase changes made outside it. */
+export interface SharkView {
+  phase: SharkPhase;
+  x: number;
+  z: number;
+  heading: number;
+  bite: { i: number; j: number; di: number; dj: number; x: number; z: number };
+}
+
+export type GullPhase = 'away' | 'flyIn' | 'eating' | 'flee';
+/** Shared seagull state. `flying`: wings out (flying or hopping). rules.shooGull switches it to 'flee'. */
+export interface GullView { phase: GullPhase; x: number; y: number; z: number; heading: number; flying: boolean }
 
 export type NetRole = 'solo' | 'host' | 'guest';
 

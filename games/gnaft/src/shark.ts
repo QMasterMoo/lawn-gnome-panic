@@ -1,10 +1,11 @@
 // The lawn shark: a fin circles the raft and every so often chews on an edge tile.
 // Get over there and bonk it (F), or lose the tile.
+// Co-op: the host (or solo) simulates it into state.shark; every player renders from state.shark and can bonk it.
 import * as THREE from 'three';
 import { KEYS, SHARK, TILE_SIZE } from './config';
-import type { Ctx, System } from './config';
+import type { Ctx, SharkPhase, System } from './config';
 import { sfx } from './audio';
-import { edgeTiles, notify, raftExtent, removeTile, tileKey } from './rules';
+import { bonkShark, edgeTiles, notify, raftExtent, removeTile, tileKey } from './rules';
 
 const SHARK_GREY = 0x56606b;
 const CIRCLE_SPEED = 4;      // m/s
@@ -13,19 +14,20 @@ const FLEE_SPEED = 8;        // m/s
 const FLEE_SECONDS = 5;
 const BITE_OUT = 1.6;        // the bite point is this far from the tile centre, outward
 const RETRY_SECONDS = 10;    // raft too small to bite: check again after this long
+const SMOOTH_RATE = 8;       // 1/s: how fast a guest's shark eases toward the host's latest position
 const DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
-type Phase = 'circling' | 'approach' | 'biting' | 'fleeing';
-interface Bite { i: number; j: number; di: number; dj: number; x: number; z: number }
 interface Splash { mesh: THREE.Mesh; vx: number; vy: number; vz: number; life: number }
 
 const rand = (a: number, b: number): number => a + Math.random() * (b - a);
 
 export function createShark(ctx: Ctx): System {
   const { scene, state, input } = ctx;
+  const sh = state.shark;
 
   // ---------------------------------------------------------------- model
   const group = new THREE.Group();
+  group.position.set(sh.x, 0, sh.z);
   scene.add(group);
 
   const greyMat = new THREE.MeshStandardMaterial({ color: SHARK_GREY, roughness: 0.6 });
@@ -71,19 +73,14 @@ export function createShark(ctx: Ctx): System {
   const splashMats = [new THREE.MeshBasicMaterial({ color: 0xffffff }), new THREE.MeshBasicMaterial({ color: 0x9be38a })];
   const splashes: Splash[] = [];
 
-  // ---------------------------------------------------------------- state
-  let phase: Phase = 'circling';
-  let angle = Math.random() * Math.PI * 2;
-  let radius = 6;
+  const active = (): boolean => state.mode !== 'title' && !state.sea.docked;
+
+  // ---------------------------------------------------------------- simulation (host / solo only)
   /** Seconds until the next bite. null until the first attack gate passes. */
   let attackIn: number | null = null;
-  let bite: Bite = { i: 0, j: 0, di: 1, dj: 0, x: 0, z: 0 };
   let timer = 0;     // seconds left while biting or fleeing
-  let chompIn = 0;
-  let splashIn = 0;
-  let t = 0;         // animation clock
-
-  const active = (): boolean => state.mode !== 'title' && !state.sea.docked;
+  /** The phase the simulation last set. A different sh.phase was set from outside (a bonk, or this player just became host). */
+  let simPhase: SharkPhase | null = null;
 
   function pickBite(): boolean {
     const edges = edgeTiles(state);
@@ -92,7 +89,7 @@ export function createShark(ctx: Ctx): System {
     const gaps = DIRS.filter(([di, dj]) => !state.tiles.has(tileKey(tile.i + di, tile.j + dj)));
     if (gaps.length === 0) return false;
     const [di, dj] = gaps[Math.floor(Math.random() * gaps.length)];
-    bite = {
+    sh.bite = {
       i: tile.i, j: tile.j, di, dj,
       x: tile.i * TILE_SIZE + di * BITE_OUT,
       z: tile.j * TILE_SIZE + dj * BITE_OUT,
@@ -100,23 +97,96 @@ export function createShark(ctx: Ctx): System {
     return true;
   }
 
-  function enterFlee(): void {
-    phase = 'fleeing';
-    timer = FLEE_SECONDS;
-    ring.visible = false;
+  /** Switches the simulation to a phase and starts its timer. */
+  function enter(phase: SharkPhase): void {
+    sh.phase = phase;
+    simPhase = phase;
+    if (phase === 'fleeing') timer = FLEE_SECONDS;
+    else if (phase === 'biting') timer = SHARK.biteSeconds;
+    else if (phase === 'circling') attackIn = rand(SHARK.intervalMin, SHARK.intervalMax);
   }
 
-  function enterCircling(): void {
-    phase = 'circling';
-    angle = Math.atan2(group.position.z, group.position.x);
-    radius = Math.max(1, Math.hypot(group.position.x, group.position.z));
-    attackIn = rand(SHARK.intervalMin, SHARK.intervalMax);
-    ring.visible = false;
+  function simulate(dt: number): void {
+    if (sh.phase !== simPhase) enter(sh.phase);
+    const on = active();
+    switch (sh.phase) {
+      case 'circling': {
+        const cr = Math.max(6, raftExtent(state) + SHARK.circleRadius * 0.5);
+        let radius = Math.max(1, Math.hypot(sh.x, sh.z));
+        let angle = Math.atan2(sh.z, sh.x);
+        radius += (cr - radius) * Math.min(1, dt * 2);
+        angle += (CIRCLE_SPEED / radius) * dt;
+        sh.x = Math.cos(angle) * radius;
+        sh.z = Math.sin(angle) * radius;
+        sh.heading = -angle; // path direction is (-sin a, cos a), which is heading -a
+
+        if (on && attackIn === null && state.time >= SHARK.firstAfter) attackIn = 0;
+        if (on && attackIn !== null) {
+          attackIn -= dt;
+          if (attackIn <= 0) {
+            if (state.tiles.size <= SHARK.minTiles || !pickBite()) attackIn = RETRY_SECONDS;
+            else {
+              enter('approach');
+              attackIn = null;
+            }
+          }
+        }
+        break;
+      }
+      case 'approach': {
+        const dx = sh.bite.x - sh.x;
+        const dz = sh.bite.z - sh.z;
+        const d = Math.hypot(dx, dz);
+        sh.heading = Math.atan2(dx, dz);
+        const step = APPROACH_SPEED * dt;
+        if (d <= step) {
+          sh.x = sh.bite.x;
+          sh.z = sh.bite.z;
+          enter('biting');
+        } else {
+          sh.x += (dx / d) * step;
+          sh.z += (dz / d) * step;
+        }
+        break;
+      }
+      case 'biting': {
+        if (!state.tiles.has(tileKey(sh.bite.i, sh.bite.j))) {
+          enter('circling');
+          break;
+        }
+        sh.x = sh.bite.x;
+        sh.z = sh.bite.z;
+        sh.heading = Math.atan2(-sh.bite.di, -sh.bite.dj); // face the tile
+        if (on) timer -= dt;
+        if (on && timer <= 0) {
+          removeTile(state, sh.bite.i, sh.bite.j, SHARK.minTiles);
+          enter('fleeing');
+        }
+        break;
+      }
+      case 'fleeing': {
+        const d = Math.hypot(sh.x, sh.z) || 1;
+        const ux = sh.x / d;
+        const uz = sh.z / d; // straight away from the raft
+        sh.x += ux * FLEE_SPEED * dt;
+        sh.z += uz * FLEE_SPEED * dt;
+        sh.heading = Math.atan2(ux, uz);
+        if (on) timer -= dt;
+        if (on && timer <= 0) enter('circling');
+        break;
+      }
+    }
   }
+
+  // ---------------------------------------------------------------- presentation (everyone)
+  let seenPhase: SharkPhase = sh.phase;
+  let chompIn = 0;
+  let splashIn = 0;
+  let t = 0;         // animation clock
 
   function spawnSplash(): void {
     const mesh = new THREE.Mesh(splashGeo, splashMats[Math.random() < 0.5 ? 0 : 1]);
-    mesh.position.set(bite.x + rand(-0.6, 0.6), 0.1, bite.z + rand(-0.6, 0.6));
+    mesh.position.set(sh.bite.x + rand(-0.6, 0.6), 0.1, sh.bite.z + rand(-0.6, 0.6));
     scene.add(mesh);
     splashes.push({ mesh, vx: rand(-1, 1), vy: rand(2, 4), vz: rand(-1, 1), life: 0.6 });
   }
@@ -137,122 +207,73 @@ export function createShark(ctx: Ctx): System {
     }
   }
 
-  // ---------------------------------------------------------------- phases
+  /** Sounds and toasts on phase changes, so the host and every guest hear and read the same thing. */
+  function onPhaseChange(from: SharkPhase, to: SharkPhase): void {
+    if (to === 'approach') {
+      sfx('shark');
+      notify(state, 'The lawn shark is chewing your raft! Get over there and press F!');
+    } else if (from === 'biting' && to === 'fleeing') {
+      if (state.tiles.has(tileKey(sh.bite.i, sh.bite.j))) {
+        sfx('bonk');
+        notify(state, 'BONK! The shark swims off.');
+      } else notify(state, 'The shark ate a tile!');
+    }
+  }
 
-  function updateCircling(dt: number, on: boolean, cr: number): void {
-    radius += (cr - radius) * Math.min(1, dt * 2);
-    angle += (CIRCLE_SPEED / radius) * dt;
-    group.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
-    group.rotation.y = -angle; // path direction is (-sin a, cos a), which is heading -a
-    body.rotation.y = 0;
-    fin.position.set(0, 0.5 + Math.sin(t * 2) * 0.05, 0.2);
-    ring.visible = false;
+  function render(dt: number, smooth: boolean): void {
+    if (sh.phase !== seenPhase) {
+      onPhaseChange(seenPhase, sh.phase);
+      seenPhase = sh.phase;
+    }
+    // A guest only gets the host's position a few times a second, so it eases toward it.
+    const k = smooth ? 1 - Math.exp(-SMOOTH_RATE * dt) : 1;
+    const biting = sh.phase === 'biting';
+    if (biting) group.position.set(sh.bite.x, 0, sh.bite.z);
+    else group.position.set(group.position.x + (sh.x - group.position.x) * k, 0, group.position.z + (sh.z - group.position.z) * k);
+    const turn = Math.atan2(Math.sin(sh.heading - group.rotation.y), Math.cos(sh.heading - group.rotation.y));
+    group.rotation.y += biting ? turn : turn * k;
 
-    if (on && attackIn === null && state.time >= SHARK.firstAfter) attackIn = 0;
-    if (on && attackIn !== null) {
-      attackIn -= dt;
-      if (attackIn <= 0) {
-        if (state.tiles.size <= SHARK.minTiles || !pickBite()) {
-          attackIn = RETRY_SECONDS;
-        } else {
-          phase = 'approach';
-          attackIn = null;
-          sfx('shark');
-          notify(state, 'The lawn shark is chewing your raft! Get over there and press F!');
+    body.rotation.y = biting ? Math.sin(t * 14) * 0.18 : 0;                    // shake side to side
+    if (biting) fin.position.set(0, 0.5, 0.2 + 0.7 * Math.max(0, Math.sin(t * 5))); // lunge at the tile
+    else if (sh.phase === 'fleeing') fin.position.set(0, 0, 0.2);                   // fin dips under the water
+    else if (sh.phase === 'circling') fin.position.set(0, 0.5 + Math.sin(t * 2) * 0.05, 0.2);
+    else fin.position.set(0, 0.5, 0.2);
+
+    ring.visible = biting;
+    if (biting) {
+      ring.position.set(sh.bite.x, 0.06, sh.bite.z);
+      const pulse = 1 + 0.15 * Math.sin(t * 8);
+      ring.scale.set(pulse, pulse, 1);
+      if (active()) {
+        chompIn -= dt;
+        if (chompIn <= 0) {
+          sfx('chomp');
+          chompIn = 1;
         }
       }
-    }
-  }
-
-  function updateApproach(dt: number): void {
-    const dx = bite.x - group.position.x;
-    const dz = bite.z - group.position.z;
-    const d = Math.hypot(dx, dz);
-    group.rotation.y = Math.atan2(dx, dz);
-    body.rotation.y = 0;
-    fin.position.set(0, 0.5, 0.2);
-    const step = APPROACH_SPEED * dt;
-    if (d <= step) {
-      group.position.set(bite.x, 0, bite.z);
-      phase = 'biting';
-      timer = SHARK.biteSeconds;
-      chompIn = 0;
-    } else {
-      group.position.x += (dx / d) * step;
-      group.position.z += (dz / d) * step;
-    }
-  }
-
-  function updateBiting(dt: number, on: boolean): void {
-    if (!state.tiles.has(tileKey(bite.i, bite.j))) {
-      enterCircling();
-      return;
-    }
-    group.position.set(bite.x, 0, bite.z);
-    group.rotation.y = Math.atan2(-bite.di, -bite.dj); // face the tile
-    body.rotation.y = Math.sin(t * 14) * 0.18;          // shake side to side
-    fin.position.set(0, 0.5, 0.2 + 0.7 * Math.max(0, Math.sin(t * 5))); // lunge at the tile
-
-    ring.visible = true;
-    ring.position.set(bite.x, 0.06, bite.z);
-    const pulse = 1 + 0.15 * Math.sin(t * 8);
-    ring.scale.set(pulse, pulse, 1);
-
-    if (on) {
-      chompIn -= dt;
-      if (chompIn <= 0) {
-        sfx('chomp');
-        chompIn = 1;
+      splashIn -= dt;
+      if (splashIn <= 0) {
+        spawnSplash();
+        splashIn = 0.25;
       }
-      timer -= dt;
-    }
-    splashIn -= dt;
-    if (splashIn <= 0) {
-      spawnSplash();
-      splashIn = 0.25;
-    }
-
-    const px = state.player.position.x - bite.x;
-    const pz = state.player.position.z - bite.z;
-    if (Math.hypot(px, pz) <= SHARK.bonkDistance && input.pressed(KEYS.bonk)) {
-      sfx('bonk');
-      state.stats.sharksBonked++;
-      notify(state, 'BONK! The shark swims off.');
-      enterFlee();
-    } else if (on && timer <= 0) {
-      if (removeTile(state, bite.i, bite.j, SHARK.minTiles)) notify(state, 'The shark ate a tile!');
-      enterFlee();
-    }
-  }
-
-  function updateFleeing(dt: number, on: boolean): void {
-    const x = group.position.x;
-    const z = group.position.z;
-    const d = Math.hypot(x, z) || 1;
-    const ux = x / d;
-    const uz = z / d; // straight away from the raft
-    group.position.set(x + ux * FLEE_SPEED * dt, 0, z + uz * FLEE_SPEED * dt);
-    group.rotation.y = Math.atan2(ux, uz);
-    body.rotation.y = 0;
-    fin.position.set(0, 0, 0.2); // fin dips under the water
-
-    if (on) timer -= dt;
-    if (on && timer <= 0) enterCircling();
+    } else chompIn = 0;
+    updateSplashes(dt);
   }
 
   return {
     update(dt: number) {
       t += dt;
-      const on = active();
-      const cr = Math.max(6, raftExtent(state) + SHARK.circleRadius * 0.5);
+      const guest = state.netRole === 'guest';
 
-      switch (phase) {
-        case 'circling': updateCircling(dt, on, cr); break;
-        case 'approach': updateApproach(dt); break;
-        case 'biting': updateBiting(dt, on); break;
-        case 'fleeing': updateFleeing(dt, on); break;
+      // Anyone close to the bite can bonk it. A guest's bonk is applied locally and sent to the host.
+      if (sh.phase === 'biting' && input.pressed(KEYS.bonk)) {
+        const p = state.player.position;
+        if (Math.hypot(p.x - sh.bite.x, p.z - sh.bite.z) <= SHARK.bonkDistance) bonkShark(state);
       }
-      updateSplashes(dt);
+
+      if (guest) simPhase = null; // a guest promoted to host restarts the timers of the current phase
+      else simulate(dt);
+      render(dt, guest);
     },
   };
 }

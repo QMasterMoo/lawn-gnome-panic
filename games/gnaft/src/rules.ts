@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import {
   BUILD_COSTS, DAY, DEBRIS, FUN, GRASS, ISLAND_ORDER, ISLANDS, ITEM_IDS, ITEMS, RAFT_TOP, RECIPES, REFUND, SEA, SHED, SPRINKLER, START_TILES, TILE_SIZE, TOOLS, WEATHER,
-  type BuildKind, type DebrisDef, type GameState, type IslandId, type IslandState, type ItemId, type Prop, type PropKind, type RecipeId,
+  type BuildKind, type DebrisDef, type FloatingDebris, type GullView, type SharkView, type GameState, type IslandId, type IslandState, type ItemId, type Prop, type PropKind, type RecipeId,
   type Structure, type Tile, type ToolId,
 } from './config';
 
@@ -19,7 +19,9 @@ export type NetAction =
   | ['place', number, number, BuildKind, 'x' | 'z']
   | ['cut', number, number, number]          // i, j, yieldMult
   | ['craft', RecipeId]
-  | ['collect', DebrisDef]
+  | ['catch', number]                       // debris id (hooked or grabbed)
+  | ['bonkShark']
+  | ['shoo']
   | ['loot', IslandId, number]
   | ['chart', IslandId]
   | ['castOff']
@@ -49,7 +51,9 @@ export function applyNetAction(s: GameState, a: NetAction): void {
         break;
       }
       case 'craft': craft(s, a[1]); break;
-      case 'collect': collectDebris(s, a[1]); break;
+      case 'catch': catchDebris(s, a[1]); break;
+      case 'bonkShark': bonkShark(s); break;
+      case 'shoo': shooGull(s); break;
       case 'loot': lootCrate(s, a[1], a[2]); break;
       case 'chart': chartCourse(s, a[1]); break;
       case 'castOff': castOff(s); break;
@@ -86,7 +90,12 @@ export interface WorldSnap {
   structures: Structure[];
   stats: GameState['stats'];
   won: boolean;
+  debris: FloatingDebris[];
+  shark: SharkView;
+  gull: GullView;
 }
+
+const r2 = (v: number): number => Math.round(v * 100) / 100;
 
 export function snapshotWorld(s: GameState): WorldSnap {
   return {
@@ -104,6 +113,13 @@ export function snapshotWorld(s: GameState): WorldSnap {
     structures: s.structures.map((t) => ({ ...t })),
     stats: { ...s.stats },
     won: s.won,
+    debris: s.debris.map((d) => ({ id: d.id, def: d.def, x: r2(d.x), z: r2(d.z), held: d.held })),
+    shark: {
+      phase: s.shark.phase, x: r2(s.shark.x), z: r2(s.shark.z), heading: r2(s.shark.heading), bite: { ...s.shark.bite },
+    },
+    gull: {
+      phase: s.gull.phase, x: r2(s.gull.x), y: r2(s.gull.y), z: r2(s.gull.z), heading: r2(s.gull.heading), flying: s.gull.flying,
+    },
   };
 }
 
@@ -136,6 +152,10 @@ export function applyWorld(s: GameState, w: WorldSnap): void {
   if (JSON.stringify(s.structures) !== JSON.stringify(w.structures)) s.structures = w.structures.map((t) => ({ ...t }));
   Object.assign(s.stats, w.stats);
   s.won = w.won;
+  // Debris objects are replaced; fishing.ts keys its meshes by id and keeps drifting them between snapshots.
+  s.debris = w.debris.map((d) => ({ ...d }));
+  Object.assign(s.shark, w.shark, { bite: { ...w.shark.bite } });
+  Object.assign(s.gull, w.gull);
 }
 
 /** Marks an island as spotted through the telescope. */
@@ -202,6 +222,11 @@ export function newState(): GameState {
     canGrab: false,
     netRole: 'solo',
     coop: { status: 'off', message: '', code: '', players: [], request: null },
+    debris: [],
+    shark: { phase: 'circling', x: 6, z: 0, heading: 0, bite: { i: 0, j: 0, di: 1, dj: 0, x: 0, z: 0 } },
+    gull: { phase: 'away', x: 0, y: 0, z: 0, heading: 0, flying: true },
+    hook: null,
+    hookSnags: [],
   };
 }
 
@@ -543,8 +568,40 @@ export function removeTile(s: GameState, i: number, j: number, minTiles: number)
  * returns the toast text (already pushed with notify). Bottles reveal an island; fun junk gives FUN[fun].loot.
  * The caller plays the sound: 'bottle' for bottles, 'quack' for the duck, 'catch' for the rest.
  */
+/**
+ * Takes floating debris `id` out of the sea and collects it. Returns the toast text, or null when it is gone
+ * already (someone else caught it first), so nobody gets the same junk twice.
+ */
+export function catchDebris(s: GameState, id: number): string | null {
+  fwd(['catch', id]);
+  const k = s.debris.findIndex((d) => d.id === id);
+  if (k < 0) return null;
+  const [d] = s.debris.splice(k, 1);
+  return collectDebris(s, d.def);
+}
+
+/** Bonks the shark if it is biting: it flees and the tile is saved. Proximity is checked by the caller. */
+export function bonkShark(s: GameState): boolean {
+  fwd(['bonkShark']);
+  if (s.shark.phase !== 'biting') return false;
+  s.shark.phase = 'fleeing';
+  s.stats.sharksBonked++;
+  return true;
+}
+
+/** Shoos the seagull if it is flying in or eating: it drops a grass seed and flees. Proximity is checked by the caller. */
+export function shooGull(s: GameState): boolean {
+  fwd(['shoo']);
+  if (s.gull.phase !== 'flyIn' && s.gull.phase !== 'eating') return false;
+  s.gull.phase = 'flee';
+  s.stats.gullsScared++;
+  addItem(s, 'seed', 1);
+  notify(s, 'Shoo! The gull dropped a grass seed.');
+  return true;
+}
+
+/** Gives the loot for one piece of debris. Local only: shared debris goes through catchDebris. */
 export function collectDebris(s: GameState, def: DebrisDef): string {
-  fwd(['collect', def]);
   s.stats.caught++;
   if (def.bottle) {
     revealIsland(s);

@@ -3,7 +3,7 @@
 // tools/smoke.sh <url>#selftest rg-selftest-ok
 import { ISLANDS, ISLAND_ORDER, RAFT_TOP, SHED, TILE_SIZE, type GameState, type IslandId } from './config';
 import {
-  chartCourse, castOff, collectDebris, craft, deconstruct, edgeTiles, growthMult, islandGap, islandRelPos, isWalkable, lootCrate,
+  bonkShark, catchDebris, chartCourse, castOff, collectDebris, craft, deconstruct, edgeTiles, growthMult, islandGap, islandRelPos, isWalkable, lootCrate,
   placeTile, raftExtent, removeTile, revealIsland, surfaceY, wallBlocks,
 } from './rules';
 
@@ -264,6 +264,14 @@ export async function runCoopTest(state: GameState, ui: HTMLElement, role: strin
     check(placeTile(state, 2, 0, 'turf'), 'host builds (2,0)');
     check(await until(() => state.coop.players.length === 2, 15000), 'guest shows up in the player list');
     check(await until(() => state.tiles.has('-1,0'), 8000), "host receives the guest's tile (-1,0)");
+    // Shared junk and shark: put a marked plank in the sea and set the shark biting tile (0,0).
+    state.debris.push({ id: 9999, def: { item: 'plank', amount: 1, weight: 1, unlock: 'start' }, x: 30, z: 30, held: false });
+    state.shark.bite = { i: 0, j: 0, di: -1, dj: 0, x: -1.6, z: 0 };
+    state.shark.phase = 'biting';
+    check(await until(() => !state.debris.some((d) => d.id === 9999), 10000), "the guest's catch takes the plank out of the host's sea");
+    check(await until(() => state.stats.sharksBonked >= 1, 10000), "the guest's bonk reaches the host");
+    check(state.shark.phase !== 'biting', 'the shark stops biting on the host');
+    check(state.tiles.has('0,0'), 'the bonked tile survives');
   } else {
     await wait(3000);
     state.coop.request = { name: 'Guesty', code };
@@ -275,6 +283,14 @@ export async function runCoopTest(state: GameState, ui: HTMLElement, role: strin
     check(placeTile(state, -1, 0, 'turf'), 'guest builds (-1,0)');
     await wait(2500);
     check(state.tiles.has('-1,0'), "guest's tile survives the host's snapshots");
+    check(await until(() => state.debris.some((d) => d.id === 9999), 8000), "guest sees the host's marked plank");
+    check(await until(() => state.shark.phase === 'biting' && state.shark.bite.i === 0, 8000), 'guest sees the shark biting');
+    const planks = state.inv.plank;
+    check(catchDebris(state, 9999) !== null && state.inv.plank === planks + 1, 'guest catches the plank');
+    check(bonkShark(state), 'guest bonks the shark');
+    await wait(2500);
+    check(!state.debris.some((d) => d.id === 9999), 'the caught plank stays gone');
+    check(state.shark.phase !== 'biting', 'the shark stays bonked');
   }
   console.log(fails.length ? `COOPTEST ${role.toUpperCase()} FAILED (${fails.length})` : `COOPTEST ${role.toUpperCase()} OK`);
   const marker = document.createElement('div');

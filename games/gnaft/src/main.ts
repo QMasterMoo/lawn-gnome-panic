@@ -69,10 +69,9 @@ canvas.addEventListener('click', () => {
   if (state.mode === 'play' || state.mode === 'build' || state.mode === 'telescope') input.requestLock();
 });
 
-// Co-op guests take seagulls, the shark and the weather timer from the host, so these two never run there.
+// Co-op: the seagull and the shark run everywhere; they simulate only off-guest and render from the shared state.
 const seagull = createSeagull(ctx);
 const shark = createShark(ctx);
-const hostOnly = new Set<System>([seagull, shark]);
 
 // Update order matters: the player sets the camera, then the telescope may override it.
 // net runs first (applies the host's snapshot before anything reads the world); coopUi after the HUD.
@@ -104,10 +103,7 @@ function step(): void {
   const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
   if (state.mode !== 'title') tickWorld(state, dt);
-  for (const s of systems) {
-    if (state.netRole === 'guest' && hostOnly.has(s)) continue;
-    s.update(dt);
-  }
+  for (const s of systems) s.update(dt);
   input.endFrame();
   renderer.render(scene, camera);
 }
