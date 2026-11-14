@@ -22,6 +22,9 @@ interface Engine {
 const MOWER_IDLE_HZ = 22;
 const MOWER_TOP_HZ = 38;
 const MOWER_GAIN = 0.22;
+/** The 350Z's VQ35HR V6: firing rate at idle (~800 rpm) and cruising (~2400 rpm), no blade whine. */
+const Z_IDLE_HZ = 40;
+const Z_TOP_HZ = 120;
 let engine: Engine | null = null;
 
 function rand(lo: number, hi: number): number {
@@ -445,12 +448,14 @@ export function createAudioSystem(ctx: Ctx): System {
         target = MOWER_GAIN * 0.5;
       }
       prevDrive = state.phase === 'drive' || (prevDrive && state.phase === 'aim' && state.phaseTime < 0.8);
-      const hz = MOWER_IDLE_HZ + (MOWER_TOP_HZ - MOWER_IDLE_HZ) * rev;
+      const z = state.ride === '350z';
+      const idleHz = z ? Z_IDLE_HZ : MOWER_IDLE_HZ;
+      const hz = idleHz + ((z ? Z_TOP_HZ : MOWER_TOP_HZ) - idleHz) * rev;
       eng.gain.gain.setTargetAtTime(target, now, target > 0 ? 0.08 : 0.25);
       eng.bang.frequency.setTargetAtTime(hz, now, 0.15);
       eng.harm.frequency.setTargetAtTime(hz * 2, now, 0.15);
       eng.gate.frequency.setTargetAtTime(hz, now, 0.15);
-      eng.bladeLp.frequency.setTargetAtTime(400 + 2600 * rev, now, 0.2);
+      eng.bladeLp.frequency.setTargetAtTime(z ? 120 : 400 + 2600 * rev, now, 0.2);
 
       // Gulls every 8 to 20 s.
       if (nextGull < 0) nextGull = state.time + rand(3, 8);
