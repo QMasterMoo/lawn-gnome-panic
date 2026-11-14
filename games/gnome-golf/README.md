@@ -12,7 +12,7 @@ npm run dev -w games/gnome-golf    # http://localhost:5184 (also on your LAN, fo
 npm run build -w games/gnome-golf
 ```
 
-Debug: `#hole=5` in the URL starts on hole 5. `#disc` starts in Gnome Disc mode (`#disc&hole=5` works too). `window.golf` is the game state.
+Debug: `#hole=5` in the URL starts on hole 5. `#disc` starts in Gnome Disc mode (`#disc&hole=5` works too). `#putt=6` puts the ball 6 yd short of the pin. `window.golf` is the game state.
 
 ## Controls
 

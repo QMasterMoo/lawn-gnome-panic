@@ -162,6 +162,13 @@ export function newState(): GameState {
   return state;
 }
 
+/** Debug: move the ball (and the party) to (x, z) and set up the next shot from there. */
+export function placeBall(state: GameState, x: number, z: number): void {
+  state.ball.set(x, 0, z);
+  prepareShot(state);
+  state.party = partySpots(state.ball, state.aimYaw);
+}
+
 /** Skip the hole intro (tap during 'intro'). */
 export function skipIntro(state: GameState): void {
   if (state.phase === 'intro') setPhase(state, 'aim');

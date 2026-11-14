@@ -1,7 +1,7 @@
 // Gnome Golf: renderer, scene, lights and the main loop. Systems live one per file; this file only wires them.
 import * as THREE from 'three';
-import { LOOK, type Ctx, type System } from './config';
-import { newRound, newState, startHole, tickRound } from './round';
+import { HOLES, LOOK, type Ctx, type System } from './config';
+import { newRound, newState, placeBall, startHole, tickRound } from './round';
 import { createWorld } from './world';
 import { createAmbient } from './ambient';
 import { createParty } from './party';
@@ -75,6 +75,15 @@ const discMatch = location.hash.includes('disc');
 if (holeMatch || discMatch) {
   newRound(state, discMatch ? 'disc' : 'golf');
   if (holeMatch) startHole(state, Math.max(0, Number(holeMatch[1]) - 1));
+}
+// Debug: #putt=N puts the ball N yards short of the pin, on the line in from the last fairway corner.
+const puttMatch = /putt=(\d+(?:\.\d+)?)/.exec(location.hash);
+if (puttMatch && state.phase !== 'title') {
+  const hole = HOLES[state.holeIndex];
+  const from = hole.path[hole.path.length - 2];
+  const d = Math.hypot(hole.pin.x - from.x, hole.pin.z - from.z);
+  const n = Number(puttMatch[1]);
+  placeBall(state, hole.pin.x + ((from.x - hole.pin.x) / d) * n, hole.pin.z + ((from.z - hole.pin.z) / d) * n);
 }
 (window as unknown as { golf: unknown }).golf = state; // debug handle
 

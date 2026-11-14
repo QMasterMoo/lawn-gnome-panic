@@ -14,6 +14,7 @@ import { sfx, startAudio } from './audio';
 const DISCO_R = 0.8;          // Disco's radius, yards
 const DISCO_CENTER_Y = 1.15;  // his middle above the ground when standing
 const HAND_X = -0.95;         // right hand, in Disco's frame (right is -x)
+const STAND_LEFT = 1.2;       // Disco stands this far left of the throw line, so he does not block the view
 const SPIN_VISUAL = 22;       // rad/s of visible gnome spin at full disc spin
 const PREVIEW_DOTS = 48;
 const FLASH_SECONDS = 1.4;
@@ -429,6 +430,15 @@ export function createDisc(ctx: Ctx): System {
   const tmpB = new THREE.Vector3();
   const tmpC = new THREE.Vector3();
 
+  /** Where Disco stands for the next throw: just left of the ball, square to the aim. */
+  function standSpot(out: THREE.Vector3): THREE.Vector3 {
+    const a = state.aimYaw;
+    const x = state.ball.x + Math.cos(a) * STAND_LEFT;
+    const z = state.ball.z - Math.sin(a) * STAND_LEFT;
+    return out.set(x, Math.max(0, heightAt(x, z)), z);
+  }
+  const driveTo = new THREE.Vector3();
+
   /** Gnome arms: hands out like a flying squirrel, or flapping for a flail. */
   function gnomeArms(flapping: boolean, t: number): void {
     if (flapping) {
@@ -493,9 +503,10 @@ export function createDisc(ctx: Ctx): System {
       // Disco rolls on his rim to the next lie beside the mower.
       const u = Math.min(1, s.phaseTime / s.drive.duration);
       const e = u * u * (3 - 2 * u);
-      tmpA.lerpVectors(driveFrom, s.ball, e);
-      const travel = Math.atan2(s.ball.x - driveFrom.x, s.ball.z - driveFrom.z);
-      const dist = driveFrom.distanceTo(s.ball);
+      standSpot(driveTo);
+      tmpA.lerpVectors(driveFrom, driveTo, e);
+      const travel = Math.atan2(driveTo.x - driveFrom.x, driveTo.z - driveFrom.z);
+      const dist = driveFrom.distanceTo(driveTo);
       g.position.set(tmpA.x, Math.max(0, heightAt(tmpA.x, tmpA.z)) - (DISCO_CENTER_Y - DISCO_R), tmpA.z);
       g.rotation.set(0, travel - Math.PI / 2, 0);
       rollAngle = -(e * dist) / DISCO_R;
@@ -701,9 +712,9 @@ export function createDisc(ctx: Ctx): System {
 
       if (on) {
         // Disco stands where the gnome lies; he keeps his spot until the drive to the next lie.
-        if (s.phase === 'intro' || s.phase === 'aim' || s.phase === 'swing') discoSpot.copy(s.ball);
+        if (s.phase === 'intro' || s.phase === 'aim' || s.phase === 'swing') standSpot(discoSpot);
         if (s.phase === 'drive' && prevPhase !== 'drive') driveFrom.copy(discoSpot);
-        if (prevPhase === 'drive' && s.phase !== 'drive') discoSpot.copy(s.ball);
+        if (prevPhase === 'drive' && s.phase !== 'drive') standSpot(discoSpot);
 
         // Whirl: power builds while held; the gnome orbits faster and faster. Too long and Disco gets dizzy.
         if (s.phase === 'swing') {
