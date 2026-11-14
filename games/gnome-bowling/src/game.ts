@@ -1,10 +1,12 @@
 // Game flow: whose turn it is, the phase machine, and what each ball counted as.
 // tickGame runs once a frame before every system. Systems read state; they change it only through these functions.
 import {
-  LOOKS, ROUND, THROW,
-  type BallResult, type GameState, type LookId, type Mode, type Player, type ResultKind, type ThrowInput,
+  LOOKS, NPC_TUNING, ROUND, THROW,
+  type BallResult, type GameState, type LookId, type Mode, type NpcId, type Player, type ResultKind, type ThrowInput,
 } from './config';
 import { simulateThrow } from './physics';
+import { NPCS, npcThrow } from './npc';
+import { pickCartoon } from './cartoons/index';
 import { cursor, frameMarks, isSplit } from './scoring';
 
 /** Set by net.ts: called once for every throw bowled on this device in an online game. */
@@ -20,6 +22,8 @@ interface RemoteThrow {
 }
 const pending: RemoteThrow[] = [];
 let serial = 0;
+/** The throw a CPU bowler has decided on for this turn (made when their 'aim' starts). */
+let npcPlan: { turn: number; input: ThrowInput; fromX: number; fromYaw: number } | null = null;
 
 const allUp = (): boolean[] => Array.from({ length: 10 }, () => true);
 
@@ -50,14 +54,21 @@ function setPhase(state: GameState, phase: GameState['phase']): void {
   state.phaseTime = 0;
 }
 
-/** A player record for newGame. */
-export function makePlayer(name: string, look: LookId, color: number, local = true, netId = -1): Player {
-  return { name: name.slice(0, 16) || LOOKS[look].name, look, color, rolls: [], local, netId, gone: false };
+/** A player record for newGame. `npc` makes it a CPU bowler (local games only). */
+export function makePlayer(name: string, look: LookId, color: number, local = true, netId = -1, npc: NpcId | null = null): Player {
+  return { name: name.slice(0, 16) || LOOKS[look].name, look, color, rolls: [], local, netId, gone: false, npc };
+}
+
+/** A CPU bowler's player record, from the roster in npc.ts. */
+export function makeNpcPlayer(id: NpcId): Player {
+  const n = NPCS[id];
+  return makePlayer(n.name, n.look, n.color, true, -1, id);
 }
 
 /** Starts a fresh game with these players (bowling in this order). */
 export function newGame(state: GameState, players: Player[], mode: Mode): void {
   pending.length = 0;
+  npcPlan = null;
   state.mode = mode;
   state.players = players.map((p) => ({ ...p, rolls: [], gone: false }));
   state.current = 0;
@@ -94,10 +105,10 @@ export function currentPlayer(state: GameState): Player | null {
   return state.players[state.current] ?? null;
 }
 
-/** True when this device may aim and throw right now. */
+/** True when a person on this device may aim and throw right now (never for a CPU bowler). */
 export function canBowlHere(state: GameState): boolean {
   const p = currentPlayer(state);
-  return state.phase === 'aim' && p !== null && p.local && !p.gone;
+  return state.phase === 'aim' && p !== null && p.local && !p.gone && p.npc === null;
 }
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
@@ -200,8 +211,12 @@ function finishBall(state: GameState): void {
     }
   }
   p.rolls.push(count);
+  const kind = classify(state, p, before.fresh, count);
+  const streak = before.fresh && count === 10 ? strikeStreak(p) : 0;
+  // Seeded by the turn so every device in an online game picks the same cartoon.
+  const cartoon = pickCartoon(kind, state.turn * 7919 + count * 31 + streak);
   state.turn++;
-  const result: BallResult = { kind: classify(state, p, before.fresh, count), count, player: state.current, serial: ++serial };
+  const result: BallResult = { kind, count, player: state.current, serial: ++serial, cartoon, streak };
   state.result = result;
   setPhase(state, 'result');
 }
@@ -252,6 +267,30 @@ function nextBowler(state: GameState): void {
   setPhase(state, 'final');
 }
 
+/** How long the 'result' phase lasts for this result. */
+export function resultSeconds(r: BallResult | null): number {
+  if (r?.cartoon) return ROUND.cartoonSeconds;
+  const big = r !== null && ['strike', 'double', 'turkey', 'hambone'].includes(r.kind);
+  return big ? ROUND.bigResultSeconds : ROUND.resultSeconds;
+}
+
+const smooth = (t: number): number => t * t * (3 - 2 * t);
+
+/** A CPU bowler's 'aim': decide the throw, slide the aim to it for NPC_TUNING.thinkSeconds, then bowl. */
+function tickNpc(state: GameState, id: NpcId): void {
+  if (!npcPlan || npcPlan.turn !== state.turn) {
+    npcPlan = { turn: state.turn, input: clampInput(npcThrow(NPCS[id], state.standing, Math.random)), fromX: state.aimX, fromYaw: state.aimYaw };
+  }
+  const k = smooth(Math.min(1, state.phaseTime / (NPC_TUNING.thinkSeconds * 0.8)));
+  state.aimX = npcPlan.fromX + (npcPlan.input.x - npcPlan.fromX) * k;
+  state.aimYaw = npcPlan.fromYaw + (npcPlan.input.aim - npcPlan.fromYaw) * k;
+  if (state.phaseTime >= NPC_TUNING.thinkSeconds) {
+    const input = npcPlan.input;
+    npcPlan = null;
+    startThrow(state, input, null);
+  }
+}
+
 export function tickGame(state: GameState, dt: number): void {
   state.time += dt;
   state.phaseTime += dt;
@@ -263,6 +302,10 @@ export function tickGame(state: GameState, dt: number): void {
       const p = currentPlayer(state);
       if (!p || p.gone) {
         nextBowler(state);
+        break;
+      }
+      if (p.npc !== null) {
+        tickNpc(state, p.npc);
         break;
       }
       if (!p.local) {
@@ -285,11 +328,9 @@ export function tickGame(state: GameState, dt: number): void {
       state.rollTime += dt;
       if (!state.sim || state.rollTime >= state.sim.duration + ROUND.settleSeconds) finishBall(state);
       break;
-    case 'result': {
-      const big = state.result !== null && ['strike', 'double', 'turkey', 'hambone'].includes(state.result.kind);
-      if (state.phaseTime >= (big ? ROUND.bigResultSeconds : ROUND.resultSeconds)) nextBall(state);
+    case 'result':
+      if (state.phaseTime >= resultSeconds(state.result)) nextBall(state);
       break;
-    }
     default:
       break;
   }

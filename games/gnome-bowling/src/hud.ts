@@ -140,7 +140,7 @@ export function createHud(ctx: Ctx): System {
   };
   again.addEventListener('pointerdown', press(() => {
     if (state.mode !== 'local') return;
-    newGame(state, state.players.map((p) => makePlayer(p.name, p.look, p.color)), 'local');
+    newGame(state, state.players.map((p) => makePlayer(p.name, p.look, p.color, true, -1, p.npc)), 'local');
   }));
   menu.addEventListener('pointerdown', press(() => toTitle(state)));
 

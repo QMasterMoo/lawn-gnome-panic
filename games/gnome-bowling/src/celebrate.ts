@@ -1,7 +1,10 @@
 // Full-screen result cards (STRIKE!, SPARE!, GUTTER BALL, SPLIT! and friends), shown during the 'result' phase.
-// DOM and CSS only: every selector starts with #bx-. Sounds and voices are audio.ts's job.
-import type { BallResult, Ctx, Player, ResultKind, System } from './config';
+// Or, when the result carries a cartoon (cartoons/index.ts), a vintage alley score monitor playing that cartoon.
+// DOM, CSS and one canvas: every selector starts with #bx-. Sounds and voices are audio.ts's job.
+import { ROUND, type BallResult, type Ctx, type Player, type ResultKind, type System } from './config';
 import { frameMarks } from './scoring';
+import { getCartoon } from './cartoons/index';
+import { CRT_H, CRT_W, type Cartoon, type CartoonInfo } from './cartoons/types';
 
 const FADE_S = 0.25;
 const CONFETTI_GOLD = ['#ffd54f', '#ff3fb4', '#3ff0ff', '#ffffff', '#7cff6b', '#ff8a3d'];
@@ -116,7 +119,31 @@ const CSS = `
   30% { transform: scale(1); } 70% { transform: scale(1); opacity: 1; } 100% { transform: scale(0.9); opacity: 0; }
 }
 
+#bx-root .bx-crt { background: rgba(10,4,24,0.55); }
+#bx-root .bx-cab { position: relative; z-index: 2; box-sizing: border-box; width: min(92vw, 104vh, 760px);
+  padding: min(3vw, 22px) min(3vw, 22px) min(2vw, 14px); border-radius: 22px;
+  background: repeating-linear-gradient(92deg, #6b3f1d 0 6px, #7a4a24 6px 9px, #5e3618 9px 15px);
+  box-shadow: inset 0 0 0 3px #3a200c, inset 0 0 18px rgba(0,0,0,0.6), 0 10px 0 #2a1608, 0 0 40px rgba(255,63,180,0.35);
+  animation: bx-cabin 0.3s ease-out both; }
+#bx-root .bx-screen { position: relative; overflow: hidden; aspect-ratio: 4 / 3; border-radius: 18px / 14px;
+  background: #000; box-shadow: 0 0 0 4px #1a1a1a, 0 0 0 7px #888, inset 0 0 30px #000;
+  animation: bx-poweron 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+#bx-root .bx-screen canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated;
+  filter: saturate(1.25) contrast(1.1); animation: bx-flicker 0.12s steps(2) infinite; }
+#bx-root .bx-lines { position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(180deg, rgba(0,0,0,0.28) 0 2px, transparent 2px 4px),
+    radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,0.55) 100%); }
+#bx-root .bx-glare { position: absolute; left: 6%; top: 4%; width: 40%; height: 22%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(ellipse, rgba(255,255,255,0.12), transparent 70%); }
+#bx-root .bx-plate { margin-top: min(1.6vw, 10px); font: 900 italic min(3.2vw, 15px) system-ui, sans-serif; letter-spacing: 0.25em;
+  color: #ffd54f; text-shadow: 0 1px 0 #3a200c; text-transform: uppercase; }
+@keyframes bx-cabin { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes bx-poweron { 0% { filter: brightness(4); transform: scaleY(0.02) scaleX(0.6); }
+  50% { filter: brightness(2); transform: scaleY(0.04) scaleX(1); } 100% { filter: brightness(1); transform: scale(1); } }
+@keyframes bx-flicker { from { opacity: 1; } to { opacity: 0.94; } }
+
 @media (prefers-reduced-motion: reduce) {
+  #bx-root .bx-screen canvas { animation: none; }
   #bx-root .bx-card.bx-shake { animation: none; }
   #bx-root .bx-conf { display: none; }
 }
@@ -276,13 +303,54 @@ export function createCelebrate(ctx: Ctx): System {
 
   let shownSerial = -1;
   let card: HTMLElement | null = null;
+  /** The cartoon playing on the monitor, if the current card is one. */
+  let playing: { cartoon: Cartoon; info: CartoonInfo; g: CanvasRenderingContext2D; t: number } | null = null;
   /** Seconds since the card started fading out; -1 while it is not fading. */
   let fadeT = -1;
 
   function clear(): void {
     if (card) card.remove();
     card = null;
+    playing = null;
     fadeT = -1;
+  }
+
+  /** The score monitor: wood cabinet, rounded CRT glass, scanlines. Returns false if the canvas is unavailable. */
+  function showCartoon(cartoon: Cartoon, res: BallResult, player: Player | undefined): boolean {
+    root.insertAdjacentHTML('beforeend',
+      `<div class="bx-card bx-crt"><div class="bx-cab"><div class="bx-screen"><canvas width="${CRT_W}" height="${CRT_H}"></canvas>` +
+      `<i class="bx-lines"></i><i class="bx-glare"></i></div><div class="bx-plate">★ Gnome-O-Matic Auto Score ★</div></div></div>`);
+    card = root.lastElementChild as HTMLElement;
+    const canvas = card.querySelector('canvas') as HTMLCanvasElement;
+    const g = canvas.getContext('2d');
+    if (!g) return false;
+    g.imageSmoothingEnabled = false;
+    const info: CartoonInfo = {
+      kind: res.kind,
+      name: player?.name ?? '',
+      color: player ? '#' + player.color.toString(16).padStart(6, '0') : '#ffffff',
+      streak: res.streak,
+      count: res.count,
+      duration: ROUND.cartoonSeconds - FADE_S,
+      seed: res.serial * 9973 + res.count * 101 + res.streak,
+    };
+    playing = { cartoon, info, g, t: 0 };
+    drawCartoon();
+    return true;
+  }
+
+  function drawCartoon(): void {
+    if (!playing) return;
+    const { cartoon, info, g, t } = playing;
+    g.save();
+    try {
+      cartoon.draw(g, Math.min(t, info.duration), info);
+    } catch (err) {
+      // A broken cartoon must not stop the game: log once and freeze it.
+      console.error(`cartoon ${cartoon.id} failed`, err);
+      playing = null;
+    }
+    g.restore();
   }
 
   function show(res: BallResult): void {
@@ -290,16 +358,44 @@ export function createCelebrate(ctx: Ctx): System {
     const player = ctx.state.players[res.player] as Player | undefined;
     const rolls = player ? player.rolls : [];
     const kind: ResultKind = res.kind === 'pins' && res.count === 0 ? 'miss' : res.kind;
+    const cartoon = res.cartoon ? getCartoon(res.cartoon) : null;
+    if (cartoon && showCartoon(cartoon, res, player)) return;
+    clear();
     root.insertAdjacentHTML('beforeend', cardHTML(kind, res.count, player, rolls));
     card = root.lastElementChild as HTMLElement;
   }
 
+  // Debug: #preview=<cartoon id> shows that cartoon over everything on a loop, as a strike by 'Gnorman';
+  // add &at=<seconds> to freeze it at that moment (for screenshots).
+  const pv = /preview=([a-z0-9-]+)/.exec(location.hash);
+  const pvAt = /[&#]at=(\d+(?:\.\d+)?)/.exec(location.hash);
+  const preview = pv ? getCartoon(pv[1]) : null;
+  if (pv && !preview) console.warn(`no cartoon with id ${pv[1]}`);
+
   return {
     update(dt: number): void {
       const s = ctx.state;
+      if (preview) {
+        if (!playing) {
+          root.style.zIndex = '50';
+          const kind = preview.kinds[0];
+          showCartoon(preview, { kind, count: kind === 'gutter' || kind === 'miss' ? 0 : 10, player: 0, serial: 1, cartoon: preview.id, streak: kind === 'hambone' ? 5 : kind === 'turkey' ? 3 : kind === 'double' ? 2 : kind === 'strike' ? 1 : 0 },
+            { name: 'Gnorman', look: 'gnorman', color: 0xff5a5a, rolls: [], local: true, netId: -1, gone: false, npc: null });
+        }
+        if (playing) {
+          const d = playing.info.duration;
+          playing.t = pvAt ? Number(pvAt[1]) : (playing.t + dt) % (d + 0.8);
+          drawCartoon();
+        }
+        return;
+      }
       if (s.phase === 'result' && s.result && s.result.serial !== shownSerial) {
         shownSerial = s.result.serial;
         show(s.result);
+      }
+      if (playing && fadeT < 0) {
+        playing.t += dt;
+        drawCartoon();
       }
       if (s.phase !== 'result' && card && fadeT < 0) {
         fadeT = 0;

@@ -1,6 +1,9 @@
 // Sound effects and gnome voices, all generated in code (WebAudio + speech synthesis).
 // Add `#mute` to the URL to silence everything.
-import type { BallResult, Ctx, Phase, ResultKind, SimEvent, System } from './config';
+import type { BallResult, Ctx, Phase, Player, ResultKind, SimEvent, System } from './config';
+import { announcerTakes } from './announcer';
+import { NPCS, npcQuip } from './npc';
+import { announcerOn, speak } from './speech';
 
 /** UI and one-shot sounds other systems may trigger. */
 export type SfxName = 'click' | 'tick' | 'swoosh' | 'thud';
@@ -29,6 +32,14 @@ function muted(): boolean {
 /** True once audio is unlocked and not muted. */
 function live(): boolean {
   return ac !== null && master !== null && !muted();
+}
+
+/**
+ * The audio context and the node to connect sounds to (the master gain), or null before the first tap or when
+ * muted. For other modules' own sounds (announcer.ts stingers). Check it again each time you play: it is null until unlocked.
+ */
+export function audioOut(): { ac: AudioContext; out: AudioNode } | null {
+  return live() ? { ac: ac!, out: master! } : null;
 }
 
 function rand(a: number, b: number): number {
@@ -199,20 +210,8 @@ function gibber(
 // =====================================================================
 
 function say(text: string, pitch: number): void {
-  if (!live() || !('speechSynthesis' in window)) return;
-  try {
-    const synth = window.speechSynthesis;
-    synth.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.pitch = pitch;
-    u.rate = rand(1.15, 1.3);
-    u.volume = 1;
-    const en = synth.getVoices().find((v) => v.lang.startsWith('en'));
-    if (en) u.voice = en;
-    synth.speak(u);
-  } catch {
-    // speech unavailable: the gibberish still plays
-  }
+  if (!live()) return;
+  speak([{ text, voice: 'gnome', pitch, rate: rand(1.15, 1.3) }]);
 }
 
 /** Stable per-player speech pitch, 1.5 to 2.0. */
@@ -470,8 +469,11 @@ const EXCITED: ResultKind[] = ['strike', 'double', 'turkey', 'hambone', 'spare']
 const SAD: ResultKind[] = ['gutter', 'miss'];
 const STRIKE_KINDS: ResultKind[] = ['strike', 'double', 'turkey', 'hambone'];
 
-/** The gnome shouts the result: gibberish always, speech on top when it exists. */
-function resultVoice(r: BallResult): void {
+/**
+ * The gnome shouts the result: gibberish always, speech on top when it exists. The spoken line is skipped when the
+ * announcer calls this result; a CPU bowler says its own quip (npc.ts) in its own pitch when it has one.
+ */
+function resultVoice(r: BallResult, player: Player | undefined): void {
   if (!live()) return;
   const kind = r.kind;
   let line: string;
@@ -490,7 +492,12 @@ function resultVoice(r: BallResult): void {
   const f0 = 280 + ((idx * 70) % 240);
   const syll = Math.floor(rand(3, 7));
   gibber(0, rand(0.3, 0.8), syll, f0, glide, 0.8);
-  say(line, pitchFor(idx));
+  let pitch = pitchFor(idx);
+  if (player?.npc) {
+    line = npcQuip(player.npc, kind, r.count) ?? line;
+    pitch = NPCS[player.npc].pitch;
+  }
+  if (!(announcerOn() && announcerTakes(r))) say(line, pitch);
 
   if (STRIKE_KINDS.includes(kind)) cheer();
   else if (SAD.includes(kind)) awww();
@@ -565,7 +572,7 @@ export function createAudio(ctx: Ctx): System {
         if (pending && s.phaseTime >= 0.15) {
           const r2 = pending;
           pending = null;
-          resultVoice(r2);
+          resultVoice(r2, s.players[r2.player]);
         }
       }
 
