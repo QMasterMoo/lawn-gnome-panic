@@ -22,7 +22,7 @@ const TILT_NAMES = ['FLAT', 'HYZER', 'ANHYZER'];
 
 const CSS = `
 #gd-root { position:absolute; inset:0; z-index:3; pointer-events:none; color:#fff; font-family:system-ui, sans-serif; text-shadow:0 1px 2px #000; -webkit-user-select:none; user-select:none; }
-#gd-root .gd-hidden { display:none !important; }
+#gd-root.gd-hidden, #gd-root .gd-hidden { display:none !important; }
 #gd-tilt { position:absolute; left:max(8px, env(safe-area-inset-left)); bottom:max(10px, env(safe-area-inset-bottom)); width:230px; }
 #gd-trow { display:flex; align-items:center; background:rgba(60,20,0,0.55); border-radius:10px; padding:2px; }
 #gd-tl, #gd-tr { pointer-events:auto; touch-action:manipulation; width:48px; height:48px; flex:0 0 48px; display:flex; align-items:center; justify-content:center; font-size:22px; border-radius:10px; cursor:pointer; }
