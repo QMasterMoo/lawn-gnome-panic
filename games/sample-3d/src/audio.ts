@@ -11,7 +11,7 @@ let engineOsc2: OscillatorNode | null = null;
 function ensureContext(): AudioContext | null {
   if (ctx) return ctx;
   try {
-    // Fixed 48 kHz: at a 192 kHz device rate the default context does 4x the work (see music/engine.ts).
+    // Fixed 48 kHz: at a 192 kHz device rate the default context does 4x the work (see packages/music/src/engine.ts).
     try { ctx = new AudioContext({ sampleRate: 48000 }); } catch { ctx = new AudioContext(); }
     master = ctx.createGain();
     master.gain.value = 0.6;

@@ -4,8 +4,8 @@
 // - Every start tears down the Transport, its events and all nodes (the `keep` list) before
 //   building again; otherwise the next song stacks on top of the last.
 // - A `generation` counter drops stale async starts (Tone loads with a dynamic import).
-// - Tone.start() is never awaited: without a user gesture (?autostart, online match start, the
-//   lobby on page load) it never resolves. The song is built and the Transport started right
+// - Tone.start() is never awaited: without a user gesture (a song started on page load,
+//   a headless test) it never resolves. The song is built and the Transport started right
 //   away; the context unlocks on the first pointer, key or touch event.
 // - Everything is wrapped in try/catch: music must never break the game.
 import type * as ToneNS from 'tone';
@@ -16,8 +16,8 @@ export type Keep = <V extends { dispose(): unknown }>(x: V) => V;
 /** Builds a song: create nodes (via keep), connect them to `out`, schedule on the Transport. */
 export type SongBuilder = (T: Tone, keep: Keep, out: ToneNS.Volume) => void;
 
-const MUSIC_DB = -12; // under the SFX in audio.ts
-const MUTE_KEY = 'lgp-music-muted';
+const MUSIC_DB = -12; // under the game's sound effects
+let muteKey = 'music-muted';
 
 let tone: Tone | null = null;
 let loading: Promise<Tone | null> | null = null;
@@ -25,13 +25,20 @@ let disposables: { dispose(): unknown }[] = [];
 let generation = 0;
 let playing = false;
 let outVolume: ToneNS.Volume | null = null;
-let muted = (() => { try { return localStorage.getItem(MUTE_KEY) === '1'; } catch { return false; } })();
+const readMuted = (): boolean => { try { return localStorage.getItem(muteKey) === '1'; } catch { return false; } };
+let muted = readMuted();
+
+/** Each game stores its mute setting under its own localStorage key. Call once at startup. */
+export function setMuteKey(key: string): void {
+  muteKey = key;
+  muted = readMuted();
+}
 
 export function isMuted(): boolean { return muted; }
 
 export function setMuted(m: boolean): void {
   muted = m;
-  try { localStorage.setItem(MUTE_KEY, m ? '1' : '0'); } catch { /* per-session only */ }
+  try { localStorage.setItem(muteKey, m ? '1' : '0'); } catch { /* per-session only */ }
   try { if (outVolume) outVolume.mute = m; } catch { /* ignore */ }
 }
 
@@ -85,6 +92,7 @@ function unlockOnGesture(T: Tone): void {
     void T.start().catch(() => {});
     if (T.getContext().state === 'running') {
       for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) window.removeEventListener(ev, unlock, true);
+      unlockBound = false; // so a later suspend (phone backgrounded) can arm the unlock again
     }
   };
   for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) window.addEventListener(ev, unlock, true);
@@ -126,6 +134,8 @@ export function pauseSong(): void {
 export function resumeSong(): void {
   playing = true;
   try {
+    // The browser may have suspended the audio context meanwhile (tab hidden, phone locked).
+    if (tone) unlockOnGesture(tone);
     if (tone && disposables.length > 0) tone.getTransport().start();
   } catch { /* ignore */ }
 }
