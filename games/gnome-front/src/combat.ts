@@ -1,7 +1,7 @@
 // src/combat.ts: rifle fire, reloads, grenades, line of sight, tracers and explosions.
 import * as THREE from 'three';
-import { GRENADE, RIFLE, TUNING } from './config';
-import type { Game, Soldier, Vehicle } from './config';
+import { GRENADE, TUNING, WEAPONS, weaponOf } from './config';
+import type { Game, Soldier, Vehicle, WeaponDef, WeaponId } from './config';
 import { heightAt } from './terrain';
 import { damageSoldier } from './soldiers';
 import { damageVehicle } from './vehicles';
@@ -90,17 +90,22 @@ function sphereHit(origin: THREE.Vector3, dir: THREE.Vector3, centre: THREE.Vect
   return t < 0 ? -1 : t;
 }
 
-function spawnTracer(game: Game, from: THREE.Vector3, to: THREE.Vector3): void {
+function spawnTracer(game: Game, from: THREE.Vector3, to: THREE.Vector3, weapon: WeaponId): void {
   const d = new THREE.Vector3().subVectors(to, from);
   const len = d.length();
+  const sniper = weapon === 'peaShooter';
+  const lifeS = sniper ? 0.25 : weapon === 'blunderbuss' ? 0.05 : 0.08;
   if (len > 1e-6) {
     d.divideScalar(len);
     const start = from.clone().addScaledVector(d, Math.min(1.2, len));
     const geo = new THREE.BufferGeometry().setFromPoints([start, to.clone()]);
-    const mat = new THREE.LineBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 1 });
+    // Sniper tracers are brighter, so the thin line reads at long range.
+    const colour = new THREE.Color(WEAPONS[weapon].tracerColor);
+    if (sniper) colour.lerp(new THREE.Color(0xffffff), 0.5);
+    const mat = new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: 1 });
     const line = new THREE.Line(geo, mat);
     game.scene.add(line);
-    effects.push({ obj: line, age: 0, life: 0.08, frame: (p) => { mat.opacity = 1 - p; } });
+    effects.push({ obj: line, age: 0, life: lifeS, frame: (p) => { mat.opacity = 1 - p; } });
   }
   const puffMat = new THREE.MeshBasicMaterial({ color: 0x9a9a9a, transparent: true, opacity: 0.7 });
   const puff = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), puffMat);
@@ -142,56 +147,81 @@ function subscribe(game: Game): void {
   if (subscribedGame === game) return;
   subscribedGame = game;
   game.on((e) => {
-    if (e.type === 'shot') spawnTracer(game, e.from, e.to);
+    if (e.type === 'shot') spawnTracer(game, e.from, e.to, e.weapon);
     else if (e.type === 'explosion') spawnExplosion(game, e.pos, e.radius);
   });
 }
 
-/** Fires one rifle shot if the soldier can (alive, fireT <= 0, ammo > 0, not reloading). origin/dir in world space (dir normalised). Returns true if a shot was fired. */
+/** Damage multiplier by distance: 1 up to falloffStart, linear to minDamageMult at falloffEnd, then minDamageMult. */
+function falloff(w: WeaponDef, dist: number): number {
+  if (dist <= w.falloffStart) return 1;
+  if (dist >= w.falloffEnd) return w.minDamageMult;
+  const t = (dist - w.falloffStart) / (w.falloffEnd - w.falloffStart);
+  return 1 + (w.minDamageMult - 1) * t;
+}
+
+/** Fires one shot of the soldier's weapon if the soldier can (alive, fireT <= 0, ammo > 0, not reloading). origin/dir in world space (dir normalised). Each pellet is its own ray; damage is summed per victim and applied once per shot. Returns true if a shot was fired. */
 export function tryFire(game: Game, s: Soldier, origin: THREE.Vector3, dir: THREE.Vector3): boolean {
   if (!s.alive || s.fireT > 0 || s.reloadT > 0 || s.ammo <= 0) return false;
-  s.fireT = RIFLE.fireIntervalS;
+  const w = weaponOf(s);
+  s.fireT = w.fireIntervalS;
   s.ammo--;
 
-  let spread = RIFLE.spreadRad;
+  let spread = w.hipSpreadRad + (w.adsSpreadRad - w.hipSpreadRad) * s.adsT;
+  if (!s.vehicle && Math.hypot(s.vel.x, s.vel.z) > 1) spread *= w.moveSpreadMult;
   if (s.sprinting) spread *= 2;
   if (s.vehicle) spread *= 1.5;
-  const d = perturb(dir, spread);
+  if (!s.grounded) spread *= 1.5;
 
-  let best = raycastWorld(game, origin, d, RIFLE.range);
-  let hitSoldier: Soldier | null = null;
-  let hitVehicle: Vehicle | null = null;
+  const soldierDmg = new Map<Soldier, { dmg: number; head: boolean }>();
+  const vehicleDmg = new Map<Vehicle, number>();
 
-  for (const o of game.soldiers) {
-    if (o === s || !o.alive) continue;
-    const t = cylinderHit(origin, d, o.pos, TUNING.soldierRadius, TUNING.soldierHeight);
-    if (t >= 0 && t <= RIFLE.range && t < best) {
-      best = t;
-      hitSoldier = o;
-      hitVehicle = null;
+  for (let i = 0; i < w.pellets; i++) {
+    const d = perturb(dir, spread);
+
+    let best = raycastWorld(game, origin, d, w.range);
+    let hitSoldier: Soldier | null = null;
+    let hitVehicle: Vehicle | null = null;
+
+    for (const o of game.soldiers) {
+      if (o === s || !o.alive) continue;
+      const t = cylinderHit(origin, d, o.pos, TUNING.soldierRadius, TUNING.soldierHeight);
+      if (t >= 0 && t <= w.range && t < best) {
+        best = t;
+        hitSoldier = o;
+        hitVehicle = null;
+      }
+    }
+
+    for (const v of game.vehicles) {
+      if (v === s.vehicle || !v.alive) continue;
+      const centre = new THREE.Vector3(v.pos.x, v.pos.y + v.def.radius * 0.6, v.pos.z);
+      const t = sphereHit(origin, d, centre, v.def.radius);
+      if (t >= 0 && t <= w.range && t < best) {
+        best = t;
+        hitSoldier = null;
+        hitVehicle = v;
+      }
+    }
+
+    const hitPoint = origin.clone().addScaledVector(d, best);
+    game.emit({ type: 'shot', shooter: s, weapon: w.id, from: origin.clone(), to: hitPoint });
+
+    if (hitSoldier) {
+      const headshot = hitPoint.y - hitSoldier.pos.y > 1.05;
+      const dmg = w.damage * falloff(w, best) * (headshot ? w.headshotMult : 1);
+      const entry = soldierDmg.get(hitSoldier) ?? { dmg: 0, head: false };
+      entry.dmg += dmg;
+      entry.head = entry.head || headshot;
+      soldierDmg.set(hitSoldier, entry);
+    } else if (hitVehicle) {
+      const dmg = w.damage * falloff(w, best) * w.vehicleDamageMult;
+      vehicleDmg.set(hitVehicle, (vehicleDmg.get(hitVehicle) ?? 0) + dmg);
     }
   }
 
-  for (const v of game.vehicles) {
-    if (v === s.vehicle || !v.alive) continue;
-    const centre = new THREE.Vector3(v.pos.x, v.pos.y + v.def.radius * 0.6, v.pos.z);
-    const t = sphereHit(origin, d, centre, v.def.radius);
-    if (t >= 0 && t <= RIFLE.range && t < best) {
-      best = t;
-      hitSoldier = null;
-      hitVehicle = v;
-    }
-  }
-
-  const hitPoint = origin.clone().addScaledVector(d, best);
-  game.emit({ type: 'shot', shooter: s, from: origin.clone(), to: hitPoint });
-
-  if (hitSoldier) {
-    const headshot = hitPoint.y - hitSoldier.pos.y > 1.05;
-    damageSoldier(game, hitSoldier, RIFLE.damage * (headshot ? RIFLE.headshotMult : 1), s, 'rifle', headshot);
-  } else if (hitVehicle) {
-    damageVehicle(game, hitVehicle, RIFLE.damage * RIFLE.vehicleDamageMult, s);
-  }
+  for (const [victim, e] of soldierDmg) damageSoldier(game, victim, e.dmg, s, 'gun', e.head, w.id);
+  for (const [v, dmg] of vehicleDmg) damageVehicle(game, v, dmg, s);
 
   if (s.ammo === 0) startReload(game, s);
   return true;
@@ -199,8 +229,9 @@ export function tryFire(game: Game, s: Soldier, origin: THREE.Vector3, dir: THRE
 
 /** Starts a reload if the magazine is not full, reserve > 0 and none is in progress. */
 export function startReload(game: Game, s: Soldier): void {
-  if (!s.alive || s.reloadT > 0 || s.ammo >= RIFLE.magSize || s.reserve <= 0) return;
-  s.reloadT = RIFLE.reloadS;
+  const w = weaponOf(s);
+  if (!s.alive || s.reloadT > 0 || s.ammo >= w.magSize || s.reserve <= 0) return;
+  s.reloadT = w.reloadS;
   game.emit({ type: 'reload', soldier: s });
 }
 
@@ -320,7 +351,7 @@ export function updateCombat(game: Game, dt: number): void {
       s.reloadT -= dt;
       if (s.reloadT <= 0) {
         s.reloadT = 0;
-        const take = Math.min(RIFLE.magSize - s.ammo, s.reserve);
+        const take = Math.min(weaponOf(s).magSize - s.ammo, s.reserve);
         s.ammo += take;
         s.reserve -= take;
       }
