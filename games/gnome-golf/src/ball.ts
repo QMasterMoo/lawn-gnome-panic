@@ -206,7 +206,8 @@ export function createBall(ctx: Ctx): System {
 
       // Ball: where it is, and whether it is shown at all.
       let base = state.ball;
-      let visible = phase !== 'holed';
+      const disc = state.mode === 'disc';
+      let visible = phase !== 'holed' && !disc;
       if (inFlight && f) {
         flightPoint(f, state.phaseTime, tmp);
         base = tmp;
@@ -222,12 +223,13 @@ export function createBall(ctx: Ctx): System {
       ball.visible = visible;
 
       // Tee peg under the ball while it sits on the tee.
-      const pegShown = state.lie === 'tee' && (phase === 'intro' || phase === 'aim' || phase === 'swing');
+      const pegShown = !disc && state.lie === 'tee' && (phase === 'intro' || phase === 'aim' || phase === 'swing');
       peg.visible = pegShown;
       if (pegShown) peg.position.set(state.ball.x, state.ball.y + 0.03, state.ball.z);
 
       // Far-view marker, following the ball in flight and at rest.
-      marker.visible = (inFlight || inResult) && visible;
+      // In Gnome Disc the far-view marker follows the gnome (the ball itself is hidden).
+      marker.visible = (inFlight || inResult) && (visible || (disc && !(f && (f.holed || f.endLie === 'water'))));
       if (marker.visible) marker.position.copy(ball.position);
 
       // Tracer.
@@ -247,8 +249,8 @@ export function createBall(ctx: Ctx): System {
       }
 
       // Aim preview.
-      aimGroup.visible = aiming;
-      if (aiming) {
+      aimGroup.visible = aiming && !disc;
+      if (aiming && !disc) {
         updateAim();
         ring.scale.setScalar(ringRadius * (1 + 0.06 * Math.sin(4 * state.time)));
         pulse.visible = pathCurve !== null;

@@ -3,7 +3,7 @@
 import { startAudio } from './audio';
 import { holeLength } from './course';
 import { HOLES, LIES, type Ctx, type System } from './config';
-import { distanceToPin, fmtDistance, newRound, nextHole, roundTotals } from './round';
+import { distanceToPin, fmtDistance, newRound, nextHole, roundTotals, toggleRide } from './round';
 
 const CSS = `
 #gh-root { position:absolute; inset:0; font-family:system-ui, sans-serif; color:#fff; pointer-events:none; -webkit-user-select:none; user-select:none; }
@@ -14,10 +14,14 @@ const CSS = `
 #gh-title .gh-o { position:relative; display:inline-block; }
 #gh-title .gh-hat { position:absolute; left:50%; bottom:88%; transform:translateX(-50%); color:#e53935; font-size:0.42em; line-height:1; text-shadow:none; }
 #gh-title .gh-sub { margin:10px 0 18px; font-size:clamp(13px, 3.6vw, 18px); opacity:0.9; text-shadow:0 1px 2px #000; }
+#gh-title .gh-ride { min-height:18px; margin-top:10px; font-size:14px; font-weight:800; letter-spacing:0.1em; color:#ffd54a; text-shadow:0 1px 2px #000; }
 #gh-title .gh-how { margin-top:14px; font-size:13px; opacity:0.85; text-shadow:0 1px 2px #000; }
 
-#gh-start, #gh-next, #gh-again { font:inherit; pointer-events:auto; display:block; margin:0 auto; min-width:220px; min-height:56px; padding:0 28px; font-weight:800; font-size:20px; letter-spacing:0.12em; color:#1b3d22; background:#ffd54a; border:0; border-radius:10px; box-shadow:0 4px 0 #b08c12, 0 6px 14px rgba(0,0,0,0.35); cursor:pointer; touch-action:manipulation; }
-#gh-start:active, #gh-next:active, #gh-again:active { transform:translateY(2px); }
+#gh-title .gh-modes { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; }
+#gh-title .gh-modes button { margin:0; min-width:180px; }
+#gh-start, #gh-next, #gh-again, #gh-disc { font:inherit; pointer-events:auto; display:block; margin:0 auto; min-width:220px; min-height:56px; padding:0 28px; font-weight:800; font-size:20px; letter-spacing:0.12em; color:#1b3d22; background:#ffd54a; border:0; border-radius:10px; box-shadow:0 4px 0 #b08c12, 0 6px 14px rgba(0,0,0,0.35); cursor:pointer; touch-action:manipulation; }
+#gh-start:active, #gh-next:active, #gh-again:active, #gh-disc:active { transform:translateY(2px); }
+#gh-disc { background:#ff8a3d; box-shadow:0 4px 0 #b4501a, 0 6px 14px rgba(0,0,0,0.35); }
 
 #gh-left { position:absolute; left:calc(env(safe-area-inset-left,0px) + 8px); top:calc(env(safe-area-inset-top,0px) + 8px); display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
 #gh-info, #gh-shot, #gh-banner { background:rgba(10,30,20,0.55); border-radius:10px; text-shadow:0 1px 2px #000; }
@@ -99,8 +103,13 @@ export function createHud(ctx: Ctx): System {
 <div id="gh-title">
   <h1>GN<span class="gh-o">O<span class="gh-hat">&#9650;</span></span>ME GOLF</h1>
   <div class="gh-sub">Gnome Island Links &middot; 9 holes</div>
-  <button id="gh-start" type="button">TEE OFF</button>
-  <div class="gh-how">Drag to aim &middot; &#9664; &#9654; clubs &middot; tap SWING three times: start, power, accuracy</div>
+  <div class="gh-modes">
+    <button id="gh-start" type="button">TEE OFF</button>
+    <button id="gh-disc" type="button">GNOME DISC</button>
+  </div>
+  <div class="gh-ride"></div>
+  <div class="gh-how">Golf: drag to aim &middot; &#9664; &#9654; clubs &middot; tap SWING three times: start, power, accuracy</div>
+  <div class="gh-how">Gnome Disc: Disco the living frisbee hurls your gnome at a chain basket. Hold to whirl, let go on the green line, tap to flail mid-air.</div>
 </div>
 <div id="gh-left">
   <div id="gh-info">
@@ -129,6 +138,7 @@ export function createHud(ctx: Ctx): System {
   const q = <T extends HTMLElement>(sel: string): T => root.querySelector(sel) as T;
   const title = q<HTMLElement>('#gh-title');
   const startBtn = q<HTMLButtonElement>('#gh-start');
+  const rideEl = q<HTMLElement>('.gh-ride');
   const left = q<HTMLElement>('#gh-left');
   const holeEl = q<HTMLElement>('.gh-hole');
   const parEl = q<HTMLElement>('.gh-par');
@@ -149,21 +159,34 @@ export function createHud(ctx: Ctx): System {
   const state = ctx.state;
 
   /** One action for the title button, the scorecard button and Enter; acts only in the phase it belongs to. */
-  function act(): void {
+  function act(mode?: 'golf' | 'disc'): void {
     const p = state.phase;
     if (p === 'title') {
       startAudio();
-      newRound(state);
+      newRound(state, mode ?? 'golf');
     } else if (p === 'card') {
       nextHole(state);
     } else if (p === 'final') {
       newRound(state);
     }
   }
-  startBtn.addEventListener('pointerdown', () => act());
+  startBtn.addEventListener('pointerdown', () => act('golf'));
+  const discBtn = q<HTMLButtonElement>('#gh-disc');
+  discBtn.addEventListener('pointerdown', () => act('disc'));
   cardBtn.addEventListener('pointerdown', () => act());
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.repeat) act();
+  });
+
+  // Title-screen cheat: typing 350z swaps the mower cart for a 2008 Nissan 350Z (and back again).
+  const CHEAT = '350z';
+  let typed = '';
+  window.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (state.phase !== 'title' || e.key.length !== 1) return;
+    typed = (typed + e.key.toLowerCase()).slice(-CHEAT.length);
+    if (typed !== CHEAT) return;
+    typed = '';
+    toggleRide(state);
   });
 
   let cardKey = '';
@@ -234,6 +257,8 @@ export function createHud(ctx: Ctx): System {
 
       setShown(title, inTitle);
       setShown(startBtn, inTitle);
+      setShown(discBtn, inTitle);
+      setText(rideEl, state.ride === '350z' ? '2008 NISSAN 350Z UNLOCKED' : '');
       setShown(left, !inTitle);
       setShown(shot, !inTitle && !inCard);
       setShown(card, inCard);
@@ -244,7 +269,7 @@ export function createHud(ctx: Ctx): System {
       const totals = roundTotals(state);
       setText(holeEl, `Hole ${state.holeIndex + 1}`);
       setText(parEl, `Par ${hole.par} · ${Math.round(holeLength(hole))} yd`);
-      setText(strokeEl, `Stroke ${upcoming ? state.strokes + 1 : state.strokes}`);
+      setText(strokeEl, `${state.mode === 'disc' ? 'Throw' : 'Stroke'} ${upcoming ? state.strokes + 1 : state.strokes}`);
       setText(roundEl, `Round ${toParLabel(totals.toPar)} · ${totals.strokes} strokes`);
 
       setText(lieEl, LIES[state.lie].name);

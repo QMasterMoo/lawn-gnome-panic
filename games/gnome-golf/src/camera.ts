@@ -135,6 +135,14 @@ function aimPose(s: GameState, portrait = portraitView): Pose {
     const p = new THREE.Vector3(M.x - dir.x * d * 0.35, M.y + Math.max(30, d * 1.1), M.z - dir.z * d * 0.35);
     return { p, t: M, subject: b.clone() };
   }
+  if (s.mode === 'disc') {
+    // Gnome Disc: a little higher and further back than golf, so Disco does not hide the basket on short throws.
+    return {
+      p: new THREE.Vector3(b.x - dir.x * 7, b.y + 3.4, b.z - dir.z * 7),
+      t: new THREE.Vector3(b.x + dir.x * 14, b.y + (portrait ? -1.2 : 0), b.z + dir.z * 14),
+      subject: b.clone(),
+    };
+  }
   if (s.club === 'PT') {
     return {
       p: new THREE.Vector3(b.x - dir.x * 3.2, b.y + 1.3, b.z - dir.z * 3.2),

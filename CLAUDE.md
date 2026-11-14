@@ -9,6 +9,7 @@ Read [SOUL.md](SOUL.md) first. It sets the priorities: playable over polished, c
 - `tools/`: repo scripts, for example `tools/new-game.mjs`.
 - `docs/stack.md`: which engine or library to reach for. `docs/assets.md`: where free assets come from and the license rules.
 - `docs/roadmaps/`: plans written by the decompose skill.
+- `docs/demos.md`: recording scripted MP4/GIF demos of a game, and embedding them in a PR description (`npm run demo -- <demo.json> --pr <n>`).
 - `unity/`: Unity projects, if any. Driven from code and the command line, never by hand in the editor (see docs/stack.md).
 
 ## Toolchain (Windows)

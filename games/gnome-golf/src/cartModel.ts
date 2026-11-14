@@ -16,7 +16,14 @@ const STRIPE = 0xf2c230;
 /** Seat feet positions (cart local): driver on the left (+x), passenger on the right (-x). */
 const SEAT_Y = 0.75;
 
-export function createCartModel(): { group: THREE.Group; seats: THREE.Vector3[]; animate(dt: number, speed: number): void } {
+/** What party.ts needs from a ride: the mesh, seat feet positions (driver first), and per-frame animation. */
+export interface CartModel {
+  group: THREE.Group;
+  seats: THREE.Vector3[];
+  animate(dt: number, speed: number): void;
+}
+
+export function createCartModel(): CartModel {
   const group = new THREE.Group();
   const mats = new Map<number, THREE.MeshStandardMaterial>();
   const mat = (color: number): THREE.MeshStandardMaterial => {

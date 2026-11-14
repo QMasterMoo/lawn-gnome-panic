@@ -192,7 +192,7 @@ export function createMinimap(ctx: Ctx): System {
     const b = toPx(frame, w, h, ball.x, ball.z);
 
     // Aim line and landing point while the player is choosing a shot.
-    if (st.phase === 'aim' || st.phase === 'swing') {
+    if ((st.phase === 'aim' || st.phase === 'swing') && st.mode !== 'disc') {
       const l = landing(st);
       const lp = toPx(frame, w, h, l.x, l.z);
       g.strokeStyle = '#ffffff';

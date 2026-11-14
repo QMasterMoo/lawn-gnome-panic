@@ -22,6 +22,9 @@ interface Engine {
 const MOWER_IDLE_HZ = 22;
 const MOWER_TOP_HZ = 38;
 const MOWER_GAIN = 0.22;
+/** The 350Z's VQ35HR V6: firing rate at idle (~800 rpm) and cruising (~2400 rpm), no blade whine. */
+const Z_IDLE_HZ = 40;
+const Z_TOP_HZ = 120;
 let engine: Engine | null = null;
 
 function rand(lo: number, hi: number): number {
@@ -329,6 +332,41 @@ export function sfx(name: SfxName, volume = 1): void {
       }
       break;
     }
+    case 'whirl':
+      noise('bandpass', [[0, 300], [0.18, 900], [0.3, 350]], 1.4, t, 0.3, 0.22 * v, 0.06);
+      break;
+    case 'wheee': {
+      // A tiny gnome voice: a rising-then-falling squeal with vibrato.
+      const j = rand(0.92, 1.08);
+      tone('square', [[0, 520 * j], [0.25, 900 * j], [0.9, 640 * j]], t, 0.95, 0.05 * v, 0.03);
+      tone('sine', [[0, 1040 * j], [0.25, 1800 * j], [0.9, 1280 * j]], t, 0.95, 0.06 * v, 0.03);
+      break;
+    }
+    case 'flail': {
+      // "Hup!" plus a flappy rustle.
+      const j = rand(0.9, 1.1);
+      tone('triangle', [[0, 330 * j], [0.08, 520 * j]], t, 0.12, 0.25 * v, 0.005);
+      for (let i = 0; i < 4; i++) noise('bandpass', [[0, jit(1200)]], 2, t + i * 0.06, 0.04, 0.18 * v, 0.003);
+      break;
+    }
+    case 'chains': {
+      // Basket chains: a cascade of small metallic rings.
+      for (let i = 0; i < 14; i++) {
+        const at = t + rand(0, 0.45) * (i / 14 + 0.2);
+        const f = rand(2200, 4200);
+        tone('triangle', [[0, f]], at, 0.09, 0.14 * v, 0.001);
+        tone('sine', [[0, f * 1.51]], at, 0.07, 0.06 * v, 0.001);
+      }
+      noise('highpass', [[0, 5000]], 0.8, t, 0.3, 0.08 * v, 0.004);
+      break;
+    }
+    case 'thud': {
+      const f = jit(110);
+      tone('sine', [[0, f], [0.12, f * 0.5]], t, 0.14, 0.7 * v, 0.003);
+      noise('lowpass', [[0, 600]], 0.7, t, 0.12, 0.3 * v, 0.003);
+      tone('square', [[0, jit(300)], [0.1, 180]], t + 0.02, 0.1, 0.05 * v, 0.005); // "oof"
+      break;
+    }
     case 'sip': {
       // Two or three gulps, then a satisfied "ahh".
       for (let i = 0; i < 3; i++) {
@@ -353,6 +391,11 @@ export function createAudioSystem(ctx: Ctx): System {
   let nextGull = -1;
 
   function playEvent(ev: FlightEvent): void {
+    if (state.mode === 'disc' && (ev.kind === 'bounce' || ev.kind === 'cup' || ev.kind === 'chains')) {
+      if (ev.kind === 'bounce') sfx(ev.lie === 'sand' ? 'sand' : 'thud', Math.min(1, ev.speed / 30));
+      else sfx('chains', ev.kind === 'cup' ? 1 : 0.7);
+      return;
+    }
     if (ev.kind === 'bounce') {
       if (ev.lie === 'sand') sfx('sand');
       else sfx('bounce', Math.min(1, ev.speed / 40));
@@ -405,12 +448,14 @@ export function createAudioSystem(ctx: Ctx): System {
         target = MOWER_GAIN * 0.5;
       }
       prevDrive = state.phase === 'drive' || (prevDrive && state.phase === 'aim' && state.phaseTime < 0.8);
-      const hz = MOWER_IDLE_HZ + (MOWER_TOP_HZ - MOWER_IDLE_HZ) * rev;
+      const z = state.ride === '350z';
+      const idleHz = z ? Z_IDLE_HZ : MOWER_IDLE_HZ;
+      const hz = idleHz + ((z ? Z_TOP_HZ : MOWER_TOP_HZ) - idleHz) * rev;
       eng.gain.gain.setTargetAtTime(target, now, target > 0 ? 0.08 : 0.25);
       eng.bang.frequency.setTargetAtTime(hz, now, 0.15);
       eng.harm.frequency.setTargetAtTime(hz * 2, now, 0.15);
       eng.gate.frequency.setTargetAtTime(hz, now, 0.15);
-      eng.bladeLp.frequency.setTargetAtTime(400 + 2600 * rev, now, 0.2);
+      eng.bladeLp.frequency.setTargetAtTime(z ? 120 : 400 + 2600 * rev, now, 0.2);
 
       // Gulls every 8 to 20 s.
       if (nextGull < 0) nextGull = state.time + rand(3, 8);
