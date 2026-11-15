@@ -4,8 +4,17 @@ import { allEntities } from '../entities';
 import { player } from '../player';
 import { bus, say } from '../events';
 import { state } from '../state';
-import { TUNING, UI } from '../config';
+import { TUNING, UI, type Rarity } from '../config';
 import { ITEMS, NPCS } from '../content';
+
+/** Item name colours by rarity. */
+const RARITY_COLOR: Record<Rarity, string> = {
+  plain: '#ffffff',
+  sprouted: '#7bd96b',
+  blooming: '#6fb7ff',
+  heirloom: '#c58cff',
+  kilnfired: '#ff9e3d',
+};
 
 let win: HTMLDivElement | null = null;
 let titleEl: HTMLDivElement | null = null;
@@ -112,7 +121,7 @@ function grid(): HTMLDivElement {
 }
 
 /** One clickable cell: icon, name, a small line of text (price or count). */
-function cell(icon: string, name: string, line: string, onClick: () => void): HTMLDivElement {
+function cell(icon: string, name: string, line: string, nameColor: string, onClick: () => void): HTMLDivElement {
   const el = document.createElement('div');
   Object.assign(el.style, {
     background: UI.panelBgDark,
@@ -128,6 +137,7 @@ function cell(icon: string, name: string, line: string, onClick: () => void): HT
   iconEl.style.fontSize = '22px';
   const nameEl = document.createElement('div');
   nameEl.textContent = name;
+  nameEl.style.color = nameColor;
   const lineEl = document.createElement('div');
   lineEl.textContent = line;
   lineEl.style.color = UI.gold;
@@ -147,17 +157,18 @@ function render(): void {
   for (const id of def.shop ?? []) {
     const item = ITEMS[id];
     if (!item) continue;
-    forSaleEl.appendChild(cell(item.icon, item.name, `${item.value} gp`, () => buy(id)));
+    forSaleEl.appendChild(cell(item.icon, item.name, `${item.value} gp`, RARITY_COLOR[item.rarity ?? 'plain'], () => buy(id)));
   }
 
+  // Quest items are never offered for sale, so they get no Sell cell.
   sellEl.replaceChildren();
   for (const slot of state.inventory) {
     if (!slot) continue;
     const item = ITEMS[slot.item];
-    if (!item) continue;
+    if (!item || item.questItem) continue;
     const price = Math.max(1, Math.floor(item.value / 2));
     const label = slot.count > 1 ? `${slot.count} x ${item.name}` : item.name;
-    sellEl.appendChild(cell(item.icon, label, `${price} gp`, () => sell(slot.item)));
+    sellEl.appendChild(cell(item.icon, label, `${price} gp`, RARITY_COLOR[item.rarity ?? 'plain'], () => sell(slot.item)));
   }
 
   goldEl.textContent = `Your gold: ${state.gold} gp`;
@@ -166,6 +177,10 @@ function render(): void {
 function buy(id: string): void {
   const item = ITEMS[id];
   if (!item) return;
+  if (item.questItem) {
+    say('That is not for sale.', UI.bad);
+    return;
+  }
   if (state.gold < item.value) {
     say('You cannot afford that.', UI.bad);
     return;
@@ -181,7 +196,7 @@ function buy(id: string): void {
 
 function sell(id: string): void {
   const item = ITEMS[id];
-  if (!item) return;
+  if (!item || item.questItem) return;
   if (!removeItem(id, 1)) return;
   const price = Math.max(1, Math.floor(item.value / 2));
   state.gold += price;

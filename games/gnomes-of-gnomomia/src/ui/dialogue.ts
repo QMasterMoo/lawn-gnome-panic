@@ -1,14 +1,21 @@
-// NPC conversation box: a greeting, then numbered options that can start quests, open the shop or heal.
+// NPC conversation box: a greeting, then numbered options that can start quests, open the shop, heal,
+// set flags, teach or reset talents, travel, and give or take items.
 import { checkCondition, startQuest } from '../quests';
 import { openShop } from './shop';
 import { getEntity } from '../entities';
 import { player } from '../player';
 import { bus, say } from '../events';
-import { state, maxHp } from '../state';
-import { TUNING, UI, type DialogueAction, type DialogueOption } from '../config';
-import { NPCS, npcGreetings } from '../content';
+import { state, maxHp, setFlag } from '../state';
+import { addItem, countItem, removeItem } from '../inventory';
+import { chooseClass, respec } from '../talents';
+import { loadZone } from '../zones';
+import { TUNING, UI, type DialogueAction, type DialogueNode, type DialogueOption } from '../config';
+import { CLASSES } from '../data/classes';
+import { ITEMS, NPCS, TOPICS, npcGreetings } from '../content';
 
 const HEAL_COST = 5;
+/** Built-in node that lists a trainer's class abilities. No pack node uses this key. */
+const TRAIN_KEY = '~train';
 
 let box: HTMLDivElement | null = null;
 /** The NPC being talked to, or null when the box is closed. */
@@ -86,16 +93,56 @@ function close(): void {
   box.replaceChildren();
 }
 
+/** The key of the NPC's hub node (where pack topics appear), else its first greeting's node. */
+function hubKey(npcId: string): string {
+  const nodes = NPCS[npcId].nodes;
+  const hub = Object.keys(nodes).find((k) => nodes[k].hub);
+  return hub ?? npcGreetings(npcId)[0]?.node ?? '';
+}
+
+/** The read-only node that lists a trainer's class abilities and their levels. */
+function trainNode(npcId: string): DialogueNode {
+  const trainer = NPCS[npcId].trainer;
+  const cls = trainer ? CLASSES[trainer] : undefined;
+  const lines = cls && cls.abilities.length
+    ? cls.abilities.map((a) => `${a.name} (level ${a.level}): ${a.about}`)
+    : ['I have no techniques to teach you.'];
+  return {
+    text: [`Techniques of the ${cls?.name ?? 'trade'}:`, ...lines].join('\n'),
+    options: [{ text: 'Back.', next: hubKey(npcId) }],
+  };
+}
+
+/** The trainer options, shown only to a player of the trainer's class. */
+function trainerOptions(npcId: string): DialogueOption[] {
+  const def = NPCS[npcId];
+  if (!def.trainer || state.classId !== def.trainer) return [];
+  return [
+    { text: 'Train me.', next: TRAIN_KEY },
+    { text: 'Reset my talents.', action: { type: 'respec' } },
+  ];
+}
+
+/** The options a node shows: its own that pass their condition, plus pack topics on hub nodes. */
+function nodeOptions(npcId: string, node: DialogueNode): DialogueOption[] {
+  const visible = node.options.filter((o) => checkCondition(o.when));
+  if (!node.hub) return visible;
+  const extra = [...(TOPICS[npcId] ?? []), ...trainerOptions(npcId)].filter((o) => checkCondition(o.when));
+  // Inserted before the node's last option (usually the way out).
+  const at = Math.max(0, visible.length - 1);
+  return [...visible.slice(0, at), ...extra, ...visible.slice(at)];
+}
+
 /** Renders one dialogue node: the NPC's name, its line, then the options that pass their condition. */
 function showNode(key: string): void {
   if (!box || openNpc === null) return;
   const def = NPCS[openNpc];
-  const node = def.nodes[key];
+  const node = key === TRAIN_KEY ? trainNode(openNpc) : def.nodes[key];
   if (!node) {
     close();
     return;
   }
-  shownOptions = node.options.filter((o) => checkCondition(o.when));
+  shownOptions = nodeOptions(openNpc, node);
 
   box.replaceChildren();
 
@@ -106,7 +153,7 @@ function showNode(key: string): void {
 
   const text = document.createElement('div');
   text.textContent = node.text;
-  Object.assign(text.style, { color: UI.text, marginBottom: '8px' });
+  Object.assign(text.style, { color: UI.text, marginBottom: '8px', whiteSpace: 'pre-line' });
   box.appendChild(text);
 
   shownOptions.forEach((opt, i) => {
@@ -122,26 +169,31 @@ function showNode(key: string): void {
   box.style.display = 'block';
 }
 
-/** Runs an option's action, then shows its next node or closes. */
+/** Runs an option's action, then shows its next node or closes. A failed action keeps the node open. */
 function pick(opt: DialogueOption): void {
   if (openNpc === null) return;
   const npcId = openNpc;
-  if (opt.action) runAction(opt.action, npcId);
-  // An action such as opening the shop may already have closed the box.
+  if (opt.action && !runAction(opt.action, npcId)) return;
+  // An action such as opening the shop or travelling may already have closed the box.
   if (openNpc === null) return;
   if (opt.next) showNode(opt.next);
   else close();
 }
 
-function runAction(a: DialogueAction, npcId: string): void {
+function itemName(id: string): string {
+  return ITEMS[id]?.name ?? id;
+}
+
+/** Returns false when the action could not be done, so the dialogue stays on the current node. */
+function runAction(a: DialogueAction, npcId: string): boolean {
   switch (a.type) {
     case 'startQuest':
       startQuest(a.quest);
-      break;
+      return true;
     case 'openShop':
       close();
       openShop(npcId);
-      break;
+      return true;
     case 'heal': {
       const name = NPCS[npcId].name;
       if (state.gold >= HEAL_COST) {
@@ -154,10 +206,37 @@ function runAction(a: DialogueAction, npcId: string): void {
       } else {
         say(`You need ${HEAL_COST} gold for that.`, UI.bad);
       }
-      break;
+      return true;
     }
     case 'close':
       close();
-      break;
+      return true;
+    case 'setFlag':
+      setFlag(a.flag, a.value);
+      return true;
+    case 'chooseClass':
+      chooseClass(a.classId);
+      return true;
+    case 'respec':
+      respec();
+      return true;
+    case 'travel':
+      close();
+      loadZone(a.zone, a.x, a.z);
+      return true;
+    case 'giveItem': {
+      if (!addItem(a.item, a.count)) return false;
+      say(`You receive ${itemName(a.item)}${a.count > 1 ? ` x${a.count}` : ''}.`, UI.good);
+      return true;
+    }
+    case 'takeItem': {
+      const have = countItem(a.item);
+      if (have < a.count) {
+        say(`You still need ${a.count - have} more ${itemName(a.item)}.`, UI.bad);
+        return false;
+      }
+      removeItem(a.item, a.count);
+      return true;
+    }
   }
 }

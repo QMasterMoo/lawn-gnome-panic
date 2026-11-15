@@ -3,9 +3,9 @@ import * as THREE from 'three';
 import { loadMyGnome } from '@lawn/gnome';
 import { SPAWN, TUNING, UI } from './config';
 import { say } from './events';
-import { buildWorld, heightAt } from './world';
+import { heightAt } from './world';
 import { createPlayer, player, teleportPlayer, updatePlayer } from './player';
-import { spawnWorldEntities, updateEntities } from './entities';
+import { updateEntities } from './entities';
 import { initCombat, updateCombat } from './combat';
 import { initCamera, updateCamera } from './camera';
 import { initInput, updateInput } from './input';
@@ -46,8 +46,6 @@ function resize(): void {
 window.addEventListener('resize', resize);
 resize();
 
-buildWorld(scene);
-spawnWorldEntities(scene);
 initZones(scene);
 initProgression();
 initBossMoves(scene);

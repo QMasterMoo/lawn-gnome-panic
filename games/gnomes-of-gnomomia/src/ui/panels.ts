@@ -1,15 +1,18 @@
-// The tabbed side panel (RuneScape style): inventory, equipment, stats, quests and spellbook.
+// The tabbed side panel (RuneScape style): inventory, equipment, stats, quests, spells and talents.
 import { bus, say } from '../events';
-import { state, maxHp, maxMp, equippedArmor, equippedWeapon } from '../state';
-import { EQUIP_SLOTS, INVENTORY_SIZE, TUNING, UI, type EquipSlot } from '../config';
+import { state, maxHp, maxMp, equippedWeapon } from '../state';
+import { EQUIP_SLOTS, INVENTORY_SIZE, UI, type EquipSlot, type ItemDef, type QuestDef, type Rarity, type SpellDef } from '../config';
+import { CLASSES } from '../data/classes';
 import { ITEMS, QUESTS } from '../content';
 import { ATTRIBUTES, SKILLS, SPELLS } from '../data/core';
-import { castSpell } from '../combat';
-import { skillXpToNext, attributeMod, weaponRange } from '../rules';
+import { castSpell, playerArmor, playerDefense } from '../combat';
+import { armorValue, attributeMod, mitigation, skillXpToNext, weaponRange } from '../rules';
+import { skillCap, xpToNext } from '../progression';
 import { countItem, dropFromSlot, equipFromSlot, unequip, useFromSlot } from '../inventory';
 import { showContextMenu, type MenuOption } from './hud';
+import { renderTalents } from './talents';
 
-type TabId = 'inventory' | 'equipment' | 'stats' | 'quests' | 'spells';
+type TabId = 'inventory' | 'equipment' | 'stats' | 'quests' | 'spells' | 'talents';
 
 const TABS: { id: TabId; icon: string; name: string; key: string }[] = [
   { id: 'inventory', icon: '🎒', name: 'Inventory', key: 'i' },
@@ -17,14 +20,31 @@ const TABS: { id: TabId; icon: string; name: string; key: string }[] = [
   { id: 'stats', icon: '📊', name: 'Stats', key: 'c' },
   { id: 'quests', icon: '📜', name: 'Quests', key: 'j' },
   { id: 'spells', icon: '🔮', name: 'Spells', key: 'b' },
+  { id: 'talents', icon: '🌱', name: 'Talents', key: 't' },
 ];
 
 const EQUIP_LABEL: Record<EquipSlot, string> = {
   head: 'Head', body: 'Body', legs: 'Legs', hands: 'Hands', feet: 'Feet', weapon: 'Weapon', offhand: 'Off-hand', trinket: 'Trinket',
 };
 
+/** Gnome-shaped equipment layout: [column, row] on a 4-column grid. */
+const EQUIP_GRID: Record<EquipSlot, [number, number]> = {
+  head: [2, 1],
+  weapon: [1, 2], body: [2, 2], hands: [3, 2], offhand: [4, 2],
+  trinket: [1, 3], legs: [2, 3],
+  feet: [2, 4],
+};
+
+const RARITY_COLOR: Record<Rarity, string> = {
+  plain: '#ffffff', sprouted: '#7fd17f', blooming: '#6fb8ff', heirloom: '#c58bff', kilnfired: '#ff9a3c',
+};
+const RARITY_NAME: Record<Rarity, string> = {
+  plain: 'Plain', sprouted: 'Sprouted', blooming: 'Blooming', heirloom: 'Heirloom', kilnfired: 'Kiln-fired',
+};
+
 let panel: HTMLElement;
 let content: HTMLElement;
+let tip: HTMLElement;
 let tabButtons: HTMLButtonElement[] = [];
 let activeTab: TabId = 'inventory';
 /** The last drawn markup; skip redrawing when nothing changed so clicks are not lost to a rebuild. */
@@ -42,6 +62,11 @@ function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** 'critDamage' -> 'Crit damage'. */
+function statLabel(key: string): string {
+  return cap(key.replace(/([A-Z])/g, ' $1').toLowerCase());
+}
+
 export function createPanels(root: HTMLElement): void {
   panel = make('div', {
     position: 'absolute', right: '8px', bottom: '8px', boxSizing: 'border-box',
@@ -51,7 +76,15 @@ export function createPanels(root: HTMLElement): void {
   });
   panel.id = 'panels';
 
-  // Tab bar: five square buttons.
+  // Item tooltip: one floating box, shared by every item cell.
+  tip = make('div', {
+    position: 'fixed', display: 'none', pointerEvents: 'none', zIndex: '20', maxWidth: '230px', boxSizing: 'border-box',
+    background: UI.panelBgDark, border: `1px solid ${UI.borderLight}`, padding: '6px 8px',
+    fontFamily: UI.font, fontSize: '12px', color: UI.text,
+  });
+  tip.id = 'panels-tip';
+
+  // Tab bar: six square buttons.
   const bar = make('div', { display: 'flex', flex: '0 0 auto', borderBottom: `2px solid ${UI.border}` });
   for (const t of TABS) {
     const btn = document.createElement('button');
@@ -70,7 +103,7 @@ export function createPanels(root: HTMLElement): void {
   content = make('div', { flex: '1 1 auto', minHeight: '0', overflowY: 'auto', padding: '6px', boxSizing: 'border-box' });
 
   panel.append(bar, content);
-  root.append(panel);
+  root.append(panel, tip);
 
   applySize();
   window.addEventListener('resize', applySize);
@@ -90,6 +123,8 @@ export function createPanels(root: HTMLElement): void {
   bus.on('skill-up', () => render());
   bus.on('level-up', () => render());
   bus.on('item-added', () => render());
+  bus.on('talents-changed', () => render());
+  bus.on('xp-gained', () => render());
   setInterval(() => render(), 500);
 
   updateTabStyles();
@@ -125,13 +160,67 @@ function render(): void {
     case 'stats': wrap.append(buildStats()); break;
     case 'quests': wrap.append(buildQuests()); break;
     case 'spells': wrap.append(buildSpells()); break;
+    case 'talents': renderTalents(wrap); break;
   }
   const key = activeTab + '|' + wrap.innerHTML;
   if (key === lastKey) return;
   lastKey = key;
   const top = content.scrollTop;
+  hideTip();
   content.replaceChildren(wrap);
   content.scrollTop = top;
+}
+
+// ---------------------------------------------------------------- item tooltips
+
+/** Builds the tooltip body for an item: name by rarity, ilvl, damage or armor, stats, effect. */
+function buildItemTip(id: string): HTMLElement[] {
+  const def: ItemDef | undefined = ITEMS[id];
+  if (!def) return [];
+  const rarity: Rarity = def.rarity ?? 'plain';
+  const lines: HTMLElement[] = [];
+  lines.push(make('div', { fontWeight: 'bold', color: RARITY_COLOR[rarity] }, def.name));
+  lines.push(make('div', { color: UI.textDim, fontSize: '11px' },
+    def.ilvl !== undefined ? `ilvl ${def.ilvl} · ${RARITY_NAME[rarity]}` : RARITY_NAME[rarity]));
+  if (def.kind === 'weapon') {
+    const [lo, hi] = weaponRange(def);
+    lines.push(make('div', {}, `Damage: ${lo}-${hi}${def.damageType ? ' ' + def.damageType : ''}`));
+  }
+  const armor = armorValue(def);
+  if (armor > 0) lines.push(make('div', {}, `Armor: ${armor}`));
+  for (const [k, v] of Object.entries(def.stats ?? {})) {
+    if (v === undefined) continue;
+    lines.push(make('div', { color: UI.good }, `${v > 0 ? '+' : ''}${v} ${statLabel(k)}`));
+  }
+  if (def.effect) lines.push(make('div', { color: UI.gold, fontStyle: 'italic' }, def.effect));
+  if (def.questItem) lines.push(make('div', { color: UI.quest, fontSize: '11px' }, 'Quest item'));
+  return lines;
+}
+
+function showItemTip(e: MouseEvent, id: string): void {
+  tip.replaceChildren(...buildItemTip(id));
+  tip.style.display = 'block';
+  moveItemTip(e);
+}
+
+function moveItemTip(e: MouseEvent): void {
+  let left = e.clientX + 14;
+  let top = e.clientY + 14;
+  if (left + tip.offsetWidth > window.innerWidth) left = e.clientX - tip.offsetWidth - 14;
+  if (top + tip.offsetHeight > window.innerHeight) top = e.clientY - tip.offsetHeight - 14;
+  tip.style.left = `${Math.max(0, left)}px`;
+  tip.style.top = `${Math.max(0, top)}px`;
+}
+
+function hideTip(): void {
+  tip.style.display = 'none';
+}
+
+/** Hooks the shared item tooltip onto a cell. */
+function attachTip(el: HTMLElement, id: string): void {
+  el.onmouseenter = (e) => showItemTip(e, id);
+  el.onmousemove = (e) => moveItemTip(e);
+  el.onmouseleave = () => hideTip();
 }
 
 // ---------------------------------------------------------------- inventory
@@ -159,16 +248,17 @@ function slotCell(i: number): HTMLElement {
   if (s.count > 1) {
     cell.append(make('span', { position: 'absolute', top: '1px', left: '2px', fontSize: '10px', lineHeight: '1', color: UI.gold }, String(s.count)));
   }
-  cell.title = s.count > 1 ? `${def.name} x${s.count}` : def.name;
+  attachTip(cell, s.item);
   cell.onclick = () => useFromSlot(i);
   cell.oncontextmenu = (e) => {
     e.preventDefault();
+    hideTip();
     showContextMenu(e.clientX, e.clientY, slotMenu(i));
   };
   return cell;
 }
 
-/** Right-click menu for inventory slot i. */
+/** Right-click menu for inventory slot i. Quest items get no Drop option. */
 function slotMenu(i: number): MenuOption[] {
   const s = state.inventory[i];
   if (!s) return [];
@@ -179,7 +269,7 @@ function slotMenu(i: number): MenuOption[] {
   } else if (def.slot) {
     opts.push({ label: def.kind === 'armor' ? `Wear ${def.name}` : `Wield ${def.name}`, onSelect: () => equipFromSlot(i) });
   }
-  opts.push({ label: `Drop ${def.name}`, onSelect: () => dropFromSlot(i) });
+  if (!def.questItem) opts.push({ label: `Drop ${def.name}`, onSelect: () => dropFromSlot(i) });
   opts.push({ label: `Examine ${def.name}`, onSelect: () => say(def.examine, UI.textWhite) });
   return opts;
 }
@@ -188,23 +278,33 @@ function slotMenu(i: number): MenuOption[] {
 
 function buildEquipment(): HTMLElement {
   const wrap = make('div');
+  const grid = make('div', { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '4px' });
   for (const slot of EQUIP_SLOTS) {
     const id = state.equipment[slot];
-    const row = make('div', {
-      display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 4px',
-      borderBottom: `1px solid ${UI.border}`, cursor: id ? 'pointer' : 'default',
+    const [col, row] = EQUIP_GRID[slot];
+    const cell = make('div', {
+      gridColumn: String(col), gridRow: String(row), height: '50px', boxSizing: 'border-box', minWidth: '0',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1px', overflow: 'hidden',
+      border: `1px solid ${UI.border}`, background: UI.panelBgDark, cursor: id ? 'pointer' : 'default',
     });
-    row.append(make('span', { width: '56px', color: UI.textDim }, EQUIP_LABEL[slot]));
     if (id) {
       const def = ITEMS[id];
-      row.append(make('span', { fontSize: '18px', lineHeight: '1' }, def.icon), make('span', {}, def.name));
-      row.title = 'Click to take off';
-      row.onclick = () => unequip(slot);
+      cell.style.borderColor = RARITY_COLOR[def.rarity ?? 'plain'];
+      cell.append(make('span', { fontSize: '20px', lineHeight: '1' }, def.icon));
+      cell.append(make('span', {
+        fontSize: '9px', lineHeight: '1.1', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }, def.name));
+      attachTip(cell, id);
+      cell.onclick = () => {
+        hideTip();
+        unequip(slot);
+      };
     } else {
-      row.append(make('span', { color: UI.textDim }, 'empty'));
+      cell.append(make('span', { fontSize: '9px', color: UI.textDim }, EQUIP_LABEL[slot]));
     }
-    wrap.append(row);
+    grid.append(cell);
   }
+  wrap.append(grid);
 
   const weapon = equippedWeapon();
   const [dmgMin, dmgMax] = weapon ? weaponRange(weapon) : [1, 2];
@@ -212,7 +312,7 @@ function buildEquipment(): HTMLElement {
   const skill = !weapon || dmgType === 'crush' ? 'blunt' : dmgType === 'pierce' ? 'marksmanship' : 'blade';
   const skillLabel = SKILLS.find((s) => s.id === skill)?.name ?? skill;
   wrap.append(
-    make('div', { marginTop: '8px' }, `Armor rating: ${equippedArmor()}`),
+    make('div', { marginTop: '8px' }, `Armor rating: ${playerArmor()}`),
     make('div', {}, `Damage: ${dmgMin}-${dmgMax} (${skillLabel})`),
   );
   return wrap;
@@ -222,9 +322,10 @@ function buildEquipment(): HTMLElement {
 
 function buildStats(): HTMLElement {
   const wrap = make('div');
+  const className = state.classId ? CLASSES[state.classId].name : 'Classless';
   wrap.append(
-    make('div', {}, `Level ${state.level}`),
-    make('div', {}, `Skill-ups to next level: ${state.skillUps}/${TUNING.skillUpsPerLevel}`),
+    make('div', { fontWeight: 'bold' }, `${className} · Level ${state.level}`),
+    make('div', {}, `XP ${state.xp} / ${xpToNext(state.level)}`),
     make('div', {}, `HP ${state.hp}/${maxHp()}`),
     make('div', {}, `MP ${state.mp}/${maxMp()}`),
   );
@@ -242,6 +343,7 @@ function buildStats(): HTMLElement {
     wrap.append(row);
   }
 
+  const levelCap = skillCap();
   wrap.append(make('div', { marginTop: '8px', color: UI.gold, fontWeight: 'bold' }, 'Skills'));
   for (const s of SKILLS) {
     const sk = state.skills[s.id];
@@ -250,57 +352,99 @@ function buildStats(): HTMLElement {
     const row = make('div', { marginBottom: '4px' });
     row.title = s.about;
     const line = make('div', { display: 'flex' });
-    line.append(make('span', { flex: '1' }, s.name), make('span', {}, String(sk.level)));
+    line.append(make('span', { flex: '1' }, s.name), make('span', {}, `${sk.level} / ${levelCap}`));
     const bar = make('div', { height: '4px', background: UI.border, marginTop: '2px' });
     bar.append(make('div', { height: '100%', width: `${pct}%`, background: UI.good }));
     row.append(line, bar);
     wrap.append(row);
   }
+
+  const armorPct = Math.round(mitigation(playerArmor(), state.level) * 100);
+  wrap.append(
+    make('div', { marginTop: '8px' }, `Defense: ${playerDefense()}`),
+    make('div', {}, `Armor: ${armorPct}%`),
+    make('div', { marginTop: '4px', color: state.skillPoints > 0 ? UI.gold : UI.textDim },
+      `Skill points unspent: ${state.skillPoints}`),
+  );
   return wrap;
 }
 
 // ---------------------------------------------------------------- quests
 
+/** One quest in the journal: name, and the current stage text when started. */
+function questRow(q: QuestDef): HTMLElement {
+  const prog = state.quests[q.id];
+  const row = make('div', { marginBottom: '8px' });
+  if (!prog) {
+    row.append(make('div', { color: UI.bad }, q.name));
+  } else if (prog.done) {
+    row.append(make('div', { color: UI.good }, `${q.name} ✔`));
+  } else {
+    row.append(make('div', { color: UI.gold }, q.name));
+    const stage = q.stages[prog.stage];
+    if (stage) {
+      let text = stage.text;
+      const obj = stage.objective;
+      if (obj.type === 'kill') text += ` (${prog.count}/${obj.count})`;
+      if (obj.type === 'collect') text += ` (${countItem(obj.item)}/${obj.count})`;
+      row.append(make('div', { color: UI.text }, text));
+    }
+  }
+  return row;
+}
+
+/** Groups with main chapters first, then storylines. Finished quests sit in a collapsed list. */
 function buildQuests(): HTMLElement {
   const wrap = make('div');
+  const groups = new Map<string, QuestDef[]>();
   for (const q of Object.values(QUESTS)) {
-    const prog = state.quests[q.id];
-    const row = make('div', { marginBottom: '8px' });
-    if (!prog) {
-      row.append(make('div', { color: UI.bad }, q.name));
-    } else if (prog.done) {
-      row.append(make('div', { color: UI.good }, `${q.name} ✔`));
-    } else {
-      row.append(make('div', { color: UI.gold }, q.name));
-      const stage = q.stages[prog.stage];
-      if (stage) {
-        let text = stage.text;
-        const obj = stage.objective;
-        if (obj.type === 'kill') text += ` (${prog.count}/${obj.count})`;
-        if (obj.type === 'collect') text += ` (${countItem(obj.item)}/${obj.count})`;
-        row.append(make('div', { color: UI.text }, text));
-      }
+    const key = q.chain ?? 'Other storylines';
+    const list = groups.get(key) ?? [];
+    list.push(q);
+    groups.set(key, list);
+  }
+  const isMain = (list: QuestDef[]) => list.some((q) => q.tier !== 'side');
+  const ordered = [...groups.entries()].sort((a, b) => Number(isMain(b[1])) - Number(isMain(a[1])));
+
+  for (const [chain, list] of ordered) {
+    wrap.append(make('div', { marginTop: '6px', color: UI.gold, fontWeight: 'bold' }, chain));
+    const open = list.filter((q) => !state.quests[q.id]?.done);
+    const finished = list.filter((q) => state.quests[q.id]?.done);
+    for (const q of open) wrap.append(questRow(q));
+    if (finished.length > 0) {
+      const details = document.createElement('details');
+      details.append(make('summary', { color: UI.textDim, cursor: 'pointer', marginBottom: '6px' }, `Finished (${finished.length})`));
+      for (const q of finished) details.append(questRow(q));
+      wrap.append(details);
     }
-    wrap.append(row);
   }
   return wrap;
 }
 
 // ---------------------------------------------------------------- spells
 
+/** MP shown for a spell: Hedge-Mage uses its highest rank at or below the level, others count as rank 1. */
+function spellMpCost(sp: SpellDef): number {
+  const rank = state.classId === 'mage'
+    ? sp.ranks.filter((r) => r <= state.level).reduce((a, b) => Math.max(a, b), 1)
+    : 1;
+  return Math.round(5 + 1.5 * rank);
+}
+
 function buildSpells(): HTMLElement {
   const wrap = make('div');
   Object.values(SPELLS).forEach((sp, index) => {
+    const mp = spellMpCost(sp);
     const row = make('div', {
       display: 'flex', alignItems: 'flex-start', gap: '6px', padding: '5px 4px', cursor: 'pointer',
-      borderBottom: `1px solid ${UI.border}`, opacity: state.mp < sp.cost ? '0.5' : '1',
+      borderBottom: `1px solid ${UI.border}`, opacity: state.mp < mp ? '0.5' : '1',
     });
     row.title = sp.about;
     row.append(make('span', { fontSize: '18px', lineHeight: '1' }, sp.icon));
     const text = make('div', { flex: '1' });
     text.append(
       make('div', {}, `${sp.name} [${index + 1}]`),
-      make('div', { color: UI.mana, fontSize: '11px' }, `${sp.cost} MP`),
+      make('div', { color: UI.mana, fontSize: '11px' }, `${mp} MP`),
       make('div', { color: UI.textDim, fontSize: '11px' }, sp.about),
     );
     row.append(text);

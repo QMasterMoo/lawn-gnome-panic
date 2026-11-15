@@ -75,12 +75,15 @@ export function newGameState(): GameState {
 /** The one live game state. Replace its contents with Object.assign(state, loaded); never reassign the export. */
 export const state: GameState = newGameState();
 
+/** Endurance from levels is already in the 12 per level, so only Endurance above that adds. Wardens get x1.25. */
 export function maxHp(s: GameState = state): number {
-  return 20 + s.attributes.endurance + (s.level - 1) * 5;
+  const extraEndurance = Math.max(0, s.attributes.endurance - 10 - (s.level - 1));
+  const base = 40 + 12 * (s.level - 1) + 2 * extraEndurance;
+  return Math.round(base * (s.classId === 'warden' ? 1.25 : 1));
 }
 
 export function maxMp(s: GameState = state): number {
-  return 10 + s.attributes.intelligence * 2;
+  return 20 + 4 * (s.attributes.intelligence - 10) + 3 * s.level;
 }
 
 /** Sets a story flag, then tells the listeners and the panels. */
