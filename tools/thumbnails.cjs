@@ -75,7 +75,13 @@ async function waitForServer(url, ms) {
 
 (async () => {
   const wanted = process.argv.slice(2);
-  const games = fs.readdirSync(path.join(root, 'games')).filter((g) => fs.existsSync(path.join(root, 'games', g, 'vite.config.ts')) && (wanted.length === 0 || wanted.includes(g)));
+  // Party-only games ("lawn": { "partyOnly": true }) are not on the landing page, so they get no thumbnail.
+  const partyOnly = (g) => {
+    const pkgPath = path.join(root, 'games', g, 'package.json');
+    if (!fs.existsSync(pkgPath)) return false;
+    return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).lawn?.partyOnly === true;
+  };
+  const games = fs.readdirSync(path.join(root, 'games')).filter((g) => fs.existsSync(path.join(root, 'games', g, 'vite.config.ts')) && !partyOnly(g) && (wanted.length === 0 || wanted.includes(g)));
   const exe = BROWSERS.find((b) => fs.existsSync(b));
   if (!exe) throw new Error('no Edge or Chrome found (set BROWSER=<path>)');
   const browser = await puppeteer.launch({ executablePath: exe, headless: true, args: ['--ignore-gpu-blocklist'] });
