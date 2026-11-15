@@ -1,2 +1,2 @@
 import { defineConfig } from 'vite';
-export default defineConfig({ base: './', server: { port: 5191, host: true } });
+export default defineConfig({ base: './', server: { port: 5291, host: true } });

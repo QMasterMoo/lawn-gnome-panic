@@ -8,7 +8,7 @@ The question it answers: is a small, quest-driven gnome RPG fun to click around 
 
 ```
 npm install
-npm run dev -w games/gnomes-of-gnomomia   # http://localhost:5191
+npm run dev -w games/gnomes-of-gnomomia   # http://localhost:5291
 ```
 
 ## Play
