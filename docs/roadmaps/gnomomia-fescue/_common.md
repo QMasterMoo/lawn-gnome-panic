@@ -35,3 +35,5 @@ Turning a design doc into a pack:
 8. Follow `docs/design/gnomomia/lore-rules.md` for any line you have to invent. Don't answer loose threads.
 
 Done-when for every content issue: `npx tsc --noEmit -p games/gnomes-of-gnomomia` shows no errors in your file, and every id you reference exists, either in your pack or in the canonical id table in `src/data/README.md`.
+
+Also run the content linter on your own pack: `node games/gnomes-of-gnomomia/scripts/lint-content.mjs <your-pack-id>` (for a zone file, run it with no argument and read the `zone:<id>` lines). It reports ids nobody defines, broken dialogue `next` links, quests no dialogue option starts, and NPCs, spawns or objects placed inside a house, the shrine, a lake or off the map. Fix every ERROR it prints for your pack, except an unknown id that the canonical table in `src/data/README.md` lists as owned by another pack (it may not be written yet).

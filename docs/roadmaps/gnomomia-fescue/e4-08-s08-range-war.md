@@ -11,7 +11,7 @@ Storyline 08, "A Brand for Every Herd", is playable in Cloverfield for both outc
 ## Change
 `src/data/packs/s08-range-war.ts`, prefix `s08-`, zone `cloverfield`. Follow the content pack recipe:
 - **Unlock:** the first quest unlocks after `c4-antenna-sister` is done.
-- **Branching:** where the storyline branches on `ants`, write two variants of the affected stages or quests, gated `when: { flag: { name: 'ants', value: 'peace' } }` and `{ ..., value: 'war' }`.
+- **Branching:** where the storyline branches on `ants`, write two variants of the affected quests (a `QuestStage` has no `when` field, so branch by whole quests: e.g. `s08-x-peace` and `s08-x-war`, whose start options and turn-in greetings are gated `when: { flag: { name: 'ants', value: 'peace' } }` and `{ ..., value: 'war' }`).
 - **New NPC:** Darnel Pegg (brand-carver, Sodbury).
 - **Miniboss:** Gnawjaw, Hob of the Hayloft (`s08-gnawjaw`, L15 miniboss furred, model `rat` scale 1.3). He survives: use a `kill` stage on `s08-gnawjaw` whose `lastWords` say he yields and bolts. Then an NPC `s08-gnawjaw-yielded` (model `rat`) stands at the Pettigrew hayloft, with `hidden: { not: { questAtLeast: { id: '<that quest>', stage: <the stage after the kill> } } }`, so he only shows once the kill stage is passed. The talk and the `mice` choice happen with this NPC.
 - **Canon NPCs** `haybale`, `fallow` and `kree` get lines through `topics`/`greetingsFirst`/`extraNodes`.
