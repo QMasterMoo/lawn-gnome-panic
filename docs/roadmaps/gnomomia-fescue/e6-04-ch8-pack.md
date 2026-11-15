@@ -48,7 +48,7 @@ Stage texts come from quests.md phases 1-3. Reward: one Kiln-fired item by class
 
 ### After the battle
 - Add `extraNodes` and `greetingsFirst` for `fernwick` ("My knees have stopped hurting. First time in a month. Thought you should know.").
-- Export `export const EPILOGUE: readonly { when?: Condition; text: string }[]` with one line per region beat from quests.md "Ending" and the storylines README effects table. ui/epilogue.ts reads it by importing this file directly.
+- Keep the stub's `export const EPILOGUE: readonly { when?: Condition; text: string }[]` (fill it) with one line per region beat from quests.md "Ending" and the storylines README effects table. ui/epilogue.ts reads it by importing this file directly.
 
 ## Done when
 - The content-pack done-when in the common section.
