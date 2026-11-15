@@ -9,7 +9,7 @@
 export const PROTOCOL_VERSION = 3;
 
 /** Games the server knows. A hello without `game` is Lawn Gnome Panic (older clients never sent one). */
-export type GameId = 'lawn-gnome-panic' | 'gnome-front' | 'gnaft';
+export type GameId = 'lawn-gnome-panic' | 'gnome-front' | 'gnaft' | 'music-room';
 export const DEFAULT_GAME: GameId = 'lawn-gnome-panic';
 
 /** Per-game matchmaking rules. Queues, rooms and matches never mix games. */
@@ -35,6 +35,8 @@ export const GAMES: Record<GameId, GameRules> = {
   'gnome-front': { minPlayers: 2, maxPlayers: 24, publicWaitS: 15, privateWaitS: 45, lateJoin: true },
   // Co-op raft: the first player starts the raft at once (and hosts it), friends join with the room code.
   'gnaft': { minPlayers: 1, maxPlayers: 8, publicWaitS: 0, privateWaitS: 0, lateJoin: true },
+  // Jam room: no host logic, notes are relayed to everyone. Opens at once; anyone drops in (public or room code).
+  'music-room': { minPlayers: 1, maxPlayers: 16, publicWaitS: 0, privateWaitS: 0, lateJoin: true },
 };
 
 export function isGameId(v: unknown): v is GameId {
