@@ -57,10 +57,17 @@ export const TOPICS: Record<string, DialogueOption[]> = {};
 export const GREETINGS_FIRST: Record<string, Greeting[]> = {};
 export const ALLIES: AllyDef[] = [];
 
+/** Problems found while merging packs. The game throws them all at once below; the content linter (which sets
+ * globalThis.__GNOMOMIA_LINT__) reads them instead, so one broken pack does not hide the others. */
+export const LOAD_ERRORS: string[] = [];
+function loadError(msg: string): void {
+  LOAD_ERRORS.push(msg);
+}
+
 function mergeTable<T>(kind: string, pack: string, into: Record<string, T>, from: Record<string, T> | undefined): void {
   if (!from) return;
   for (const [id, def] of Object.entries(from)) {
-    if (id in into) throw new Error(`duplicate ${kind} id: ${id} in pack ${pack}`);
+    if (id in into) { loadError(`duplicate ${kind} id: ${id} in pack ${pack}`); continue; }
     into[id] = def;
   }
 }
@@ -79,7 +86,7 @@ for (const p of PACKS) {
   if (p.spawns) SPAWNS.push(...p.spawns);
   if (p.allies) {
     for (const a of p.allies) {
-      if (ALLIES.some((x) => x.id === a.id)) throw new Error(`duplicate ally id: ${a.id} in pack ${p.id}`);
+      if (ALLIES.some((x) => x.id === a.id)) { loadError(`duplicate ally id: ${a.id} in pack ${p.id}`); continue; }
       ALLIES.push(a);
     }
   }
@@ -90,20 +97,24 @@ const nodeOwner: Record<string, string> = {};
 for (const p of PACKS) {
   for (const [npcId, nodes] of Object.entries(p.extraNodes ?? {})) {
     const npc = NPCS[npcId];
-    if (!npc) throw new Error(`extraNodes for unknown npc: ${npcId} in pack ${p.id}`);
+    if (!npc) { loadError(`extraNodes for unknown npc: ${npcId} in pack ${p.id}`); continue; }
     for (const [nodeId, node] of Object.entries(nodes)) {
-      if (nodeId in npc.nodes) throw new Error(`duplicate dialogue node id: ${npcId}.${nodeId} in pack ${p.id}${nodeOwner[`${npcId}.${nodeId}`] ? ` (also in ${nodeOwner[`${npcId}.${nodeId}`]})` : ''}`);
+      if (nodeId in npc.nodes) { loadError(`duplicate dialogue node id: ${npcId}.${nodeId} in pack ${p.id}${nodeOwner[`${npcId}.${nodeId}`] ? ` (also in ${nodeOwner[`${npcId}.${nodeId}`]})` : ''}`); continue; }
       npc.nodes[nodeId] = node;
       nodeOwner[`${npcId}.${nodeId}`] = p.id;
     }
   }
   for (const [npcId, stock] of Object.entries(p.shopAdds ?? {})) {
     const npc = NPCS[npcId];
-    if (!npc) throw new Error(`shopAdds for unknown npc: ${npcId} in pack ${p.id}`);
+    if (!npc) { loadError(`shopAdds for unknown npc: ${npcId} in pack ${p.id}`); continue; }
     npc.shop = [...(npc.shop ?? []), ...stock];
   }
   for (const [npcId, opts] of Object.entries(p.topics ?? {})) (TOPICS[npcId] ??= []).push(...opts);
   for (const [npcId, greets] of Object.entries(p.greetingsFirst ?? {})) (GREETINGS_FIRST[npcId] ??= []).push(...greets);
+}
+
+if (LOAD_ERRORS.length > 0 && !(globalThis as { __GNOMOMIA_LINT__?: boolean }).__GNOMOMIA_LINT__) {
+  throw new Error(`content packs failed to load:\n${LOAD_ERRORS.join('\n')}`);
 }
 
 /** An NPC's greetings in check order: pack greetings first, then its own. */

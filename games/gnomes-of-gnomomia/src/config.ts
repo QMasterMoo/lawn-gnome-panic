@@ -159,6 +159,7 @@ export interface EnemyDef {
   wants: string;                                // lore rule 6, shown on Examine
   moves?: readonly BossMoveDef[];
   lastWords?: string;                           // said on death
+  onDeathFlag?: { flag: string; value: string };   // set when this enemy dies
 }
 
 export interface SpawnGroup { zone: ZoneId; enemy: string; x: number; z: number; count: number; spread: number; when?: Condition }
@@ -175,6 +176,7 @@ export interface WorldObjectDef {
   when?: Condition;             // hidden unless this holds
   once?: boolean;               // can be used once per save
   giveItem?: { item: string; count: number };
+  takeItem?: { item: string; count: number };   // consumed on use; the object refuses to work without them
   setFlag?: { flag: string; value: string };
 }
 
@@ -219,7 +221,8 @@ export type DialogueAction =
   | { type: 'respec' }
   | { type: 'travel'; zone: ZoneId; x: number; z: number }
   | { type: 'giveItem'; item: string; count: number }
-  | { type: 'takeItem'; item: string; count: number };
+  | { type: 'takeItem'; item: string; count: number }
+  | { type: 'giveGold'; amount: number } | { type: 'takeGold'; amount: number };
 
 /** `next` absent = close the dialogue (after running the action). */
 export interface DialogueOption { text: string; next?: string; action?: DialogueAction; when?: Condition }
@@ -233,6 +236,7 @@ export interface NpcDef {
   greetings: readonly Greeting[]; nodes: Record<string, DialogueNode>;
   shop?: readonly string[]; trainer?: ClassId; examine: string;
   model?: CreatureModel;         // non-gnome NPCs (ants, moles, the Gleaner); default 'gnome'
+  scale?: number;                // model scale, default 1
 }
 
 export type Objective =

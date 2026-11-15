@@ -10,7 +10,7 @@ Storyline 10, "Clippings", is playable: the Hedgewrights' side of the Hedgewood 
 
 ## Change
 `src/data/packs/s10-hedgewrights.ts`, prefix `s10-`, zone `hedgewood`. Follow the content pack recipe:
-- **Unlock:** the first quest unlocks after `c5-elder-privet` is done. Quest 5 needs `c5-heartwood` done, and branches on flag `hedge` with two variants gated by flag value.
+- **Unlock:** the first quest unlocks after `c5-elder-privet` is done. Quest 5 needs `c5-heartwood` done, and branches on flag `hedge`: write it as two separate quests (a `QuestStage` has no `when`), whose start options and turn-in greetings are gated by the flag value.
 - **Canon NPCs:** `splitwell`, `fen` and `juniper`. Use `topics`/`greetingsFirst`/`extraNodes`.
 - **New NPCs:** Betony Panwell, Rue Spokeshave and Tallyman Oakum. Mallow Trowell is dead: use the name in object text only.
 - **Objects:** the height post (`post`) by the sawpit, and the log-run.

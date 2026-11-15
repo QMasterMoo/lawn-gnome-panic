@@ -9,7 +9,7 @@ import type { Entity, EnemyDef, InvSlot, NpcDef, ZoneId } from './config';
 import { ENEMIES, NPCS, QUESTS, SPAWNS } from './content';
 import { checkCondition } from './quests';
 import { enemyStats } from './rules';
-import { state } from './state';
+import { setFlag, state } from './state';
 import { createEnemyRig, createNpcRig, createLootRig } from './models';
 import type { CreatureRig } from './models';
 
@@ -488,6 +488,7 @@ export function killEntity(id: number): void {
   bus.emit('enemy-killed', { defId: def.id, entityId: id });
   say(`You defeated the ${def.name}.`, UI.good);
   if (def.lastWords) say(`${def.name}: "${def.lastWords}"`, UI.textDim);
+  if (def.onDeathFlag) setFlag(def.onDeathFlag.flag, def.onDeathFlag.value);
 }
 
 export function spawnLoot(x: number, z: number, items: InvSlot[], gold: number): Entity | null {

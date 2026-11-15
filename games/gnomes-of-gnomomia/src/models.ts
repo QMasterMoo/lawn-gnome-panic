@@ -601,8 +601,12 @@ export function createEnemyRig(def: EnemyDef): CreatureRig {
 /** A villager: a gnome built from its look. */
 export function createNpcRig(def: NpcDef): CreatureRig {
   // Non-gnome NPCs (an ant, the Gleaner, a mole) render as their creature, in their shirt colour.
-  if (def.model && def.model !== 'gnome') return creatureByModel(def.model, def.look.shirt, 1, false);
-  return gnomeRig(def.look);
+  const rig = def.model && def.model !== 'gnome'
+    ? creatureByModel(def.model, def.look.shirt, 1, false)
+    : gnomeRig(def.look);
+  // Set on the root object, which the rig's update never resets.
+  rig.object.scale.setScalar(def.scale ?? 1);
+  return rig;
 }
 
 /** A loot pile: a tied sack with three gold coins beside it. It bobs gently. */

@@ -238,5 +238,21 @@ function runAction(a: DialogueAction, npcId: string): boolean {
       removeItem(a.item, a.count);
       return true;
     }
+    case 'giveGold': {
+      state.gold += a.amount;
+      say(`You receive ${a.amount} gold.`, UI.gold);
+      bus.emit('changed', {});
+      return true;
+    }
+    case 'takeGold': {
+      if (state.gold < a.amount) {
+        say(`You need ${a.amount} gold.`, UI.bad);
+        return false;
+      }
+      state.gold -= a.amount;
+      say(`You pay ${a.amount} gold.`, UI.gold);
+      bus.emit('changed', {});
+      return true;
+    }
   }
 }

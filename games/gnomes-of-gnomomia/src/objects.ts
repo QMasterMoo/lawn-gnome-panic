@@ -2,9 +2,9 @@
 // Each zone's objects are built from three.js primitives and rebuilt when a flag or quest changes.
 import * as THREE from 'three';
 import { UI, type WorldObjectDef, type ZoneId } from './config';
-import { OBJECTS } from './content';
+import { ITEMS, OBJECTS } from './content';
 import { bus, say } from './events';
-import { addItem } from './inventory';
+import { addItem, countItem, removeItem } from './inventory';
 import { checkCondition } from './quests';
 import { setFlag, state } from './state';
 import { heightAt } from './world';
@@ -187,8 +187,13 @@ function removeMesh(id: string): void {
 export function useObject(objectId: string): void {
   const def = OBJECTS[objectId];
   if (!def) return;
+  if (def.takeItem && countItem(def.takeItem.item) < def.takeItem.count) {
+    say(`You need ${def.takeItem.count} x ${ITEMS[def.takeItem.item]?.name ?? def.takeItem.item}.`, UI.bad);
+    return;
+  }
   deferRefresh = true;
   try {
+    if (def.takeItem) removeItem(def.takeItem.item, def.takeItem.count);
     if (def.text) say(def.text, UI.quest);
     if (def.giveItem) addItem(def.giveItem.item, def.giveItem.count);
     if (def.setFlag) setFlag(def.setFlag.flag, def.setFlag.value);

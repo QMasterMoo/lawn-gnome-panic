@@ -37,3 +37,12 @@ Turning a design doc into a pack:
 Done-when for every content issue: `npx tsc --noEmit -p games/gnomes-of-gnomomia` shows no errors in your file, and every id you reference exists, either in your pack or in the canonical id table in `src/data/README.md`.
 
 Also run the content linter on your own pack: `node games/gnomes-of-gnomomia/scripts/lint-content.mjs <your-pack-id>` (for a zone file, run it with no argument and read the `zone:<id>` lines). It reports ids nobody defines, broken dialogue `next` links, quests no dialogue option starts, and NPCs, spawns or objects placed inside a house, the shrine, a lake or off the map. Fix every ERROR it prints for your pack, except an unknown id that the canonical table in `src/data/README.md` lists as owned by another pack (it may not be written yet).
+
+### Engine features added after the plan was written (use them instead of working around)
+- Dialogue actions `{ type: 'giveGold', amount }` and `{ type: 'takeGold', amount }` (a short `takeGold` stops the option, like `takeItem`).
+- `WorldObjectDef.takeItem: { item, count }`: the object consumes these items when used and refuses to work without them (e.g. a perch that eats 10 grain sacks).
+- `EnemyDef.onDeathFlag: { flag, value }`: sets a flag when the enemy dies (e.g. a boss kill that decides a branch).
+- `NpcDef.scale`: model scale for an NPC (default 1).
+- A quest's first stage can't be a `talk` to the NPC that starts it: the start option runs after that talk event, so the player would have to talk twice. Start quests on their first real objective, or accept the double talk deliberately.
+- A `QuestStage` has no `when`. Branch by writing separate quests whose start options and turn-in greetings are gated on the flag.
+- A `Condition` holds only one `quest` field, but `not: { not: X }` means X, so you can chain: `{ quest: { id: A, status: 'done' }, not: { not: { quest: { id: B, status: 'done' }, not: { not: { quest: { id: C, status: 'done' } } } } } }` requires A, B and C all done.

@@ -19,6 +19,7 @@ await build({
 });
 let C;
 try {
+  globalThis.__GNOMOMIA_LINT__ = true;   // content.ts collects load errors instead of throwing
   C = await import(pathToFileURL(out).href);
 } catch (e) {
   console.log(`LOAD ERROR: ${e.message}`);
@@ -33,6 +34,11 @@ const report = (pack, level, msg) => {
   if (only.size && !only.has(pack)) return;
   problems.push({ pack, level, msg });
 };
+
+for (const msg of C.LOAD_ERRORS ?? []) {
+  const pack = /in pack (\S+)/.exec(msg)?.[1] ?? '?';
+  report(pack, 'error', `load: ${msg}`);
+}
 
 // Which pack defined each id (for attributing problems).
 const owner = { item: {}, enemy: {}, npc: {}, quest: {}, object: {} };
@@ -167,6 +173,12 @@ for (const z of Object.values(C.ZONES)) for (const ex of z.exits) {
   checkCond(`zone:${z.id}`, ex.when, `zone ${z.id} exit to ${ex.to}`);
   const why = blockedReason(ex.to, ex.arriveX, ex.arriveZ);
   if (why) report(`zone:${z.id}`, 'error', `zone ${z.id} exit to ${ex.to}: arrival (${ex.arriveX}, ${ex.arriveZ}) is ${why}`);
+  // Arriving inside another exit's trigger bounces the player straight on (ping-pong).
+  for (const other of C.ZONES[ex.to]?.exits ?? []) {
+    if (Math.hypot(ex.arriveX - other.x, ex.arriveZ - other.z) < other.r + 0.5) {
+      report(`zone:${z.id}`, 'error', `zone ${z.id} exit to ${ex.to}: arrival (${ex.arriveX}, ${ex.arriveZ}) is inside ${ex.to}'s exit to ${other.to} at (${other.x}, ${other.z}) r ${other.r}`);
+    }
+  }
 }
 
 const errors = problems.filter((p) => p.level === 'error');
