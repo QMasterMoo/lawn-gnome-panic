@@ -1,7 +1,9 @@
+/// <reference types="vite/client" />
 // Gnomes of Gnomomia: renderer and the main loop. Systems live one per file; this file only wires them.
 import * as THREE from 'three';
 import { loadMyGnome } from '@lawn/gnome';
-import { SPAWN, TUNING, UI } from './config';
+import { SPAWN, TUNING, UI, type ZoneId } from './config';
+import { ZONES } from './content';
 import { say } from './events';
 import { heightAt } from './world';
 import { createPlayer, player, teleportPlayer, updatePlayer } from './player';
@@ -15,7 +17,7 @@ import { createPanels } from './ui/panels';
 import { createDialogue } from './ui/dialogue';
 import { createShop } from './ui/shop';
 import { initQuests, updateQuests } from './quests';
-import { initZones, updateZones } from './zones';
+import { initZones, loadZone, updateZones } from './zones';
 import { initProgression } from './progression';
 import { initBossMoves, updateBossMoves } from './bossmoves';
 import { initMower, updateMower } from './mower';
@@ -97,16 +99,28 @@ function frame(now: number): void {
 }
 requestAnimationFrame(frame);
 
-const hasSave = loadGame();
-const choice = await showTitle(ui, hasSave);
-if (choice === 'new') {
-  deleteSave();
+// Dev only: ?zone=<id> skips the title and drops a fresh character into that zone without touching the save
+// (used by tools/smoke.sh to check every zone builds). Autosave stays off in this mode.
+const debugZone = import.meta.env.DEV ? new URLSearchParams(location.search).get('zone') : null;
+if (debugZone && debugZone in ZONES) {
   Object.assign(state, newGameState());
-  teleportPlayer(SPAWN.x, SPAWN.z);
-  say('Welcome to Gnomomia. Talk to Elder Fernwick, by the well.', UI.quest);
+  loadZone(debugZone as ZoneId);
+  saveTimer = -Infinity;
+  running = true;
 } else {
-  say('Welcome back to Gnomomia.', UI.quest);
+  const hasSave = loadGame();
+  const choice = await showTitle(ui, hasSave);
+  if (choice === 'new') {
+    deleteSave();
+    Object.assign(state, newGameState());
+    // A loaded save may have built another zone: rebuild Mossbottom for the new character.
+    loadZone('mossbottom', SPAWN.x, SPAWN.z);
+    teleportPlayer(SPAWN.x, SPAWN.z);
+    say('Welcome to Gnomomia. Talk to Elder Fernwick, by the well.', UI.quest);
+  } else {
+    say('Welcome back to Gnomomia.', UI.quest);
+  }
+  player.position.y = heightAt(player.position.x, player.position.z);
+  running = true;
+  window.addEventListener('beforeunload', () => saveGame());
 }
-player.position.y = heightAt(player.position.x, player.position.z);
-running = true;
-window.addEventListener('beforeunload', () => saveGame());

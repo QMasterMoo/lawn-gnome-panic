@@ -157,7 +157,7 @@ export const PACK: ContentPack = {
     's11-lupin': {
       id: 's11-lupin', name: 'Lupin Crock', look: look(0x5a4632, 0xb5a27a, null), zone: 'rockery', x: 6, z: -104, wander: 1,
       // The Verge chapter: when fired she stands at the Last Tuft Shrine.
-      placements: [{ zone: 'verge', x: 0, z: 80, when: flagIs('unfired', 'fired') }],
+      placements: [{ zone: 'verge', x: 4, z: 84, when: flagIs('unfired', 'fired') }],
       greetings: [
         { when: onStage(Q_LAST, 1), node: 'choice' },
         { when: flagIs('unfired', 'kept'), node: 'kept-after' },
