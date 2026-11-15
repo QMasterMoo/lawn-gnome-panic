@@ -1,8 +1,12 @@
 // The player's character sheet and belongings: one mutable object, saved as JSON.
 import {
-  ATTRIBUTES, INVENTORY_SIZE, ITEMS, SKILLS, START_ATTRIBUTE, START_EQUIPMENT, START_GOLD, START_INVENTORY, START_SKILL,
-  type Attribute, type EquipSlot, type InvSlot, type SkillId,
+  INVENTORY_SIZE, START_ATTRIBUTE, START_GOLD, START_SKILL,
+  type Attribute, type ClassId, type EquipSlot, type InvSlot, type SkillId, type ZoneId,
 } from './config';
+import { ATTRIBUTES, SKILLS, START_EQUIPMENT, START_INVENTORY } from './data/core';
+import { bus } from './events';
+import { ITEMS } from './content';
+import { armorValue } from './rules';
 
 export interface SkillState {
   level: number;
@@ -22,6 +26,22 @@ export interface GameState {
   level: number;
   /** Skill increases since the last character level (TUNING.skillUpsPerLevel to level up). */
   skillUps: number;
+  /** Experience toward the next character level (progression.ts). */
+  xp: number;
+  /** The class the player picked, or null before the choice. */
+  classId: ClassId | null;
+  /** Unspent talent points. */
+  skillPoints: number;
+  /** Talent id -> ranks learned. */
+  talents: Record<string, number>;
+  /** Story flags set by dialogue and objects: name -> value. */
+  flags: Record<string, string>;
+  /** Zone the player is in. */
+  zone: ZoneId;
+  /** World object id -> number of times used. */
+  objects: Record<string, number>;
+  /** Hotbar slots: an ability id, or null when empty. Always 8 entries. */
+  hotbar: (string | null)[];
   hp: number;
   mp: number;
   attributes: Record<Attribute, number>;
@@ -42,7 +62,9 @@ export function newGameState(): GameState {
   const inventory: (InvSlot | null)[] = new Array(INVENTORY_SIZE).fill(null);
   START_INVENTORY.forEach((slot, i) => (inventory[i] = { ...slot }));
   const s: GameState = {
-    level: 1, skillUps: 0, hp: 0, mp: 0, attributes, skills, inventory,
+    level: 1, skillUps: 0, xp: 0, classId: null, skillPoints: 0, talents: {}, flags: {}, zone: 'mossbottom', objects: {},
+    hotbar: ['flare', 'mend', null, null, null, null, null, null],
+    hp: 0, mp: 0, attributes, skills, inventory,
     equipment: { ...START_EQUIPMENT }, gold: START_GOLD, quests: {},
   };
   s.hp = maxHp(s);
@@ -53,18 +75,28 @@ export function newGameState(): GameState {
 /** The one live game state. Replace its contents with Object.assign(state, loaded); never reassign the export. */
 export const state: GameState = newGameState();
 
+/** Endurance from levels is already in the 12 per level, so only Endurance above that adds. Wardens get x1.25. */
 export function maxHp(s: GameState = state): number {
-  return 20 + s.attributes.endurance + (s.level - 1) * 5;
+  const extraEndurance = Math.max(0, s.attributes.endurance - 10 - (s.level - 1));
+  const base = 40 + 12 * (s.level - 1) + 2 * extraEndurance;
+  return Math.round(base * (s.classId === 'warden' ? 1.25 : 1));
 }
 
 export function maxMp(s: GameState = state): number {
-  return 10 + s.attributes.intelligence * 2;
+  return 20 + 4 * (s.attributes.intelligence - 10) + 3 * s.level;
+}
+
+/** Sets a story flag, then tells the listeners and the panels. */
+export function setFlag(flag: string, value: string): void {
+  state.flags[flag] = value;
+  bus.emit('flag-set', { flag, value });
+  bus.emit('changed', {});
 }
 
 /** Sum of the armor values of everything equipped. */
 export function equippedArmor(s: GameState = state): number {
   let total = 0;
-  for (const id of Object.values(s.equipment)) if (id) total += ITEMS[id]?.armor ?? 0;
+  for (const id of Object.values(s.equipment)) if (id) total += ITEMS[id] ? armorValue(ITEMS[id]) : 0;
   return total;
 }
 

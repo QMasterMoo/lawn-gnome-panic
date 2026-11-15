@@ -2,11 +2,16 @@
 // region name, death overlay, hover text and the right-click option menu.
 import * as THREE from 'three';
 import { bus } from '../events';
-import { ENEMIES, PLAYER_ID, SKILLS, UI } from '../config';
+import { PLAYER_ID, UI, type Entity, type Rank } from '../config';
+import { ENEMIES, ZONES } from '../content';
+import { SKILLS } from '../data/core';
+import { resource } from '../abilities';
 import { allEntities } from '../entities';
+import { xpToNext } from '../progression';
 import { player } from '../player';
 import { regionNameAt } from '../world';
 import { maxHp, maxMp, state } from '../state';
+import { updateHotbar } from './hotbar';
 
 export interface MenuOption {
   /** e.g. "Attack Feral gnome (level 3)". The first option is the left-click default. */
@@ -39,8 +44,23 @@ interface Banner { el: HTMLDivElement; life: number; total: number }
 const banners: Banner[] = [];
 
 /** Overhead HP bars, keyed by entity id (PLAYER_ID for the player). */
-const bars = new Map<number, { wrap: HTMLDivElement; fill: HTMLDivElement }>();
+const bars = new Map<number, { wrap: HTMLDivElement; fill: HTMLDivElement; name: HTMLDivElement | null }>();
 let playerBarTimer = 0;
+
+let xpWrap: HTMLDivElement;
+let xpFill: HTMLDivElement;
+let resWrap: HTMLDivElement;
+let resFill: HTMLDivElement;
+let bossWrap: HTMLDivElement;
+let bossName: HTMLDivElement;
+let bossFill: HTMLDivElement;
+let bossHp: HTMLDivElement;
+let phaseEl: HTMLDivElement;
+let zoneEl: HTMLDivElement;
+let phaseTimer = 0;
+let zoneTimer = 0;
+/** Entity id -> seconds left on a poisoned status (used to colour untyped hitsplats purple). */
+const poisoned = new Map<number, number>();
 
 let lastRegion: string | null = null;
 let regionTimer = 0;
@@ -50,6 +70,25 @@ const REGION_SECONDS = 3;
 const SPLAT_SECONDS = 1;
 const RISE_PX = 24;
 const CHAT_LINES = 60;
+const BANNER_SECONDS = 3;
+const PHASE_SECONDS = 4;
+const RESOURCE_COLOURS = { grit: '#8b5a2b', focus: '#5cb85c', mana: UI.mana } as const;
+const RESOURCE_NAMES = { grit: 'Grit', focus: 'Focus', mana: 'Mana' } as const;
+
+/** Hitsplat colour per damage type. */
+const SPLAT_COLOURS: Record<string, string> = {
+  slash: '#c8102e', crush: '#c8102e', pierce: '#c8102e',
+  sun: '#ff7a1a', rain: '#2f7fd8', bloom: '#36d636',
+};
+const POISON_COLOUR = '#8a2be2';
+const CRIT_COLOUR = UI.gold;
+
+/** Overhead name colour per enemy rank. */
+const RANK_COLOURS: Record<Rank, string> = {
+  trivial: '#9a9a9a', normal: '#ffffff', elite: UI.gold, miniboss: '#ff8c1a',
+  boss: '#ff3b3b', worldboss: '#ff3b3b', final: '#ff3b3b',
+};
+const BOSS_RANKS: readonly Rank[] = ['boss', 'worldboss', 'final'];
 
 // ---------------------------------------------------------------- helpers
 
@@ -94,15 +133,26 @@ function sizeChat(): void {
   }
 }
 
-function addSplat(at: THREE.Vector3, text: string, color: string, textColor: string, circle: boolean): void {
+/** Colour of a hitsplat: crits are gold; otherwise by damage type, with poison (untyped) purple. */
+function splatColour(e: { target: number; damageType?: string; spell?: boolean; crit?: boolean }): string {
+  if (e.crit) return CRIT_COLOUR;
+  if (e.damageType && SPLAT_COLOURS[e.damageType]) return SPLAT_COLOURS[e.damageType];
+  if ((poisoned.get(e.target) ?? 0) > 0) return POISON_COLOUR;
+  return e.spell ? '#ff7a1a' : '#c8102e';
+}
+
+function addSplat(
+  at: THREE.Vector3, text: string, color: string, textColor: string, circle: boolean, crit = false,
+): void {
+  const size = crit ? 39 : 26;
   const el = make(hudEl, 'div', {
     position: 'absolute', left: '0', top: '0', pointerEvents: 'none',
-    color: textColor, fontWeight: 'bold', fontSize: circle ? '14px' : '20px',
+    color: textColor, fontWeight: 'bold', fontSize: circle ? (crit ? '18px' : '14px') : '20px',
     textShadow: '1px 1px 0 #000', whiteSpace: 'nowrap',
     ...(circle
       ? {
-          width: '26px', height: '26px', borderRadius: '50%', background: color,
-          lineHeight: '26px', textAlign: 'center', boxSizing: 'border-box',
+          width: `${size}px`, height: `${size}px`, borderRadius: '50%', background: color,
+          lineHeight: `${size}px`, textAlign: 'center', boxSizing: 'border-box',
         }
       : {}),
   }, text);
@@ -154,6 +204,47 @@ export function createHud(root: HTMLElement): void {
   // Orbs, top-right: HP, MP, level.
   const orbRow = make(hudEl, 'div', {
     position: 'absolute', right: '8px', top: '8px', display: 'flex', gap: '8px',
+  });
+
+  // XP bar and class resource bar, under the orbs (the orb row is 184 px wide).
+  xpWrap = make(hudEl, 'div', {
+    position: 'absolute', right: '8px', top: '68px', width: '184px', height: '6px',
+    background: '#1a150f', border: `1px solid ${UI.borderLight}`, boxSizing: 'border-box', pointerEvents: 'auto',
+  });
+  xpWrap.title = 'XP';
+  xpFill = make(xpWrap, 'div', { height: '100%', width: '0%', background: UI.gold });
+  resWrap = make(hudEl, 'div', {
+    position: 'absolute', right: '8px', top: '80px', width: '184px', height: '6px', display: 'none',
+    background: '#1a150f', border: `1px solid ${UI.borderLight}`, boxSizing: 'border-box', pointerEvents: 'auto',
+  });
+  resFill = make(resWrap, 'div', { height: '100%', width: '0%' });
+
+  // Boss bar, top-centre, with the phase text under it.
+  bossWrap = make(hudEl, 'div', {
+    position: 'absolute', left: '50%', top: '8px', width: '360px', transform: 'translateX(-50%)',
+    display: 'none', textAlign: 'center', textShadow: '1px 1px 0 #000',
+  });
+  bossName = make(bossWrap, 'div', { color: UI.gold, fontSize: '14px', fontWeight: 'bold', whiteSpace: 'nowrap' });
+  const bossTrack = make(bossWrap, 'div', {
+    position: 'relative', height: '14px', marginTop: '2px', background: '#3a1010',
+    border: `2px solid ${UI.border}`, boxSizing: 'border-box',
+  });
+  bossFill = make(bossTrack, 'div', { height: '100%', width: '100%', background: UI.bad });
+  bossHp = make(bossTrack, 'div', {
+    position: 'absolute', inset: '0', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    color: UI.textWhite, fontSize: '11px', fontWeight: 'bold',
+  });
+  phaseEl = make(hudEl, 'div', {
+    position: 'absolute', left: '50%', top: '44px', transform: 'translateX(-50%)', display: 'none',
+    color: UI.text, fontSize: '15px', fontStyle: 'italic', textShadow: '1px 1px 0 #000',
+    whiteSpace: 'nowrap', textAlign: 'center',
+  });
+
+  // Zone banner: big gold serif name in the upper middle, fades over 3 s.
+  zoneEl = make(hudEl, 'div', {
+    position: 'absolute', left: '0', right: '0', top: '30%', textAlign: 'center',
+    color: UI.gold, fontFamily: 'Georgia, serif', fontSize: '44px', textShadow: '2px 2px 0 #000',
+    opacity: '0', whiteSpace: 'nowrap',
   });
   const orb = (border: string) => {
     const circle = make(orbRow, 'div', {
@@ -232,8 +323,23 @@ export function createHud(root: HTMLElement): void {
 
   bus.on('hit', (e) => {
     if (e.target === PLAYER_ID) playerBarTimer = 6;
-    if (e.spell) addSplat(e.at, String(e.damage), '#ff7a1a', UI.textWhite, true);
-    else addSplat(e.at, String(e.damage), '#c8102e', UI.textWhite, true);
+    const colour = splatColour(e);
+    if (e.crit) addSplat(e.at, `${e.damage}!`, colour, '#1a150f', true, true);
+    else addSplat(e.at, String(e.damage), colour, UI.textWhite, true);
+  });
+
+  bus.on('status', (e) => {
+    if (e.status === 'poisoned') poisoned.set(e.target, e.seconds);
+  });
+
+  bus.on('zone-changed', (e) => {
+    zoneEl.textContent = ZONES[e.zone]?.name ?? e.zone;
+    zoneTimer = BANNER_SECONDS;
+  });
+
+  bus.on('boss-phase', (e) => {
+    phaseEl.textContent = e.text;
+    phaseTimer = PHASE_SECONDS;
   });
 
   bus.on('miss', (e) => {
@@ -268,6 +374,61 @@ export function updateHud(dt: number, camera: THREE.Camera): void {
   hpText.textContent = `${Math.round(state.hp)}/${hpMax}`;
   mpText.textContent = `${Math.round(state.mp)}/${mpMax}`;
   levelText.textContent = `Lv ${state.level}`;
+
+  // XP bar and class resource bar (the resource bar is hidden while classless).
+  const need = xpToNext(state.level);
+  xpFill.style.width = `${Math.max(0, Math.min(1, state.xp / need)) * 100}%`;
+  xpWrap.title = `XP ${Math.floor(state.xp)} / ${need}`;
+  if (state.classId === null) {
+    resWrap.style.display = 'none';
+  } else {
+    const res = resource();
+    resWrap.style.display = '';
+    resFill.style.background = RESOURCE_COLOURS[res.kind];
+    resFill.style.width = `${Math.max(0, Math.min(1, res.value / res.max)) * 100}%`;
+    resWrap.title = `${RESOURCE_NAMES[res.kind]} ${Math.round(res.value)} / ${res.max}`;
+  }
+
+  // Boss bar: the first live boss-rank enemy in combat. Phase text stays 4 s after each phase change.
+  let boss: Entity | undefined;
+  for (const e of allEntities()) {
+    if (e.kind === 'enemy' && !e.dead && e.inCombat && BOSS_RANKS.includes(ENEMIES[e.defId]?.rank as Rank)) {
+      boss = e;
+      break;
+    }
+  }
+  if (boss) {
+    bossWrap.style.display = '';
+    bossName.textContent = boss.name;
+    bossFill.style.width = `${Math.max(0, Math.min(1, boss.hp / boss.maxHp)) * 100}%`;
+    bossHp.textContent = `${Math.max(0, Math.round(boss.hp))} / ${boss.maxHp}`;
+  } else {
+    bossWrap.style.display = 'none';
+  }
+  if (phaseTimer > 0) {
+    phaseTimer = Math.max(0, phaseTimer - dt);
+    phaseEl.style.display = '';
+    phaseEl.style.top = boss ? '44px' : '8px';
+    phaseEl.style.opacity = String(Math.min(1, phaseTimer / 0.5));
+    if (phaseTimer === 0) phaseEl.style.display = 'none';
+  } else {
+    phaseEl.style.display = 'none';
+  }
+
+  // Zone banner: starts fully opaque and fades linearly over its 3 s.
+  if (zoneTimer > 0) {
+    zoneTimer = Math.max(0, zoneTimer - dt);
+    zoneEl.style.opacity = String(Math.max(0, Math.min(1, zoneTimer / BANNER_SECONDS)));
+  } else {
+    zoneEl.style.opacity = '0';
+  }
+
+  // Poison timers for untyped hitsplats.
+  for (const [id, left] of poisoned) {
+    const next = left - dt;
+    if (next <= 0) poisoned.delete(id);
+    else poisoned.set(id, next);
+  }
 
   // Region name: fades in and out when the player enters a new place.
   const region = regionNameAt(player.position.x, player.position.z);
@@ -321,7 +482,8 @@ export function updateHud(dt: number, camera: THREE.Camera): void {
   playerBarTimer = Math.max(0, playerBarTimer - dt);
   const used = new Set<number>();
 
-  const showBar = (id: number, hp: number, max: number, world: THREE.Vector3) => {
+  /** `label` (enemies only) is the nameplate above the bar, coloured by rank. */
+  const showBar = (id: number, hp: number, max: number, world: THREE.Vector3, label?: { text: string; colour: string }) => {
     const p = toScreen(world, camera);
     let bar = bars.get(id);
     if (!bar) {
@@ -330,8 +492,18 @@ export function updateHud(dt: number, camera: THREE.Camera): void {
         background: UI.bad, border: `1px solid ${UI.border}`, boxSizing: 'border-box', pointerEvents: 'none',
       });
       const fill = make(wrap, 'div', { height: '100%', background: UI.good });
-      bar = { wrap, fill };
+      const name = label
+        ? make(wrap, 'div', {
+            position: 'absolute', left: '50%', bottom: '100%', transform: 'translate(-50%, -3px)',
+            whiteSpace: 'nowrap', fontSize: '12px', fontWeight: 'bold', textShadow: '1px 1px 0 #000',
+          })
+        : null;
+      bar = { wrap, fill, name };
       bars.set(id, bar);
+    }
+    if (label && bar.name) {
+      bar.name.textContent = label.text;
+      bar.name.style.color = label.colour;
     }
     used.add(id);
     if (!p) { bar.wrap.style.display = 'none'; return; }
@@ -341,9 +513,11 @@ export function updateHud(dt: number, camera: THREE.Camera): void {
 
   for (const e of allEntities()) {
     if (e.kind !== 'enemy' || e.dead || e.sinceHit >= 6) continue;
-    const scale = ENEMIES[e.defId]?.scale ?? 1;
+    const def = ENEMIES[e.defId];
+    const scale = def?.scale ?? 1;
     const world = e.position.clone().add(new THREE.Vector3(0, 1.6 * scale + 0.6, 0));
-    showBar(e.id, e.hp, e.maxHp, world);
+    const colour = RANK_COLOURS[def?.rank ?? 'normal'];
+    showBar(e.id, e.hp, e.maxHp, world, { text: e.name, colour });
   }
   if (playerBarTimer > 0) {
     const world = player.position.clone().add(new THREE.Vector3(0, 2.0, 0));
@@ -352,6 +526,8 @@ export function updateHud(dt: number, camera: THREE.Camera): void {
   for (const [id, bar] of bars) {
     if (!used.has(id)) bar.wrap.style.display = 'none';
   }
+
+  updateHotbar();
 }
 
 /** Top-left mouse-over text (RuneScape style); null hides it. */

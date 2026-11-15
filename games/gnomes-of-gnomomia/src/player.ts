@@ -2,14 +2,26 @@
 import * as THREE from 'three';
 import { createGnomeModel, getMyGnome } from '@lawn/gnome';
 import type { GnomeModel } from '@lawn/gnome';
-import { SPAWN, TUNING, PLAYER_LOOK } from './config';
+import { PLAYER_ID, SPAWN, TUNING, PLAYER_LOOK } from './config';
 import { findPath } from './pathfind';
 import { heightAt, isBlocked } from './world';
 import { getEntity } from './entities';
 import { pickUpLoot } from './inventory';
 import { bus } from './events';
+import { objectPosition, useObject } from './objects';
+import { equippedWeapon } from './state';
+import { speedFactor } from './combat';
 
-export type PlayerAction = { type: 'attack' | 'talk' | 'take'; target: number };
+export type PlayerAction =
+  | { type: 'attack' | 'talk' | 'take'; target: number; object?: undefined }
+  // target is optional and undefined here so code that reads action.target still type-checks.
+  | { type: 'use'; object: string; target?: undefined };
+
+/** Walk distance (m) at which a use-object action fires. */
+const OBJECT_USE_RANGE = 1.8;
+/** Attack distance (m) for sling, blowpipe and thrown weapons. */
+const RANGED_RANGE = 12;
+const RANGED_CLASSES = new Set(['sling', 'blowpipe', 'thrown']);
 
 export const player: {
   position: THREE.Vector3;
@@ -46,13 +58,29 @@ function pathTo(x: number, z: number): { x: number; z: number }[] {
   return findPath({ x: player.position.x, z: player.position.z }, { x, z }, isBlocked);
 }
 
+/** Where the current action's target stands, or null if it is gone. */
+function actionPoint(action: PlayerAction): { x: number; z: number } | null {
+  if (action.type === 'use') {
+    const p = objectPosition(action.object);
+    return p ? { x: p.x, z: p.z } : null;
+  }
+  const e = getEntity(action.target);
+  return e ? { x: e.position.x, z: e.position.z } : null;
+}
+
 /** Path to the current action's target, or no path if the target is gone. */
 function repath(): void {
   const action = player.action;
   if (!action) return;
-  const e = getEntity(action.target);
-  player.path = e ? pathTo(e.position.x, e.position.z) : [];
+  const p = actionPoint(action);
+  player.path = p ? pathTo(p.x, p.z) : [];
   repathTimer = 0;
+}
+
+/** Melee reach, or 12 m with a ranged weapon equipped. */
+function attackRange(): number {
+  const w = equippedWeapon();
+  return w?.weaponClass && RANGED_CLASSES.has(w.weaponClass) ? RANGED_RANGE : TUNING.meleeRange;
 }
 
 /** Walk to a ground point; cancels any action. */
@@ -63,9 +91,17 @@ export function walkTo(x: number, z: number): void {
 }
 
 /** Walk to an entity and then attack / talk / take. */
-export function interact(type: PlayerAction['type'], entityId: number): void {
+export function interact(type: 'attack' | 'talk' | 'take', entityId: number): void {
   if (player.dead) return;
   player.action = { type, target: entityId };
+  repath();
+}
+
+/** Walk to a world object and use it (its verb). */
+export function useWorldObject(id: string): void {
+  if (player.dead) return;
+  if (!objectPosition(id)) return;
+  player.action = { type: 'use', object: id };
   repath();
 }
 
@@ -95,13 +131,31 @@ export function updatePlayer(dt: number): void {
 
   // 2. Action: walk into range, then act.
   const action = player.action;
-  if (action) {
+  if (action?.type === 'use') {
+    const p = actionPoint(action);
+    if (!p) {
+      player.action = null;
+      player.path = [];
+    } else {
+      const dist = Math.hypot(p.x - player.position.x, p.z - player.position.z);
+      if (dist <= OBJECT_USE_RANGE) {
+        player.path = [];
+        player.facing = Math.atan2(p.x - player.position.x, p.z - player.position.z);
+        const id = action.object;
+        player.action = null;
+        useObject(id);
+      } else {
+        repathTimer += dt;
+        if (repathTimer >= REPATH_SECONDS) repath();
+      }
+    }
+  } else if (action) {
     const e = getEntity(action.target);
     if (!e || e.dead) {
       player.action = null;
       player.path = [];
     } else {
-      const range = action.type === 'attack' ? TUNING.meleeRange : action.type === 'talk' ? TUNING.talkRange : TUNING.takeRange;
+      const range = action.type === 'attack' ? attackRange() : action.type === 'talk' ? TUNING.talkRange : TUNING.takeRange;
       const dist = Math.hypot(e.position.x - player.position.x, e.position.z - player.position.z);
       if (dist <= range) {
         player.path = [];
@@ -121,12 +175,12 @@ export function updatePlayer(dt: number): void {
     }
   }
 
-  // 3. Move along the path at walk speed.
+  // 3. Move along the path at walk speed (scaled by Slowed / Rooted).
   const startX = player.position.x;
   const startZ = player.position.z;
   let x = startX;
   let z = startZ;
-  let remaining = TUNING.walkSpeed * dt;
+  let remaining = TUNING.walkSpeed * dt * speedFactor(PLAYER_ID);
   while (remaining > 1e-6 && player.path.length > 0) {
     const wp = player.path[0];
     const dx = wp.x - x;

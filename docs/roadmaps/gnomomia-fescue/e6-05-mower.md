@@ -41,6 +41,7 @@ The Battle of the Verge runs in three phases (Mud, Jam, Heartspark) against the 
 - At deck HP ≤ 50%, Mabel's cart rolls in. It's a box mesh you own, moving from (0,60) to (0,-66) at 3 m/s (5 with `cart-speed`).
   - While it rolls, the deck's lane moves aim at the cart's path. The cart can't be destroyed; it's there for drama.
   - With `lane-warning`, say each charge 1 s early ("Sedge: Left lane! Now!").
+  - With `ramp-faster` (the Heap diggers), the cart gets +1 m/s more (stacks with `cart-speed`). Any other ally effect id you meet is ignored.
   - When the cart arrives, `setFlag('c8-phase','jam')`. That is when `c8-stone-socket`, which sits fixed at (0,-68) in front of the deck, shows. Before then, set the flag to `jam-wait` during phase 2, and switch to `jam` on arrival.
 - When the player uses `c8-stone-socket`:
   - `setFlag('c8-phase','heart')`.
@@ -67,7 +68,7 @@ The Battle of the Verge runs in three phases (Mud, Jam, Heartspark) against the 
 When `c8-turning-blade` is done, call `showEpilogue(root)`. Get the root with `document.getElementById('ui')`.
 
 ### `src/ui/epilogue.ts` (you own it too)
-- `showEpilogue(root)`: a full-screen dark overlay, appended to root. It shows `EPILOGUE` lines (import from `./data/packs/ch8-finale`) whose `when` holds, one card at a time, each fading in, with a Next button.
+- `showEpilogue(root)`: a full-screen dark overlay, appended to root. It shows `EPILOGUE` lines (import from `../data/packs/ch8-finale`, relative to `src/ui/`) whose `when` holds, one card at a time, each fading in, with a Next button.
 - Then a last card: "Fescue is quiet. Beyond the Fence, someone has just started a second mower." and a "Continue playing" button that removes the overlay.
 
 ## Contract

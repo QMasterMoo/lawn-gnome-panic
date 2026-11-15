@@ -1,19 +1,27 @@
+/// <reference types="vite/client" />
 // Gnomes of Gnomomia: renderer and the main loop. Systems live one per file; this file only wires them.
 import * as THREE from 'three';
 import { loadMyGnome } from '@lawn/gnome';
-import { SPAWN, TUNING, UI } from './config';
+import { SPAWN, TUNING, UI, type ZoneId } from './config';
+import { ZONES } from './content';
 import { say } from './events';
-import { buildWorld, heightAt } from './world';
+import { heightAt } from './world';
 import { createPlayer, player, teleportPlayer, updatePlayer } from './player';
-import { spawnWorldEntities, updateEntities } from './entities';
+import { updateEntities } from './entities';
 import { initCombat, updateCombat } from './combat';
 import { initCamera, updateCamera } from './camera';
 import { initInput, updateInput } from './input';
 import { createHud, updateHud } from './ui/hud';
+import { createHotbar } from './ui/hotbar';
 import { createPanels } from './ui/panels';
 import { createDialogue } from './ui/dialogue';
 import { createShop } from './ui/shop';
-import { initQuests } from './quests';
+import { initQuests, updateQuests } from './quests';
+import { initZones, loadZone, updateZones } from './zones';
+import { initProgression } from './progression';
+import { initBossMoves, updateBossMoves } from './bossmoves';
+import { initMower, updateMower } from './mower';
+import { updateAbilities } from './abilities';
 import { initAudio } from './audio';
 import { deleteSave, loadGame, saveGame } from './save';
 import { showTitle } from './ui/title';
@@ -40,14 +48,17 @@ function resize(): void {
 window.addEventListener('resize', resize);
 resize();
 
-buildWorld(scene);
-spawnWorldEntities(scene);
+initZones(scene);
+initProgression();
+initBossMoves(scene);
+initMower(scene);
 createPlayer(scene);
 initCombat(scene);
 initCamera(camera, canvas);
 initInput(canvas, camera, scene);
 
 createHud(ui);
+createHotbar(ui);
 createPanels(ui);
 // Dialogue subscribes to 'talk' before quests do, so it picks its greeting from the state before a turn-in.
 createDialogue(ui);
@@ -67,6 +78,11 @@ function frame(now: number): void {
     updateEntities(dt);
     updateCombat(dt);
     updateInput(dt);
+    updateZones(dt);
+    updateAbilities(dt);
+    updateBossMoves(dt);
+    updateMower(dt);
+    updateQuests(dt);
     saveTimer += dt;
     if (saveTimer >= TUNING.autosaveSeconds) {
       saveTimer = 0;
@@ -83,16 +99,28 @@ function frame(now: number): void {
 }
 requestAnimationFrame(frame);
 
-const hasSave = loadGame();
-const choice = await showTitle(ui, hasSave);
-if (choice === 'new') {
-  deleteSave();
+// Dev only: ?zone=<id> skips the title and drops a fresh character into that zone without touching the save
+// (used by tools/smoke.sh to check every zone builds). Autosave stays off in this mode.
+const debugZone = import.meta.env.DEV ? new URLSearchParams(location.search).get('zone') : null;
+if (debugZone && debugZone in ZONES) {
   Object.assign(state, newGameState());
-  teleportPlayer(SPAWN.x, SPAWN.z);
-  say('Welcome to Gnomomia. Talk to Elder Fernwick, by the well.', UI.quest);
+  loadZone(debugZone as ZoneId);
+  saveTimer = -Infinity;
+  running = true;
 } else {
-  say('Welcome back to Gnomomia.', UI.quest);
+  const hasSave = loadGame();
+  const choice = await showTitle(ui, hasSave);
+  if (choice === 'new') {
+    deleteSave();
+    Object.assign(state, newGameState());
+    // A loaded save may have built another zone: rebuild Mossbottom for the new character.
+    loadZone('mossbottom', SPAWN.x, SPAWN.z);
+    teleportPlayer(SPAWN.x, SPAWN.z);
+    say('Welcome to Gnomomia. Talk to Elder Fernwick, by the well.', UI.quest);
+  } else {
+    say('Welcome back to Gnomomia.', UI.quest);
+  }
+  player.position.y = heightAt(player.position.x, player.position.z);
+  running = true;
+  window.addEventListener('beforeunload', () => saveGame());
 }
-player.position.y = heightAt(player.position.x, player.position.z);
-running = true;
-window.addEventListener('beforeunload', () => saveGame());

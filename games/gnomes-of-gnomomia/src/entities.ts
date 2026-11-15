@@ -2,10 +2,14 @@
 import * as THREE from 'three';
 import { player } from './player';
 import { heightAt, isBlocked } from './world';
-import { enemyAttack } from './combat';
+import { enemyAttack, speedFactor, canAct } from './combat';
 import { bus, say } from './events';
-import { ENEMIES, NPCS, SPAWN_GROUPS, TUNING, UI } from './config';
-import type { Entity, EnemyDef, InvSlot, NpcDef } from './config';
+import { TUNING, UI } from './config';
+import type { Entity, EnemyDef, InvSlot, NpcDef, ZoneId } from './config';
+import { ENEMIES, NPCS, QUESTS, SPAWNS } from './content';
+import { checkCondition } from './quests';
+import { enemyStats } from './rules';
+import { setFlag, state } from './state';
 import { createEnemyRig, createNpcRig, createLootRig } from './models';
 import type { CreatureRig } from './models';
 
@@ -23,6 +27,8 @@ interface Slot {
   returning: boolean;
   /** Enemy: seconds since it died. */
   deadFor: number;
+  /** Enemy: when dead, it is removed for good instead of respawning (spawnEnemyAt). */
+  noRespawn?: boolean;
   /** How far the entity moved this frame, in units per second (drives the walk animation). */
   speed: number;
 }
@@ -30,6 +36,17 @@ interface Slot {
 const slots = new Map<number, Slot>();
 let nextId = 1;
 let sceneRef: THREE.Scene | null = null;
+/** The zone whose population is live. null until the first spawnZoneEntities. */
+let currentZone: ZoneId | null = null;
+/** NPC def id -> the entity spawned for it, and the placement it was spawned at. */
+const npcSpawns = new Map<string, { id: number; key: string }>();
+/** SPAWNS index -> ids of the members spawned for that group. A key present means the group is spawned. */
+const groupMembers = new Map<number, number[]>();
+
+/** NPC walk speed when following a player (escort). Matches the wander speed in updateNpc. */
+const NPC_WALK_SPEED = 1.2;
+/** How close an escort walks to the player, in metres. */
+const ESCORT_DISTANCE = 2;
 
 /** Seeded random for the spawn layout, so every game places the same creatures. */
 function mulberry32(a: number) {
@@ -103,35 +120,117 @@ function addSlot(p: {
   return slot;
 }
 
-/** Spawns every NPC in NPCS and every enemy in SPAWN_GROUPS. Call once after buildWorld. */
-export function spawnWorldEntities(scene: THREE.Scene): void {
+/** Where an NPC stands now: its first matching placement, else its own zone/x/z. null when hidden. */
+function resolveNpc(def: NpcDef): { zone: ZoneId; x: number; z: number } | null {
+  if (def.hidden && checkCondition(def.hidden)) return null;
+  for (const p of def.placements ?? []) {
+    if (checkCondition(p.when)) return { zone: p.zone, x: p.x, z: p.z };
+  }
+  return { zone: def.zone, x: def.x, z: def.z };
+}
+
+/** Spawns or despawns NPCs so each one matches its resolved placement in the current zone. */
+function refreshNpcs(): void {
+  if (!sceneRef || currentZone === null) return;
+  for (const def of Object.values(NPCS)) {
+    const spot = resolveNpc(def);
+    const want = spot && spot.zone === currentZone ? spot : null;
+    const key = want ? `${want.x},${want.z}` : '';
+    const have = npcSpawns.get(def.id);
+    if (have && (!want || have.key !== key)) {
+      removeEntity(have.id);
+      npcSpawns.delete(def.id);
+    }
+    if (want && !npcSpawns.has(def.id)) {
+      const slot = addSlot({ kind: 'npc', defId: def.id, name: def.name, level: 0, x: want.x, z: want.z, rig: createNpcRig(def), hp: 1, npc: def });
+      slot.timer = Math.random() * 4;
+      npcSpawns.set(def.id, { id: slot.entity.id, key });
+    }
+  }
+}
+
+/** Spawns the living members of one SPAWNS group. Its layout is seeded by its index, so it is the same every time. */
+function spawnGroup(index: number, group: (typeof SPAWNS)[number]): void {
+  const def = ENEMIES[group.enemy];
+  if (!def) return;
+  const rng = mulberry32(99 + index);
+  const members: number[] = [];
+  for (let i = 0; i < group.count; i++) {
+    // Up to 10 tries for a free spot; the last try is used even if it is blocked.
+    let x = group.x;
+    let z = group.z;
+    for (let tries = 0; tries < 10; tries++) {
+      const a = rng() * Math.PI * 2;
+      const r = Math.sqrt(rng()) * group.spread;
+      x = group.x + Math.cos(a) * r;
+      z = group.z + Math.sin(a) * r;
+      if (!isBlocked(x, z)) break;
+    }
+    const slot = addSlot({ kind: 'enemy', defId: def.id, name: def.name, level: def.level, x, z, rig: createEnemyRig(def), hp: enemyStats(def).hp, enemy: def });
+    slot.timer = Math.random() * 3;
+    members.push(slot.entity.id);
+  }
+  groupMembers.set(index, members);
+}
+
+/** Despawns a group's members that are not fighting. Members in combat stay until the fight ends. */
+function despawnGroup(index: number): void {
+  for (const id of groupMembers.get(index) ?? []) {
+    const slot = slots.get(id);
+    if (slot && !slot.entity.inCombat) removeEntity(id);
+  }
+  groupMembers.delete(index);
+}
+
+/** Spawns or despawns each conditional SPAWNS group in the current zone as its condition changes. */
+function refreshGroups(): void {
+  if (currentZone === null) return;
+  SPAWNS.forEach((group, index) => {
+    if (group.zone !== currentZone || !group.when) return;
+    const should = checkCondition(group.when);
+    const has = groupMembers.has(index);
+    if (should && !has) spawnGroup(index, group);
+    else if (!should && has) despawnGroup(index);
+  });
+}
+
+/** Flag or quest change: re-place NPCs and re-check spawn groups in this zone. */
+function onWorldChange(): void {
+  refreshNpcs();
+  refreshGroups();
+}
+bus.on('flag-set', onWorldChange);
+bus.on('quest-updated', onWorldChange);
+
+/** Spawns the NPCs and enemies of one zone. Clears whatever was spawned before. */
+export function spawnZoneEntities(scene: THREE.Scene, zone: ZoneId): void {
   sceneRef = scene;
   for (const s of slots.values()) scene.remove(s.entity.object);
   slots.clear();
+  npcSpawns.clear();
+  groupMembers.clear();
+  currentZone = zone;
 
-  for (const def of Object.values(NPCS)) {
-    const slot = addSlot({ kind: 'npc', defId: def.id, name: def.name, level: 0, x: def.x, z: def.z, rig: createNpcRig(def), hp: 1, npc: def });
-    slot.timer = Math.random() * 4;
-  }
+  refreshNpcs();
+  SPAWNS.forEach((group, index) => {
+    if (group.zone !== zone) return;
+    if (checkCondition(group.when)) spawnGroup(index, group);
+  });
+}
 
-  const rng = mulberry32(99);
-  for (const group of SPAWN_GROUPS) {
-    const def = ENEMIES[group.enemy];
-    for (let i = 0; i < group.count; i++) {
-      // Up to 10 tries for a free spot; the last try is used even if it is blocked.
-      let x = group.x;
-      let z = group.z;
-      for (let tries = 0; tries < 10; tries++) {
-        const a = rng() * Math.PI * 2;
-        const r = Math.sqrt(rng()) * group.spread;
-        x = group.x + Math.cos(a) * r;
-        z = group.z + Math.sin(a) * r;
-        if (!isBlocked(x, z)) break;
-      }
-      const slot = addSlot({ kind: 'enemy', defId: def.id, name: def.name, level: def.level, x, z, rig: createEnemyRig(def), hp: def.hp, enemy: def });
-      slot.timer = Math.random() * 3;
-    }
-  }
+/** Spawns the current zone's population. Call once after buildWorld. */
+export function spawnWorldEntities(scene: THREE.Scene): void {
+  spawnZoneEntities(scene, state.zone);
+}
+
+/** Adds one enemy of `defId` at (x, z) that is removed for good when it dies. Returns null for an unknown id. */
+export function spawnEnemyAt(defId: string, x: number, z: number): Entity | null {
+  const def = ENEMIES[defId];
+  if (!def) return null;
+  const slot = addSlot({ kind: 'enemy', defId: def.id, name: def.name, level: def.level, x, z, rig: createEnemyRig(def), hp: enemyStats(def).hp, enemy: def });
+  slot.timer = Math.random() * 3;
+  slot.noRespawn = true;
+  return slot.entity;
 }
 
 /** Moves an entity toward (tx, tz) at `speed`. Tries the full step, then x only, then z only. Returns the speed used (0 if stuck). */
@@ -182,11 +281,16 @@ function pickSpot(home: THREE.Vector3, radius: number): { x: number; z: number }
 
 function updateEnemy(slot: Slot, def: EnemyDef, dt: number): void {
   const e = slot.entity;
+  const sf = speedFactor(e.id);
 
   if (e.dead) {
     // Lies dead for a while, then vanishes; after its respawn time it returns home.
     slot.deadFor += dt;
     if (slot.deadFor >= 1.5) e.object.visible = false;
+    if (slot.noRespawn) {
+      if (slot.deadFor >= 1.5) removeEntity(e.id);
+      return;
+    }
     if (slot.deadFor >= def.respawnSeconds) {
       e.position.copy(e.home);
       e.hp = e.maxHp;
@@ -224,13 +328,13 @@ function updateEnemy(slot: Slot, def: EnemyDef, dt: number): void {
       slot.returning = true;
     } else {
       if (toPlayer > TUNING.meleeRange * 0.9) {
-        slot.speed = walk(slot, pp.x, pp.z, TUNING.enemyWalkSpeed, dt);
+        slot.speed = walk(slot, pp.x, pp.z, TUNING.enemyWalkSpeed * sf, dt);
       } else {
         face(slot, pp.x, pp.z);
         if (e.attackTimer <= 0) {
           enemyAttack(e);
           slot.rig.swing();
-          e.attackTimer = def.attackSeconds;
+          e.attackTimer = (def.attackSeconds ?? 2.4) / sf;
         }
       }
       return;
@@ -241,7 +345,7 @@ function updateEnemy(slot: Slot, def: EnemyDef, dt: number): void {
     if (homeDist < 0.3) {
       slot.returning = false;
     } else {
-      slot.speed = walk(slot, e.home.x, e.home.z, TUNING.enemyWalkSpeed, dt);
+      slot.speed = walk(slot, e.home.x, e.home.z, TUNING.enemyWalkSpeed * sf, dt);
       if (slot.speed === 0) slot.returning = false; // stuck: stop trying
       return;
     }
@@ -255,14 +359,39 @@ function updateEnemy(slot: Slot, def: EnemyDef, dt: number): void {
   }
   if (slot.target) {
     const t = slot.target;
-    slot.speed = walk(slot, t.x, t.z, TUNING.enemyWalkSpeed * 0.5, dt);
+    slot.speed = walk(slot, t.x, t.z, TUNING.enemyWalkSpeed * 0.5 * sf, dt);
     if (slot.speed === 0 || Math.hypot(t.x - e.position.x, t.z - e.position.z) < 0.1) slot.target = null;
   }
 }
 
-function updateNpc(slot: Slot, def: NpcDef, dt: number): void {
+/** Ids of NPCs the player is currently escorting (an active escort stage). */
+function activeEscorts(): Set<string> {
+  const ids = new Set<string>();
+  for (const [questId, progress] of Object.entries(state.quests)) {
+    if (progress.done) continue;
+    const stage = QUESTS[questId]?.stages[progress.stage];
+    if (stage && stage.objective.type === 'escort') ids.add(stage.objective.npc);
+  }
+  return ids;
+}
+
+function updateNpc(slot: Slot, def: NpcDef, dt: number, escorts: Set<string>): void {
   const e = slot.entity;
   const pp = player.position;
+
+  if (escorts.has(def.id)) {
+    // Follow the player at walk speed, stopping ESCORT_DISTANCE metres away.
+    const ex = e.position.x - pp.x;
+    const ez = e.position.z - pp.z;
+    const d = Math.hypot(ex, ez);
+    if (d > ESCORT_DISTANCE) {
+      const k = ESCORT_DISTANCE / d;
+      slot.speed = walk(slot, pp.x + ex * k, pp.z + ez * k, NPC_WALK_SPEED, dt);
+    } else {
+      face(slot, pp.x, pp.z);
+    }
+    return;
+  }
 
   // Stop and face the player when close.
   if (Math.hypot(pp.x - e.position.x, pp.z - e.position.z) < 3.5) {
@@ -285,7 +414,7 @@ function updateNpc(slot: Slot, def: NpcDef, dt: number): void {
     return;
   }
   const t = slot.target;
-  slot.speed = walk(slot, t.x, t.z, 1.2, dt);
+  slot.speed = walk(slot, t.x, t.z, NPC_WALK_SPEED, dt);
   if (slot.speed === 0 || Math.hypot(t.x - e.position.x, t.z - e.position.z) < 0.1) {
     slot.target = null;
     slot.timer = npcPause();
@@ -298,14 +427,17 @@ function updateLoot(slot: Slot, dt: number): void {
 }
 
 export function updateEntities(dt: number): void {
+  const escorts = activeEscorts();
   // Snapshot: a loot pile may be removed while we loop.
   for (const slot of Array.from(slots.values())) {
     if (!slots.has(slot.entity.id)) continue;
     const e = slot.entity;
     e.sinceHit += dt;
     slot.speed = 0;
-    if (slot.enemy) updateEnemy(slot, slot.enemy, dt);
-    else if (slot.npc) updateNpc(slot, slot.npc, dt);
+    if (slot.enemy) {
+      // Stunned or rooted enemies skip their AI; dead ones still count down their respawn.
+      if (e.dead || canAct(e.id)) updateEnemy(slot, slot.enemy, dt);
+    } else if (slot.npc) updateNpc(slot, slot.npc, dt, escorts);
     else updateLoot(slot, dt);
     e.position.y = heightAt(e.position.x, e.position.z);
     slot.rig.update(e.position, e.facing, slot.speed, dt);
@@ -355,6 +487,8 @@ export function killEntity(id: number): void {
 
   bus.emit('enemy-killed', { defId: def.id, entityId: id });
   say(`You defeated the ${def.name}.`, UI.good);
+  if (def.lastWords) say(`${def.name}: "${def.lastWords}"`, UI.textDim);
+  if (def.onDeathFlag) setFlag(def.onDeathFlag.flag, def.onDeathFlag.value);
 }
 
 export function spawnLoot(x: number, z: number, items: InvSlot[], gold: number): Entity | null {

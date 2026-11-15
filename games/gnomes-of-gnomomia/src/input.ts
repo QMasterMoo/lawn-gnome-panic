@@ -1,10 +1,12 @@
 // Mouse and touch input: picking, hover text, left-click actions, right-click and long-press menus, click marker and hotkeys.
 import * as THREE from 'three';
-import { ENEMIES, NPCS, UI, type Entity } from './config';
+import { UI, type Entity } from './config';
+import { ENEMIES, NPCS, OBJECTS } from './content';
 import { allEntities, entityFromObject } from './entities';
 import { getGroundMesh } from './world';
-import { player, walkTo, interact } from './player';
-import { castSpell } from './combat';
+import { player, walkTo, interact, useWorldObject } from './player';
+import { useHotbar } from './abilities';
+import { objectFromMesh } from './objects';
 import { setHoverText, showContextMenu, hideContextMenu, type MenuOption } from './ui/hud';
 import { isDialogueOpen, closeDialogue } from './ui/dialogue';
 import { closeShop } from './ui/shop';
@@ -21,6 +23,9 @@ const MARKER_SECONDS = 0.5;
 interface Pick {
   entity?: Entity;
   entityPoint?: THREE.Vector3;
+  /** World object id (see objectFromMesh) under the pointer, when no entity is. */
+  object?: string;
+  objectPoint?: THREE.Vector3;
   /** First ground hit: a walk target. */
   ground?: THREE.Vector3;
 }
@@ -32,6 +37,7 @@ interface Action {
 
 let canvas: HTMLCanvasElement | null = null;
 let cam: THREE.PerspectiveCamera | null = null;
+let sceneRef: THREE.Scene | null = null;
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 
@@ -67,16 +73,37 @@ function pickAt(clientX: number, clientY: number): Pick {
 
   const ground = getGroundMesh();
   const targets: THREE.Object3D[] = [ground];
-  for (const e of allEntities()) if (!e.dead && e.object.visible) targets.push(e.object);
+  const entityRoots = new Set<THREE.Object3D>();
+  for (const e of allEntities()) {
+    entityRoots.add(e.object);
+    if (!e.dead && e.object.visible) targets.push(e.object);
+  }
+  // Other scene roots (world objects live here) are targets too; ground, entities and the click marker are already handled.
+  if (sceneRef) {
+    for (const o of sceneRef.children) {
+      if (o.visible && o !== ground && o !== markerGroup && !entityRoots.has(o)) targets.push(o);
+    }
+  }
   const hits = raycaster.intersectObjects(targets, true);
 
   // The first hit that belongs to an entity wins.
   for (const h of hits) {
     const ent = entityFromObject(h.object);
-    if (ent) {
+    if (ent && !ent.dead) {
       out.entity = ent;
       out.entityPoint = h.point.clone();
       break;
+    }
+  }
+  // Without an entity, the first hit that belongs to a world object.
+  if (!out.entity) {
+    for (const h of hits) {
+      const id = objectFromMesh(h.object);
+      if (id) {
+        out.object = id;
+        out.objectPoint = h.point.clone();
+        break;
+      }
     }
   }
   // Otherwise the first ground hit is a walk point.
@@ -122,6 +149,9 @@ function leftClick(x: number, y: number): void {
   if (hit.entity && hit.entityPoint) {
     defaultAction(hit.entity).run();
     showMarker(hit.entityPoint, 0xff3030);
+  } else if (hit.object && hit.objectPoint) {
+    useWorldObject(hit.object);
+    showMarker(hit.objectPoint, 0xffe14f);
   } else if (hit.ground) {
     walkTo(hit.ground.x, hit.ground.z);
     showMarker(hit.ground, 0xffe14f);
@@ -139,6 +169,13 @@ function openMenu(x: number, y: number): void {
     opts.push({ label: act.label, onSelect: act.run });
     opts.push({ label: `Examine ${e.name}`, onSelect: () => say(examineText(e), UI.textWhite) });
     if (ground) opts.push({ label: 'Walk here', onSelect: () => walkTo(ground.x, ground.z) });
+  } else if (hit.object && OBJECTS[hit.object]) {
+    const id = hit.object;
+    const def = OBJECTS[id];
+    opts.push({ label: def.verb, onSelect: () => useWorldObject(id) });
+    opts.push({ label: `Examine ${def.name}`, onSelect: () => say(def.examine, UI.textWhite) });
+    if (ground) opts.push({ label: 'Walk here', onSelect: () => walkTo(ground.x, ground.z) });
+    opts.push({ label: 'Cancel', onSelect: () => {} });
   } else {
     if (ground) opts.push({ label: 'Walk here', onSelect: () => walkTo(ground.x, ground.z) });
     opts.push({ label: 'Cancel', onSelect: () => {} });
@@ -154,6 +191,7 @@ function clearLongPress(): void {
 export function initInput(c: HTMLCanvasElement, camera: THREE.PerspectiveCamera, scene: THREE.Scene): void {
   canvas = c;
   cam = camera;
+  sceneRef = scene;
 
   // Click marker: an X of two flat bars, hidden until a click.
   markerGroup = new THREE.Group();
@@ -220,9 +258,9 @@ export function initInput(c: HTMLCanvasElement, camera: THREE.PerspectiveCamera,
   // Hotkeys.
   window.addEventListener('keydown', (e) => {
     if (typing()) return;
-    if (e.key === '1' && !isDialogueOpen()) castSpell('flare');
-    else if (e.key === '2' && !isDialogueOpen()) castSpell('mend');
-    else if (e.key === 'Escape') {
+    if (/^[1-8]$/.test(e.key)) {
+      if (!isDialogueOpen()) useHotbar(Number(e.key) - 1);
+    } else if (e.key === 'Escape') {
       hideContextMenu();
       closeDialogue();
       closeShop();
@@ -240,6 +278,9 @@ export function updateInput(dt: number): void {
     const hit = pickAt(pointer.x, pointer.y);
     if (hit.entity) {
       hover = defaultAction(hit.entity).label;
+      cursor = 'pointer';
+    } else if (hit.object) {
+      hover = OBJECTS[hit.object]?.name ?? hit.object;
       cursor = 'pointer';
     } else if (hit.ground) {
       hover = 'Walk here';

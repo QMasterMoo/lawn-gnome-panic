@@ -41,7 +41,7 @@ The world is built from a `ZoneDef`. Walking into an exit loads the next zone: t
     4. Emit `zone-changed`, and say `You arrive in <name>.` in quest colour.
   - `updateZones(dt)`: while the player is inside an exit's radius and its `when` holds, `loadZone(exit.to, exit.arriveX, exit.arriveZ)`. Add a 1 s cooldown after arriving so the player doesn't bounce.
   - An exit whose `to` is the current zone is a **hatch**: just `teleportPlayer(arriveX, arriveZ)`, with no rebuild and no banner.
-- `src/main.ts`: replace the `buildWorld(scene)` + `spawnWorldEntities(scene)` lines with `initZones(scene)`. **This is the only main.ts change allowed.**
+- `src/main.ts`: delete the `buildWorld(scene)` and `spawnWorldEntities(scene)` lines (and their now-unused imports); `initZones(scene)` is already called right after them and now does the building. **This is the only main.ts change allowed.**
 
 ## Contract
 `buildWorld(scene: THREE.Scene, zone: ZoneDef): void`, `clearWorld(scene: THREE.Scene): void`. zones.ts keeps its stub signatures. It calls `spawnZoneEntities` (entities.ts) and `spawnZoneObjects` (objects.ts) by their stub signatures.
