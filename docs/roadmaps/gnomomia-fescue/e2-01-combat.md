@@ -24,7 +24,7 @@ Combat uses the new rules from `docs/design/gnomomia/combat.md`. The level-based
     - Accuracy by rank: trivial 1, normal 2, elite/miniboss 4, boss/worldboss/final 5.
     - Defense `def.defense ?? 0`, +2 if the family is winged. Overrides win.
     - Rank multipliers (HP / damage): trivial .6/.6, normal 1/1, elite 2.5/1.3, miniboss 4/1.4, boss 6/1.5, worldboss 12/1.6, final 1/1 (the final boss uses hpOverride).
-  - Remove `attributeMod` and `skillBonus` and fix their callers in your two files only.
+  - Stop using `attributeMod` and `skillBonus` in your two files, but keep them exported (ui/panels.ts still imports them this epic).
 - `src/combat.ts`:
   - **Player swing.**
     - Damage: weapon range (fists 1-3 crush) × `power(primary)`, where primary is the class primary from `CLASSES[state.classId].primary` (strength if classless; sling/blowpipe/thrown use agility). Then apply `damageFromSkill`, the type multiplier, enemy armor mitigation, and crit ×2.

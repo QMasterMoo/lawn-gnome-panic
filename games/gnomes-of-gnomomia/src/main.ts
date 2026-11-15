@@ -10,10 +10,16 @@ import { initCombat, updateCombat } from './combat';
 import { initCamera, updateCamera } from './camera';
 import { initInput, updateInput } from './input';
 import { createHud, updateHud } from './ui/hud';
+import { createHotbar } from './ui/hotbar';
 import { createPanels } from './ui/panels';
 import { createDialogue } from './ui/dialogue';
 import { createShop } from './ui/shop';
-import { initQuests } from './quests';
+import { initQuests, updateQuests } from './quests';
+import { initZones, updateZones } from './zones';
+import { initProgression } from './progression';
+import { initBossMoves, updateBossMoves } from './bossmoves';
+import { initMower, updateMower } from './mower';
+import { updateAbilities } from './abilities';
 import { initAudio } from './audio';
 import { deleteSave, loadGame, saveGame } from './save';
 import { showTitle } from './ui/title';
@@ -42,12 +48,17 @@ resize();
 
 buildWorld(scene);
 spawnWorldEntities(scene);
+initZones(scene);
+initProgression();
+initBossMoves(scene);
+initMower(scene);
 createPlayer(scene);
 initCombat(scene);
 initCamera(camera, canvas);
 initInput(canvas, camera, scene);
 
 createHud(ui);
+createHotbar(ui);
 createPanels(ui);
 // Dialogue subscribes to 'talk' before quests do, so it picks its greeting from the state before a turn-in.
 createDialogue(ui);
@@ -67,6 +78,11 @@ function frame(now: number): void {
     updateEntities(dt);
     updateCombat(dt);
     updateInput(dt);
+    updateZones(dt);
+    updateAbilities(dt);
+    updateBossMoves(dt);
+    updateMower(dt);
+    updateQuests(dt);
     saveTimer += dt;
     if (saveTimer >= TUNING.autosaveSeconds) {
       saveTimer = 0;

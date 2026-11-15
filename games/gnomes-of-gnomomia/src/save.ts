@@ -52,6 +52,10 @@ export function loadGame(): boolean {
   state.attributes = { ...fresh.attributes, ...loaded.attributes };
   state.skills = { ...fresh.skills, ...loaded.skills };
   state.equipment = { ...fresh.equipment, ...loaded.equipment };
+  state.flags = { ...fresh.flags, ...loaded.flags };
+  state.talents = { ...fresh.talents, ...loaded.talents };
+  state.objects = { ...fresh.objects, ...loaded.objects };
+  state.hotbar = Array.isArray(loaded.hotbar) && loaded.hotbar.length === 8 ? loaded.hotbar : fresh.hotbar;
 
   teleportPlayer(data.x, data.z);
   return true;

@@ -4,8 +4,11 @@ import { player } from './player';
 import { heightAt, isBlocked } from './world';
 import { enemyAttack } from './combat';
 import { bus, say } from './events';
-import { ENEMIES, NPCS, SPAWN_GROUPS, TUNING, UI } from './config';
-import type { Entity, EnemyDef, InvSlot, NpcDef } from './config';
+import { TUNING, UI } from './config';
+import type { Entity, EnemyDef, InvSlot, NpcDef, ZoneId } from './config';
+import { ENEMIES, NPCS, SPAWNS } from './content';
+import { enemyStats } from './rules';
+import { state } from './state';
 import { createEnemyRig, createNpcRig, createLootRig } from './models';
 import type { CreatureRig } from './models';
 
@@ -23,6 +26,8 @@ interface Slot {
   returning: boolean;
   /** Enemy: seconds since it died. */
   deadFor: number;
+  /** Enemy: when dead, it is removed for good instead of respawning (spawnEnemyAt). */
+  noRespawn?: boolean;
   /** How far the entity moved this frame, in units per second (drives the walk animation). */
   speed: number;
 }
@@ -103,19 +108,21 @@ function addSlot(p: {
   return slot;
 }
 
-/** Spawns every NPC in NPCS and every enemy in SPAWN_GROUPS. Call once after buildWorld. */
-export function spawnWorldEntities(scene: THREE.Scene): void {
+/** Spawns the NPCs and enemies of one zone. Clears whatever was spawned before. */
+export function spawnZoneEntities(scene: THREE.Scene, zone: ZoneId): void {
   sceneRef = scene;
   for (const s of slots.values()) scene.remove(s.entity.object);
   slots.clear();
 
   for (const def of Object.values(NPCS)) {
+    if (def.zone !== zone) continue;
     const slot = addSlot({ kind: 'npc', defId: def.id, name: def.name, level: 0, x: def.x, z: def.z, rig: createNpcRig(def), hp: 1, npc: def });
     slot.timer = Math.random() * 4;
   }
 
   const rng = mulberry32(99);
-  for (const group of SPAWN_GROUPS) {
+  for (const group of SPAWNS) {
+    if (group.zone !== zone) continue;
     const def = ENEMIES[group.enemy];
     for (let i = 0; i < group.count; i++) {
       // Up to 10 tries for a free spot; the last try is used even if it is blocked.
@@ -128,10 +135,25 @@ export function spawnWorldEntities(scene: THREE.Scene): void {
         z = group.z + Math.sin(a) * r;
         if (!isBlocked(x, z)) break;
       }
-      const slot = addSlot({ kind: 'enemy', defId: def.id, name: def.name, level: def.level, x, z, rig: createEnemyRig(def), hp: def.hp, enemy: def });
+      const slot = addSlot({ kind: 'enemy', defId: def.id, name: def.name, level: def.level, x, z, rig: createEnemyRig(def), hp: enemyStats(def).hp, enemy: def });
       slot.timer = Math.random() * 3;
     }
   }
+}
+
+/** Spawns the current zone's population. Call once after buildWorld. */
+export function spawnWorldEntities(scene: THREE.Scene): void {
+  spawnZoneEntities(scene, state.zone);
+}
+
+/** Adds one enemy of `defId` at (x, z) that is removed for good when it dies. Returns null for an unknown id. */
+export function spawnEnemyAt(defId: string, x: number, z: number): Entity | null {
+  const def = ENEMIES[defId];
+  if (!def) return null;
+  const slot = addSlot({ kind: 'enemy', defId: def.id, name: def.name, level: def.level, x, z, rig: createEnemyRig(def), hp: enemyStats(def).hp, enemy: def });
+  slot.timer = Math.random() * 3;
+  slot.noRespawn = true;
+  return slot.entity;
 }
 
 /** Moves an entity toward (tx, tz) at `speed`. Tries the full step, then x only, then z only. Returns the speed used (0 if stuck). */
@@ -187,6 +209,10 @@ function updateEnemy(slot: Slot, def: EnemyDef, dt: number): void {
     // Lies dead for a while, then vanishes; after its respawn time it returns home.
     slot.deadFor += dt;
     if (slot.deadFor >= 1.5) e.object.visible = false;
+    if (slot.noRespawn) {
+      if (slot.deadFor >= 1.5) removeEntity(e.id);
+      return;
+    }
     if (slot.deadFor >= def.respawnSeconds) {
       e.position.copy(e.home);
       e.hp = e.maxHp;
@@ -230,7 +256,7 @@ function updateEnemy(slot: Slot, def: EnemyDef, dt: number): void {
         if (e.attackTimer <= 0) {
           enemyAttack(e);
           slot.rig.swing();
-          e.attackTimer = def.attackSeconds;
+          e.attackTimer = def.attackSeconds ?? 2.4;
         }
       }
       return;

@@ -3,7 +3,8 @@ import { state, maxHp, maxMp } from './state';
 import { bus, say } from './events';
 import { getEntity, removeEntity, spawnLoot } from './entities';
 import { player } from './player';
-import { INVENTORY_SIZE, ITEMS, UI, type EquipSlot } from './config';
+import { INVENTORY_SIZE, UI, type EquipSlot } from './config';
+import { ITEMS } from './content';
 
 /** Adds items (stacking stackables). False (and a message) if there is no room. */
 export function addItem(item: string, count = 1): boolean {

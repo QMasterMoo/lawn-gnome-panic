@@ -1,6 +1,13 @@
 // World: terrain, lake, scenery, lights and collision for walkers. Seeded, so every load looks the same.
 import * as THREE from 'three';
-import { TUNING, REGIONS, LAKE, HOUSES, WELL } from './config';
+import { TUNING } from './config';
+import { ZONES } from './content';
+
+const ZONE = ZONES.mossbottom;
+const REGIONS = ZONE.regions;
+const LAKE = ZONE.lakes[0];
+const HOUSES = ZONE.houses;
+const WELL = { x: ZONE.shrine.x, z: ZONE.shrine.z, r: 1.2 };
 
 let ground: THREE.Mesh | null = null;
 

@@ -5,7 +5,8 @@ import { getEntity } from '../entities';
 import { player } from '../player';
 import { bus, say } from '../events';
 import { state, maxHp } from '../state';
-import { NPCS, TUNING, UI, type DialogueAction, type DialogueOption } from '../config';
+import { TUNING, UI, type DialogueAction, type DialogueOption } from '../config';
+import { NPCS, npcGreetings } from '../content';
 
 const HEAL_COST = 5;
 
@@ -40,7 +41,7 @@ export function createDialogue(root: HTMLElement): void {
     const def = NPCS[npcId];
     if (!def) return;
     // The first greeting whose condition holds (or that has none) opens the talk.
-    const greeting = def.greetings.find((g) => !g.when || checkCondition(g.when));
+    const greeting = npcGreetings(npcId).find((g) => !g.when || checkCondition(g.when));
     if (!greeting) return;
     openNpc = npcId;
     openEntity = entityId;

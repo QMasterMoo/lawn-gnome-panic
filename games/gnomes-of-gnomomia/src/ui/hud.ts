@@ -2,7 +2,9 @@
 // region name, death overlay, hover text and the right-click option menu.
 import * as THREE from 'three';
 import { bus } from '../events';
-import { ENEMIES, PLAYER_ID, SKILLS, UI } from '../config';
+import { PLAYER_ID, UI } from '../config';
+import { ENEMIES } from '../content';
+import { SKILLS } from '../data/core';
 import { allEntities } from '../entities';
 import { player } from '../player';
 import { regionNameAt } from '../world';

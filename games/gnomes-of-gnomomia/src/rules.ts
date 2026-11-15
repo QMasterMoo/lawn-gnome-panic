@@ -1,7 +1,6 @@
-// Pure RPG rules (dice, to-hit, skill progression). Skill and level-up changes go through state and the event bus.
-import { ATTRIBUTES, SKILLS, TUNING, UI, type SkillId } from './config';
-import { bus, say } from './events';
-import { maxHp, maxMp, state } from './state';
+// Pure RPG rules (dice, to-hit, stats). Placeholders that keep today's numbers; epic 2 replaces them.
+// No imports from state or events: this module stays a pure leaf.
+import type { DamageType, EnemyDef, Family, ItemDef } from './config';
 
 /** Sum of `count` dice with `sides` faces each. */
 export function rollDice(count: number, sides: number, rng: () => number = Math.random): number {
@@ -20,40 +19,79 @@ export function skillBonus(level: number): number {
   return Math.floor(level / 5);
 }
 
-/** d20 roll. Hits on 20 always, misses on 1 always, otherwise needs roll + bonus >= 10 + armor. */
-export function attackRoll(bonus: number, armor: number, rng: () => number = Math.random): { hit: boolean; roll: number } {
-  const roll = rollDice(1, 20, rng);
-  const hit = roll === 20 || (roll !== 1 && roll + bonus >= 10 + armor);
-  return { hit, roll };
-}
-
 /** Uses of a skill needed to reach the next level. */
 export function skillXpToNext(level: number): number {
   return 2 + Math.floor(level / 2);
 }
 
-/** Record `xp` uses of a skill: may raise the skill, and the character level after enough skill-ups. */
-export function useSkill(skill: SkillId, xp = 1): void {
-  const s = state.skills[skill];
-  if (s.level >= 100) return;
-  s.xp += xp;
-  while (s.level < 100 && s.xp >= skillXpToNext(s.level)) {
-    s.xp -= skillXpToNext(s.level);
-    s.level++;
-    state.skillUps++;
-    bus.emit('skill-up', { skill, level: s.level });
-    const name = SKILLS.find((k) => k.id === skill)?.name ?? skill;
-    say(`Your ${name} skill is now ${s.level}.`, UI.good);
-  }
-  // Character level: every skillUpsPerLevel skill-ups, one level, full HP and mana.
-  while (state.skillUps >= TUNING.skillUpsPerLevel) {
-    state.skillUps -= TUNING.skillUpsPerLevel;
-    state.level++;
-    for (const a of ATTRIBUTES) state.attributes[a]++;
-    state.hp = maxHp();
-    state.mp = maxMp();
-    bus.emit('level-up', { level: state.level });
-    say(`Level up! You are now level ${state.level}.`, UI.gold);
-  }
-  bus.emit('changed', {});
+/** Attribute power multiplier: 10 is 1.0. */
+export function power(a: number): number {
+  return 1 + (a - 10) / 40;
+}
+
+/** Accuracy granted by a skill level. */
+export function accuracyFromSkill(level: number): number {
+  return Math.floor(level / 20);
+}
+
+/** Damage bonus (fraction) granted by a skill level. */
+export function damageFromSkill(level: number): number {
+  return level / 400;
+}
+
+/** d20 roll. A 20 always hits, a 1 always misses, otherwise hit when roll + accuracy >= 10 + defense. */
+export function attackRoll(
+  accuracy: number,
+  defense: number,
+  critRange = 20,
+  rng: () => number = Math.random,
+): { hit: boolean; crit: boolean; roll: number } {
+  const roll = rollDice(1, 20, rng);
+  const hit = roll === 20 || (roll !== 1 && roll + accuracy >= 10 + defense);
+  const crit = hit && roll >= critRange;
+  return { hit, crit, roll };
+}
+
+/** Damage taken reduction from armor. Placeholder: no mitigation yet. */
+export function mitigation(armor: number, attackerLevel: number): number {
+  void armor;
+  void attackerLevel;
+  return 0;
+}
+
+/** [min, max] damage of a weapon. */
+export function weaponRange(item: ItemDef): [number, number] {
+  if (item.damageOverride) return [item.damageOverride[0], item.damageOverride[1]];
+  const avg = 3 + 2 * (item.ilvl ?? 1);
+  return [Math.round(0.6 * avg), Math.round(1.4 * avg)];
+}
+
+/** Armor value of a piece of armor or an offhand; 0 for everything else. */
+export function armorValue(item: ItemDef): number {
+  if (item.kind !== 'armor' && item.kind !== 'offhand') return 0;
+  return item.armor ?? item.ilvl ?? 0;
+}
+
+/** Damage multiplier for a damage type against a family. Placeholder: always 1. */
+export function typeMultiplier(type: DamageType, family: Family): number {
+  void type;
+  void family;
+  return 1;
+}
+
+/** Combat numbers of an enemy. The only place EnemyDef's combat fields are read. */
+export function enemyStats(def: EnemyDef): {
+  hp: number;
+  damage: [number, number];
+  armor: number;
+  accuracy: number;
+  defense: number;
+} {
+  return {
+    hp: def.hpOverride ?? 10 * def.level,
+    damage: def.damageOverride ? [def.damageOverride[0], def.damageOverride[1]] : [1, 2 + def.level],
+    armor: 0,
+    accuracy: Math.min(5, Math.max(0, def.level - 1)),
+    defense: def.defense ?? 0,
+  };
 }

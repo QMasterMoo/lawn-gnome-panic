@@ -4,7 +4,8 @@ import { allEntities } from '../entities';
 import { player } from '../player';
 import { bus, say } from '../events';
 import { state } from '../state';
-import { ITEMS, NPCS, TUNING, UI } from '../config';
+import { TUNING, UI } from '../config';
+import { ITEMS, NPCS } from '../content';
 
 let win: HTMLDivElement | null = null;
 let titleEl: HTMLDivElement | null = null;

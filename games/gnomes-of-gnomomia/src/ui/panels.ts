@@ -1,9 +1,11 @@
 // The tabbed side panel (RuneScape style): inventory, equipment, stats, quests and spellbook.
 import { bus, say } from '../events';
 import { state, maxHp, maxMp, equippedArmor, equippedWeapon } from '../state';
-import { ATTRIBUTES, EQUIP_SLOTS, INVENTORY_SIZE, ITEMS, QUESTS, SKILLS, SPELLS, TUNING, UI, type EquipSlot } from '../config';
+import { EQUIP_SLOTS, INVENTORY_SIZE, TUNING, UI, type EquipSlot } from '../config';
+import { ITEMS, QUESTS } from '../content';
+import { ATTRIBUTES, SKILLS, SPELLS } from '../data/core';
 import { castSpell } from '../combat';
-import { skillXpToNext, attributeMod } from '../rules';
+import { skillXpToNext, attributeMod, weaponRange } from '../rules';
 import { countItem, dropFromSlot, equipFromSlot, unequip, useFromSlot } from '../inventory';
 import { showContextMenu, type MenuOption } from './hud';
 
@@ -17,7 +19,9 @@ const TABS: { id: TabId; icon: string; name: string; key: string }[] = [
   { id: 'spells', icon: '🔮', name: 'Spells', key: 'b' },
 ];
 
-const EQUIP_LABEL: Record<EquipSlot, string> = { head: 'Head', body: 'Body', weapon: 'Weapon', shield: 'Shield' };
+const EQUIP_LABEL: Record<EquipSlot, string> = {
+  head: 'Head', body: 'Body', legs: 'Legs', hands: 'Hands', feet: 'Feet', weapon: 'Weapon', offhand: 'Off-hand', trinket: 'Trinket',
+};
 
 let panel: HTMLElement;
 let content: HTMLElement;
@@ -203,12 +207,13 @@ function buildEquipment(): HTMLElement {
   }
 
   const weapon = equippedWeapon();
-  const dice = weapon?.damage ?? [1, 2];
-  const skill = weapon?.skill ?? 'blunt';
+  const [dmgMin, dmgMax] = weapon ? weaponRange(weapon) : [1, 2];
+  const dmgType = weapon?.damageType;
+  const skill = !weapon || dmgType === 'crush' ? 'blunt' : dmgType === 'pierce' ? 'marksmanship' : 'blade';
   const skillLabel = SKILLS.find((s) => s.id === skill)?.name ?? skill;
   wrap.append(
     make('div', { marginTop: '8px' }, `Armor rating: ${equippedArmor()}`),
-    make('div', {}, `Damage: ${dice[0]}d${dice[1]} (${skillLabel})`),
+    make('div', {}, `Damage: ${dmgMin}-${dmgMax} (${skillLabel})`),
   );
   return wrap;
 }
@@ -285,7 +290,7 @@ function buildQuests(): HTMLElement {
 
 function buildSpells(): HTMLElement {
   const wrap = make('div');
-  for (const sp of Object.values(SPELLS)) {
+  Object.values(SPELLS).forEach((sp, index) => {
     const row = make('div', {
       display: 'flex', alignItems: 'flex-start', gap: '6px', padding: '5px 4px', cursor: 'pointer',
       borderBottom: `1px solid ${UI.border}`, opacity: state.mp < sp.cost ? '0.5' : '1',
@@ -294,13 +299,13 @@ function buildSpells(): HTMLElement {
     row.append(make('span', { fontSize: '18px', lineHeight: '1' }, sp.icon));
     const text = make('div', { flex: '1' });
     text.append(
-      make('div', {}, `${sp.name} [${sp.key}]`),
+      make('div', {}, `${sp.name} [${index + 1}]`),
       make('div', { color: UI.mana, fontSize: '11px' }, `${sp.cost} MP`),
       make('div', { color: UI.textDim, fontSize: '11px' }, sp.about),
     );
     row.append(text);
     row.onclick = () => castSpell(sp.id);
     wrap.append(row);
-  }
+  });
   return wrap;
 }

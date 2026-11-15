@@ -21,7 +21,7 @@ Only `src/data/packs/mossbottom.ts`. Prefix for new ids: `mb-`.
   - `mb-mushroom-hood`: ilvl 2, cloth head.
   - `mb-bark-leggings`: ilvl 3, leather legs.
 - **Enemies:**
-  - Remove `hpOverride`. Set rank and family from bestiary.md (slug trivial/soft, mole normal/furred, beetle normal/shelled, feral-gnome normal/fired, mole-king boss/furred).
+  - Remove `hpOverride`, `damageOverride` and `defense` from every enemy (epic-1 placeholders that kept the old numbers), and set Grubthorn's `level` to 6. Set rank and family from bestiary.md (slug trivial/soft, mole normal/furred, beetle normal/shelled, feral-gnome normal/fired, mole-king boss/furred).
   - Add `pond-frog` (L2 normal soft, passive, near the Puddlemere shore) and `feral-brute` (L4 elite fired, at the Feral Camp, drops `mb-feral-totem`).
   - Every enemy gets `wants` from the bestiary's Wants column.
   - Grubthorn: `moves` = Burrow (vanish, every 14, telegraph 1.5, radius 3, damage 1.5), Mudsling (pool, every 9, telegraph 1, radius 2.5, damage 0.4, status slowed 3), Call the Clan (summon 2 `mole`, every 30, belowHpPct 0.5). `lastWords: "We weren't attacking. We were running."`

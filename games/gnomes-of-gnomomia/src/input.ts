@@ -1,6 +1,7 @@
 // Mouse and touch input: picking, hover text, left-click actions, right-click and long-press menus, click marker and hotkeys.
 import * as THREE from 'three';
-import { ENEMIES, NPCS, UI, type Entity } from './config';
+import { UI, type Entity } from './config';
+import { ENEMIES, NPCS } from './content';
 import { allEntities, entityFromObject } from './entities';
 import { getGroundMesh } from './world';
 import { player, walkTo, interact } from './player';

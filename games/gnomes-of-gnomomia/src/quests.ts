@@ -1,5 +1,6 @@
 // Quest tracking: starting, counting kills and items, turn-ins and rewards.
-import { QUESTS, ITEMS, UI, type Condition } from './config';
+import { UI, type Condition } from './config';
+import { ITEMS, QUESTS } from './content';
 import { bus, say } from './events';
 import { addItem, removeItem, countItem } from './inventory';
 import { state } from './state';
@@ -87,8 +88,14 @@ function complete(id: string): void {
   const itemNames = def.reward.items.map((r) => `${r.count} x ${ITEMS[r.item]?.name ?? r.item}`);
   say(`Quest complete: ${def.name}!`, UI.gold);
   say(`Reward: ${[`${def.reward.gold} gold`, ...itemNames].join(', ')}.`, UI.gold);
+  bus.emit('quest-completed', { questId: id });
   bus.emit('quest-updated', { questId: id });
   bus.emit('changed', {});
+}
+
+/** Per-frame quest work. Placeholder: nothing yet. */
+export function updateQuests(dt: number): void {
+  void dt;
 }
 
 /** Subscribes to game events. Call once, AFTER createDialogue so the dialogue sees the state before a turn-in. */

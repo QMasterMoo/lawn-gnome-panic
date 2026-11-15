@@ -1,11 +1,18 @@
 // Melee, spells, enemy attacks, regen and death: the fight rules that tie rules.ts to the world.
 import * as THREE from 'three';
-import { ENEMIES, PLAYER_ID, SPAWN, SPELLS, TUNING, UI, type Entity, type SpellId } from './config';
+import { PLAYER_ID, SPAWN, TUNING, UI, type DamageType, type Entity, type SkillId, type SpellId, type StatusId } from './config';
+import { ENEMIES } from './content';
+import { SPELLS } from './data/core';
 import { allEntities, getEntity, killEntity } from './entities';
 import { bus, say } from './events';
 import { player, teleportPlayer } from './player';
-import { attackRoll, attributeMod, rollDice, skillBonus, useSkill } from './rules';
+import { useSkill } from './progression';
+import { attackRoll, attributeMod, enemyStats, rollDice, skillBonus, weaponRange } from './rules';
 import { equippedArmor, equippedWeapon, maxHp, maxMp, state } from './state';
+
+/** Spell dice: the spell records hold no dice, so the casts keep them here. */
+const FLARE_DICE: readonly [number, number] = [2, 6];
+const MEND_DICE: readonly [number, number] = [2, 8];
 
 /** A short visual effect: runs for `duration` seconds, then the mesh is removed. */
 interface Effect {
@@ -100,16 +107,18 @@ function swing(e: Entity): void {
   e.sinceHit = 0;
 
   const weapon = equippedWeapon();
-  const skill = weapon?.skill ?? 'blunt';
-  const dice = weapon?.damage ?? [1, 2];
+  const type = weapon?.damageType;
+  const skill: SkillId = !weapon || type === 'crush' ? 'blunt' : type === 'pierce' ? 'marksmanship' : 'blade';
+  const [lo, hi] = weapon ? weaponRange(weapon) : [1, 2];
   const bonus = skillBonus(state.skills[skill].level) + attributeMod(state.attributes.agility);
   const def = ENEMIES[e.defId];
-  const { hit } = attackRoll(bonus, def.armor);
+  const { hit, crit } = attackRoll(bonus, enemyStats(def).defense);
 
   if (hit) {
-    const damage = Math.max(1, rollDice(dice[0], dice[1]) + attributeMod(state.attributes.strength));
+    const rolled = lo + Math.floor(Math.random() * (hi - lo + 1));
+    const damage = Math.max(1, rolled + attributeMod(state.attributes.strength));
     e.hp -= damage;
-    bus.emit('hit', { attacker: PLAYER_ID, target: e.id, damage, at: e.position.clone() });
+    bus.emit('hit', { attacker: PLAYER_ID, target: e.id, damage, at: e.position.clone(), damageType: type ?? 'crush', crit });
     useSkill(skill, 1);
     finishIfDead(e);
   } else {
@@ -129,15 +138,17 @@ function finishIfDead(e: Entity): void {
 export function enemyAttack(e: Entity): void {
   if (player.dead) return;
   const def = ENEMIES[e.defId];
-  const shield = state.equipment.shield !== null;
-  const armor = equippedArmor() + skillBonus(state.skills.armor.level) + (shield ? skillBonus(state.skills.block.level) : 0);
-  const { hit } = attackRoll(def.attack, armor);
+  const st = enemyStats(def);
+  const shield = state.equipment.offhand !== null;
+  const armor = equippedArmor() + skillBonus(state.skills.toughness.level) + (shield ? skillBonus(state.skills.block.level) : 0);
+  const { hit } = attackRoll(st.accuracy, armor);
 
   if (hit) {
-    const damage = rollDice(def.damage[0], def.damage[1]);
+    const [lo, hi] = st.damage;
+    const damage = lo + Math.floor(Math.random() * (hi - lo + 1));
     state.hp -= damage;
-    bus.emit('hit', { attacker: e.id, target: PLAYER_ID, damage, at: player.position.clone() });
-    useSkill('armor', 1);
+    bus.emit('hit', { attacker: e.id, target: PLAYER_ID, damage, at: player.position.clone(), damageType: def.damageType });
+    useSkill('toughness', 1);
   } else {
     bus.emit('miss', { attacker: e.id, target: PLAYER_ID, at: player.position.clone() });
     if (shield) useSkill('block', 1);
@@ -146,16 +157,64 @@ export function enemyAttack(e: Entity): void {
   // Fight back when the player is idle.
   if (player.action === null && player.path.length === 0) player.action = { type: 'attack', target: e.id };
 
-  if (state.hp <= 0) {
-    state.hp = 0;
-    player.dead = true;
-    deadTimer = 0;
-    player.action = null;
-    player.path = [];
-    bus.emit('player-died', {});
-    say('Oh dear, you are dead!', UI.bad);
-  }
+  checkPlayerDeath();
   bus.emit('changed', {});
+}
+
+/** The player dies once hit points run out: the respawn timer starts and the chat says so. */
+function checkPlayerDeath(): void {
+  if (state.hp > 0) return;
+  state.hp = 0;
+  player.dead = true;
+  deadTimer = 0;
+  player.action = null;
+  player.path = [];
+  bus.emit('player-died', {});
+  say('Oh dear, you are dead!', UI.bad);
+}
+
+/**
+ * Placeholder for the damage pipeline of later epics: deals `base` (rounded, at least 1) damage of `type` to the target.
+ * Returns the amount dealt, or 0 when the target is missing or dead.
+ */
+export function dealDamage(targetId: number, base: number, type: DamageType, opts?: { crit?: boolean; spell?: boolean; noRoll?: boolean }): number {
+  const amount = Math.max(1, Math.round(base));
+  if (targetId === PLAYER_ID) {
+    state.hp -= amount;
+    bus.emit('hit', { attacker: PLAYER_ID, target: PLAYER_ID, damage: amount, at: player.position.clone(), damageType: type, crit: opts?.crit, spell: opts?.spell });
+    checkPlayerDeath();
+    bus.emit('changed', {});
+    return amount;
+  }
+  const e = getEntity(targetId);
+  if (!e || e.dead) return 0;
+  e.hp -= amount;
+  e.sinceHit = 0;
+  bus.emit('hit', { attacker: PLAYER_ID, target: e.id, damage: amount, at: e.position.clone(), damageType: type, crit: opts?.crit, spell: opts?.spell });
+  finishIfDead(e);
+  return amount;
+}
+
+/** Placeholder: statuses (poison, slow, stun and the rest) arrive in a later epic. Does nothing yet. */
+export function applyStatus(targetId: number, status: StatusId, seconds: number, power?: number): void {
+  void targetId;
+  void status;
+  void seconds;
+  void power;
+}
+
+/** Heals the player, capped at max hit points. */
+export function healPlayer(amount: number): void {
+  state.hp = Math.min(maxHp(), state.hp + amount);
+  bus.emit('heal', { amount });
+  bus.emit('changed', {});
+}
+
+/** Placeholder: always false until statuses exist. */
+export function hasStatus(targetId: number, status: StatusId): boolean {
+  void targetId;
+  void status;
+  return false;
 }
 
 export function castSpell(spell: SpellId): void {
@@ -174,12 +233,12 @@ export function castSpell(spell: SpellId): void {
       say('There is nothing to target.', UI.bad);
       return;
     }
-    const damage = rollDice(sp.dice[0], sp.dice[1]) + skillBonus(state.skills.destruction.level);
+    const damage = rollDice(FLARE_DICE[0], FLARE_DICE[1]) + skillBonus(state.skills.sun.level);
     e.inCombat = true;
     e.sinceHit = 0;
     e.hp -= damage;
-    bus.emit('hit', { attacker: PLAYER_ID, target: e.id, damage, at: e.position.clone(), spell: true });
-    useSkill('destruction', 1);
+    bus.emit('hit', { attacker: PLAYER_ID, target: e.id, damage, at: e.position.clone(), spell: true, damageType: 'sun' });
+    useSkill('sun', 1);
     if (e.hp <= 0) {
       finishIfDead(e);
     } else if (!player.action) {
@@ -189,10 +248,10 @@ export function castSpell(spell: SpellId): void {
     spawnFireball(to);
   } else {
     // Mend: heal yourself.
-    const amount = rollDice(sp.dice[0], sp.dice[1]) + 2 * skillBonus(state.skills.restoration.level);
+    const amount = rollDice(MEND_DICE[0], MEND_DICE[1]) + 2 * skillBonus(state.skills.bloom.level);
     state.hp = Math.min(maxHp(), state.hp + amount);
     bus.emit('heal', { amount });
-    useSkill('restoration', 1);
+    useSkill('bloom', 1);
     spawnHealRing();
   }
 

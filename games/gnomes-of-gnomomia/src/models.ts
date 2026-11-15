@@ -170,7 +170,9 @@ export function createEnemyRig(def: EnemyDef): CreatureRig {
   }
   if (def.model === 'slug') return slugRig(def.color);
   if (def.model === 'beetle') return beetleRig(def.color);
-  return moleRig(def);
+  if (def.model === 'mole') return moleRig(def);
+  // Models without their own rig yet (later epics add them) use the beetle.
+  return beetleRig(def.color);
 }
 
 /** A villager: a gnome built from its look. */
