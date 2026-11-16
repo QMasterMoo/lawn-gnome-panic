@@ -1,17 +1,17 @@
-// WebAudio sound effects, a quiet lute-like ambience, and the mute toggle (key M).
+// WebAudio sound effects and the mute toggle (key M).
 // The AudioContext is made on the first click or key press, since browsers block sound before that.
 import { PLAYER_ID } from './config';
 import { bus, type GameEvents } from './events';
-import { onSettingsChange, settings, updateSettings } from './settings';
+import { volume } from './volume';
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 
 function applyGain(): void {
-  if (master) master.gain.value = settings.muted ? 0 : settings.volume;
+  if (master) master.gain.value = volume.effective('sounds');
 }
 
-/** Creates the context and master gain once. Called from a user gesture. */
+/** Creates the context and SFX gain once. Called from a user gesture. */
 function ensureContext(): void {
   if (ctx) return;
   try {
@@ -25,9 +25,9 @@ function ensureContext(): void {
   }
 }
 
-/** The live context and master gain, or null before the first gesture or while muted. */
+/** The live context and SFX gain, or null before the first gesture or while silent. */
 function out(): { c: AudioContext; m: GainNode } | null {
-  if (!ctx || !master || settings.muted) return null;
+  if (!ctx || !master || volume.effective('sounds') <= 0) return null;
   if (ctx.state === 'suspended') ctx.resume().catch(() => {});
   return { c: ctx, m: master };
 }
@@ -38,7 +38,7 @@ function tone(
   endFreq: number,
   seconds: number,
   type: OscillatorType,
-  volume: number,
+  gainLevel: number,
   delay = 0,
 ): void {
   const o = out();
@@ -52,7 +52,7 @@ function tone(
   osc.frequency.setValueAtTime(freq, start);
   osc.frequency.exponentialRampToValueAtTime(endFreq, start + seconds);
   gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.exponentialRampToValueAtTime(volume, start + 0.01);
+  gain.gain.exponentialRampToValueAtTime(gainLevel, start + 0.01);
   gain.gain.exponentialRampToValueAtTime(0.001, start + seconds);
 
   osc.connect(gain);
@@ -62,7 +62,7 @@ function tone(
 }
 
 /** A short burst of white noise through a lowpass filter. */
-function noise(seconds: number, filterFreq: number, volume: number): void {
+function noise(seconds: number, filterFreq: number, gainLevel: number): void {
   const o = out();
   if (!o) return;
   const { c, m } = o;
@@ -79,7 +79,7 @@ function noise(seconds: number, filterFreq: number, volume: number): void {
   filter.type = 'lowpass';
   filter.frequency.value = filterFreq;
   const gain = c.createGain();
-  gain.gain.setValueAtTime(volume, now);
+  gain.gain.setValueAtTime(gainLevel, now);
   gain.gain.exponentialRampToValueAtTime(0.001, now + seconds);
 
   src.connect(filter);
@@ -101,7 +101,7 @@ function onEvent<K extends keyof GameEvents>(type: K, fn: (payload: GameEvents[K
 }
 
 function toggleMute(): void {
-  updateSettings({ muted: !settings.muted });
+  volume.toggleMute('master');
 }
 
 function isTyping(target: EventTarget | null): boolean {
@@ -110,7 +110,7 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 export function initAudio(): void {
-  onSettingsChange(applyGain);
+  volume.subscribe(applyGain);
   // Sounds for game events.
   onEvent('hit', (e) => {
     if (e.spell) noise(0.3, 900, 0.4); // spell whoosh
