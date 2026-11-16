@@ -25,6 +25,7 @@ let disposables: { dispose(): unknown }[] = [];
 let generation = 0;
 let playing = false;
 let outVolume: ToneNS.Volume | null = null;
+let volumeGain = 1;
 const readMuted = (): boolean => { try { return localStorage.getItem(muteKey) === '1'; } catch { return false; } };
 let muted = readMuted();
 
@@ -34,12 +35,27 @@ export function setMuteKey(key: string): void {
   muted = readMuted();
 }
 
-export function isMuted(): boolean { return muted; }
+function applyOutput(): void {
+  if (!outVolume) return;
+  const silent = muted || volumeGain <= 0.0001;
+  try {
+    outVolume.mute = silent;
+    if (!silent) outVolume.volume.value = MUSIC_DB + 20 * Math.log10(volumeGain);
+  } catch { /* ignore */ }
+}
+
+/** Sets linear music volume (0..1) relative to MUSIC_DB. */
+export function setMusicVolume(gain: number): void {
+  volumeGain = Math.min(1, Math.max(0, Number.isFinite(gain) ? gain : 1));
+  applyOutput();
+}
+
+export function isMuted(): boolean { return muted || volumeGain <= 0.0001; }
 
 export function setMuted(m: boolean): void {
   muted = m;
   try { localStorage.setItem(muteKey, m ? '1' : '0'); } catch { /* per-session only */ }
-  try { if (outVolume) outVolume.mute = m; } catch { /* ignore */ }
+  applyOutput();
 }
 
 function loadTone(): Promise<Tone | null> {
@@ -102,8 +118,9 @@ function unlockOnGesture(T: Tone): void {
 function createMaster(T: Tone, keep: Keep): ToneNS.Volume {
   const limiter = keep(new T.Limiter(-1)).toDestination();
   const glue = keep(new T.Compressor({ threshold: -20, ratio: 2.5, attack: 0.02, release: 0.25 })).connect(limiter);
-  const out = keep(new T.Volume(MUSIC_DB)).connect(glue);
-  out.mute = muted;
+  const silent = muted || volumeGain <= 0.0001;
+  const out = keep(new T.Volume(silent ? MUSIC_DB : MUSIC_DB + 20 * Math.log10(volumeGain))).connect(glue);
+  out.mute = silent;
   return out;
 }
 

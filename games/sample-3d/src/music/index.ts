@@ -2,11 +2,21 @@
  * Game music: a generated jungle track per run, and a composed menu theme, from @lawn/music
  * (packages/music, where the generators and their design notes live).
  */
-import { buildMenuTheme, buildRunTrack, isMuted, pauseSong, playSong, resumeSong, setMuteKey, setMuted, stopSong, trackInfo, type TrackInfo } from '@lawn/music';
+import { buildMenuTheme, buildRunTrack, pauseSong, playSong, resumeSong, setMusicVolume, setMuteKey, setMuted, stopSong, trackInfo, type TrackInfo } from '@lawn/music';
+import { volume } from '../volume';
 
 export type { TrackInfo };
 
 setMuteKey('lgp-music-muted');
+
+function syncMusicVolume(): void {
+  const eff = volume.effective('music');
+  setMusicVolume(eff);
+  setMuted(eff <= 0);
+}
+
+syncMusicVolume();
+volume.subscribe(syncMusicVolume);
 
 /**
  * Starts a brand new run track and returns its made-up name. Call once per run.
@@ -25,5 +35,5 @@ export function startMenuMusic(): void {
 export const pauseMusic = pauseSong;
 export const resumeMusic = resumeSong;
 export const stopMusic = stopSong;
-export const isMusicMuted = isMuted;
-export const setMusicMuted = setMuted;
+export const isMusicMuted = (): boolean => volume.effective('music') <= 0;
+export const setMusicMuted = (m: boolean): void => volume.setMuted('music', m);
