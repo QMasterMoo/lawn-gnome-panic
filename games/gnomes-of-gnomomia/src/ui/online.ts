@@ -2,7 +2,7 @@
 // or 💬), the name plates over other players, and speech bubbles over whoever just spoke (me included). Reads
 // src/net/mmo.ts; never touches #ui itself, only its own container.
 import * as THREE from 'three';
-import { UI } from '../config';
+import { UI, WORLD } from '../config';
 import { ZONES } from '../content';
 import { CLASSES } from '../data/classes';
 import { say } from '../events';
@@ -28,6 +28,15 @@ const plates = new Map<number, { el: HTMLDivElement; label: HTMLDivElement; fill
 let myHolder: HTMLDivElement;
 let myBubble: Bubble;
 const v = new THREE.Vector3();
+/** Gnomes drawn near me at the last pill refresh; the pill is redrawn when this changes. */
+let shownNear = -1;
+
+/** Gnomes with a model: the ones drawn, i.e. within WORLD.remoteViewRadius of me. */
+function nearCount(): number {
+  let n = 0;
+  for (const r of remotePlayers()) if (r.model) n++;
+  return n;
+}
 
 const HELP = `Chat: ${TOUCH ? 'tap 💬' : 'Enter or 💬'}, type, send. Commands: /name <new name>, /who, /offline, /online.`;
 /** One-tap lines under the chat line, handy on a phone keyboard. */
@@ -60,7 +69,7 @@ function zoneName(r: RemotePlayer): string {
 function refresh(): void {
   const s = mmoStatus();
   const all = [...remotePlayers()];
-  const here = all.filter((r) => r.zone === state.zone).length;
+  shownNear = nearCount();
   let dot = '#888';
   let text = 'Offline';
   if (s === 'unavailable') text = 'Offline build';
@@ -72,7 +81,7 @@ function refresh(): void {
     text = 'Reconnecting...';
   } else if (s === 'online') {
     dot = UI.good;
-    text = `${here} here · ${all.length + 1} online`;
+    text = `${shownNear} near · ${all.length + 1} online`;
   }
   pill.innerHTML = '';
   make(pill, 'span', { display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: dot, marginRight: '6px' });
@@ -330,8 +339,9 @@ function screenAt(camera: THREE.Camera, w: number, h: number): { x: number; y: n
   return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h };
 }
 
-/** Per frame: name plates and speech bubbles over the gnomes in my zone, and my own bubble. */
+/** Per frame: name plates and speech bubbles over the gnomes within 60 m, my own bubble, and the pill's "near" count. */
 export function updateOnlineUi(camera: THREE.Camera): void {
+  if (mmoStatus() === 'online' && nearCount() !== shownNear) refresh();
   const seen = new Set<number>();
   const w = innerWidth;
   const h = innerHeight;
@@ -351,6 +361,7 @@ export function updateOnlineUi(camera: THREE.Camera): void {
 
   for (const r of remotePlayers()) {
     if (!r.model) continue;
+    if (Math.hypot(r.position.x - player.position.x, r.position.z - player.position.z) > WORLD.plateRadius) continue;
     v.copy(r.position);
     v.y += 2.3;
     const p = screenAt(camera, w, h);
