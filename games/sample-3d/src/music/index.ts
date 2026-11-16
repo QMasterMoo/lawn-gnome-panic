@@ -1,11 +1,39 @@
 /**
- * Game music: a generated jungle track per run, and a composed menu theme, from @lawn/music
- * (packages/music, where the generators and their design notes live).
+ * Game music: multiple generated & riffed themes per run, plus acoustic & jungle lobby themes,
+ * from @lawn/music (packages/music, where the generators and their design notes live).
  */
-import { buildMenuTheme, buildRunTrack, pauseSong, playSong, resumeSong, setMusicVolume, setMuteKey, setMuted, stopSong, trackInfo, type TrackInfo } from '@lawn/music';
+import {
+  buildAcousticJungle,
+  buildAcousticMenuTheme,
+  buildGnomeFanfare,
+  buildMeadowWaltz,
+  buildMenuTheme,
+  buildRunTrack,
+  buildTwilightNocturne,
+  pauseSong,
+  pickThemeId,
+  playSong,
+  resumeSong,
+  setMusicVolume,
+  setMuteKey,
+  setMuted,
+  stopSong,
+  trackInfo,
+  type SongBuilder,
+  type ThemeId,
+  type TrackInfo,
+} from '@lawn/music';
 import { volume } from '../volume';
 
-export type { TrackInfo };
+export type { ThemeId, TrackInfo };
+
+const THEME_BUILDERS: Record<ThemeId, (T: Parameters<SongBuilder>[0], keep: Parameters<SongBuilder>[1], out: Parameters<SongBuilder>[2], seed: number) => void> = {
+  meadow: buildMeadowWaltz,
+  twilight: buildTwilightNocturne,
+  fanfare: buildGnomeFanfare,
+  acousticJungle: buildAcousticJungle,
+  classicJungle: buildRunTrack,
+};
 
 setMuteKey('lgp-music-muted');
 
@@ -20,16 +48,21 @@ volume.subscribe(syncMusicVolume);
 
 /**
  * Starts a brand new run track and returns its made-up name. Call once per run.
- * Pass a shared seed (online matches) so every player gets the same track and name (not beat-synced).
+ * Pass a shared seed (online matches) so every player gets the same theme, track, and name.
  */
 export function startMusic(seed: number = Math.floor(Math.random() * 2 ** 31)): TrackInfo {
-  playSong((T, keep, out) => buildRunTrack(T, keep, out, seed));
+  const theme = pickThemeId(seed);
+  const builder = THEME_BUILDERS[theme];
+  playSong((T, keep, out) => builder(T, keep, out, seed));
   return trackInfo(seed);
 }
 
-/** Starts the lobby theme (from the top). */
+let menuVisit = 0;
+
+/** Starts the lobby theme (alternates between the spacious acoustic Horn/Harp/Piano arrangement and the classic theme). */
 export function startMenuMusic(): void {
-  playSong(buildMenuTheme);
+  const useAcoustic = menuVisit++ % 2 === 0;
+  playSong(useAcoustic ? buildAcousticMenuTheme : buildMenuTheme);
 }
 
 export const pauseMusic = pauseSong;
