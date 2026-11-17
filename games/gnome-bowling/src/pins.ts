@@ -5,6 +5,7 @@ import { buildPrefab } from '@lawn/prefabs';
 import type { BallSample, Ctx, PinSample, Phase, SimResult, System } from './config';
 import { BALL, LANE, LOOK_COLORS, PIN_SPOTS, THROW } from './config';
 import { currentPlayer } from './game';
+import { replaySampleIndex } from './replay';
 
 /** Pinsetter sweep after a result, before the next aim or intro. */
 const SWEEP_SECONDS = 0.4;
@@ -243,7 +244,7 @@ export function createPins(ctx: Ctx): System {
     update(dt: number) {
       const phase = state.phase;
       if (phase !== prevPhase) {
-        if (prevPhase === 'result' && (phase === 'aim' || phase === 'intro')) sweepT = SWEEP_SECONDS;
+        if ((prevPhase === 'result' || prevPhase === 'replay') && (phase === 'aim' || phase === 'intro')) sweepT = SWEEP_SECONDS;
         prevPhase = phase;
       }
       if (sweepT > 0) sweepT = Math.max(0, sweepT - dt);
@@ -295,7 +296,7 @@ export function createPins(ctx: Ctx): System {
         return;
       }
 
-      if (phase === 'roll' || phase === 'result') {
+      if (phase === 'roll' || phase === 'result' || phase === 'replay') {
         const sim = state.sim;
         if (!sim || sim.ball.length === 0) {
           hideAllPins();
@@ -303,7 +304,7 @@ export function createPins(ctx: Ctx): System {
           return;
         }
         const n = sim.ball.length;
-        const f = phase === 'result' ? n - 1 : state.rollTime / sim.sampleDt;
+        const f = phase === 'result' ? n - 1 : phase === 'replay' ? replaySampleIndex(sim, state.phaseTime) : state.rollTime / sim.sampleDt;
         const { i } = sampleSpan(sim, f);
 
         // Ball: interpolated sample, yawed toward its direction of travel.

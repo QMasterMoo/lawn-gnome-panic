@@ -2,6 +2,7 @@
 // Moves like a TV bowling broadcast. Only this file moves ctx.camera.
 import * as THREE from 'three';
 import { LANE, ROUND, THROW, type BallResult, type Ctx, type Phase, type System } from './config';
+import { evalReplay } from './replay';
 
 /** Chase camera stops here so it never passes the pins. */
 const CHASE_Z_LIMIT = LANE.length - 4;
@@ -103,6 +104,7 @@ export function createCamera(ctx: Ctx): System {
   const AIM_FOV = 42;
   let started = false;
   let pinCam = false;
+  let lastReplayCut = -1;
   let lastPhase: Phase = state.phase;
 
   /** Behind and above the bowler. zShift eases the camera forward during the run-up. */
@@ -135,10 +137,14 @@ export function createCamera(ctx: Ctx): System {
       const phaseChanged = phase !== lastPhase;
       lastPhase = phase;
       if (phase !== 'roll') pinCam = false;
+      if (phase !== 'replay') lastReplayCut = -1;
 
       let rate = 4;
       let snap = false;
       let shake = 0;
+      let dutchAngle = 0;
+      let replayFov: number | null = null;
+      let replaySubjectZ: number | null = null;
       let panPreset: PanPreset | null = null;
 
       switch (phase) {
@@ -214,6 +220,28 @@ export function createCamera(ctx: Ctx): System {
           break;
         }
 
+        case 'replay': {
+          const sim = state.sim;
+          if (!sim || sim.ball.length === 0) {
+            wantPos.copy(HIGH_RESULT_POS);
+            wantLook.copy(HIGH_RESULT_LOOK);
+            break;
+          }
+          const rf = evalReplay(sim, state.phaseTime);
+          if (rf.cutIndex !== lastReplayCut) {
+            lastReplayCut = rf.cutIndex;
+            snap = true;
+          }
+          wantPos.set(rf.camPos[0], rf.camPos[1], rf.camPos[2]);
+          wantLook.set(rf.camLook[0], rf.camLook[1], rf.camLook[2]);
+          rate = 18;
+          shake = rf.shake;
+          dutchAngle = rf.dutchAngle;
+          replayFov = rf.fov;
+          replaySubjectZ = rf.camLook[2];
+          break;
+        }
+
         case 'framePan': {
           const idx = Math.max(0, state.frame - 1) % PAN_ANGLES.length;
           panPreset = PAN_ANGLES[idx];
@@ -247,9 +275,10 @@ export function createCamera(ctx: Ctx): System {
         cam.position.y += Math.sin(state.time * 53) * shake * 0.6;
       }
       cam.lookAt(look);
-      // Narrow lens while aiming (the lane is long), preset FOV for framePan, normal lens for everything else.
+      if (dutchAngle !== 0) cam.rotateZ(dutchAngle);
+      // Narrow lens while aiming (the lane is long), dynamic FOV during replay, preset FOV for framePan, normal lens otherwise.
       const aiming = state.phase === 'aim' || state.phase === 'approach' || state.phase === 'intro';
-      const wantFov = panPreset ? panPreset.fov : aiming ? AIM_FOV : BASE_FOV;
+      const wantFov = replayFov ?? (panPreset ? panPreset.fov : aiming ? AIM_FOV : BASE_FOV);
       if (Math.abs(cam.fov - wantFov) > 0.05) {
         if (snap) cam.fov = wantFov;
         else cam.fov += (wantFov - cam.fov) * (1 - Math.exp(-4 * dt));
@@ -258,7 +287,9 @@ export function createCamera(ctx: Ctx): System {
 
       // Shadow light follows the action so shadows stay sharp where we look.
       let subjectZ: number = LANE.length;
-      if (phase === 'roll') {
+      if (replaySubjectZ !== null) {
+        subjectZ = replaySubjectZ;
+      } else if (phase === 'roll') {
         const sim = state.sim;
         if (pinCam || !sim || sim.ball.length === 0) {
           subjectZ = LANE.length;
