@@ -126,6 +126,7 @@ export const BOWLING: PrefabDef[] = [
     id: 'bowling-bench', name: 'Alley Bench', category: 'furniture', uses: ['place', 'sit'],
     tags: ['bench', 'seat', 'booth', 'bowling', 'cushion', 'vinyl'], emoji: ['🛋'],
     tint: 0xc8352f, trim: 'steel',
+    seat: [0, 0.48, 0.02],
     about: 'A padded retro bowling bench for two or three bowlers. Tint is the vinyl, trim is the frame.',
     examine: [
       'A glossy vinyl bench with a rolled backrest and chrome legs, built for waiting between frames.',
@@ -303,6 +304,7 @@ export const BOWLING: PrefabDef[] = [
     id: 'bar-stool', name: 'Bar Stool', category: 'furniture', uses: ['place', 'sit'],
     tags: ['bar', 'stool', 'seat', 'chrome', 'vinyl', 'sit'], emoji: ['🪑'],
     tint: 0xc8352f, trim: 'steel',
+    seat: [0, 0.73, 0],
     about: 'A tall chrome-and-vinyl bar stool with a footrest ring. Tint is the cushion, trim is the chrome.',
     examine: [
       'A tall swivel stool with a plump red cushion and a bright chrome footrest ring.',
