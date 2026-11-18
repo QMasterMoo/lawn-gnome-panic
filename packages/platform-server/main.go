@@ -11,9 +11,14 @@
 //	KEYCLOAK_AUDIENCE default gnome-web
 //	ALLOWED_ORIGINS   comma-separated CORS origins (default: the two arcade sites); local dev servers are always allowed
 //	DELETE_GRACE      how long a deleted account can be restored, Go duration (default 168h)
-//	ENABLE_OTEL_LOGGING  true/1/yes: whale-net JSON logs on stdout, exported over OTLP gRPC, plus one line per RPC
-//	                  (see internal/obs; identity from APP_NAME (default lawn-gnome-platform), APP_DOMAIN, APP_ENV,
-//	                  POD_NAME, ...; collector at OTEL_EXPORTER_OTLP_ENDPOINT, default localhost:4317)
+//	ENABLE_OTEL_TRACING  true/1/yes: export spans over OTLP gRPC (one per RPC, per Postgres query, per JWKS fetch,
+//	                  per purge run); log lines inside a span carry trace_id/span_id
+//	ENABLE_OTEL_METRICS  true/1/yes: export metrics every 60 s (RPC durations, account and save counts, pool and Go
+//	                  runtime stats) to the same collector
+//	ENABLE_OTEL_LOGGING  true/1/yes: also export the logs over OTLP gRPC to OTEL_EXPORTER_OTLP_ENDPOINT
+//	                  (default localhost:4317). Logs are always whale-net JSON lines on stdout, one per RPC plus
+//	                  account/save events (see internal/obs; identity from APP_NAME (default lawn-gnome-platform),
+//	                  APP_DOMAIN, APP_ENV, POD_NAME, ...).
 //
 // Routes: /api/<Connect procedure> (e.g. POST /api/gnome.user.v1.UserService/GetMe) and GET /healthz.
 package main
@@ -32,8 +37,11 @@ import (
 
 	"connectrpc.com/connect"
 	connectcors "connectrpc.com/cors"
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/cors"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/cstabnick/lawn-gnome-panic/packages/platform-server/gen/gnome/save/v1/savev1connect"
 	"github.com/cstabnick/lawn-gnome-panic/packages/platform-server/gen/gnome/user/v1/userv1connect"
@@ -85,17 +93,30 @@ func main() {
 	}
 	pgCfg.ConnConfig.RuntimeParams["search_path"] = env("PG_SEARCH_PATH", "gnome")
 	pgCfg.MaxConns = 8
+	if obs.TracingEnabled() {
+		pgCfg.ConnConfig.Tracer = otelpgx.NewTracer() // a span per query, on the global tracer provider
+	}
 	pool, err := pgxpool.NewWithConfig(ctx, pgCfg)
 	if err != nil {
 		obs.Fatal("postgres", "error", err)
 	}
 	defer pool.Close()
+	if obs.MetricsEnabled() {
+		// db.client.connections.* for the pool, on the global meter provider.
+		if err := otelpgx.RecordStats(pool); err != nil {
+			slog.Error("pool metrics", "logger", "obs", "error", err)
+		}
+	}
 	pg := store.NewPostgres(pool)
 	migrateCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	migrateStart := time.Now()
 	if err := pg.Migrate(migrateCtx); err != nil {
 		obs.Fatal("migrate", "error", err)
 	}
 	cancel()
+	slog.Info("database ready", "logger", "store", "db.system", "postgresql", "db.namespace", pgCfg.ConnConfig.Database,
+		"db.schema", pgCfg.ConnConfig.RuntimeParams["search_path"], "server.address", pgCfg.ConnConfig.Host,
+		"pool.max_conns", pgCfg.MaxConns, "migrate_ms", time.Since(migrateStart).Milliseconds())
 
 	grace, err := time.ParseDuration(env("DELETE_GRACE", "168h"))
 	if err != nil {
@@ -107,10 +128,7 @@ func main() {
 	})
 	users := service.NewUserService(pg, verifier, service.Options{DeleteGrace: grace})
 
-	var opts []connect.HandlerOption
-	if obs.Enabled() {
-		opts = append(opts, connect.WithInterceptors(obs.Interceptor()))
-	}
+	opts := []connect.HandlerOption{connect.WithInterceptors(obs.Interceptor())}
 	api := http.NewServeMux()
 	api.Handle(userv1connect.NewUserServiceHandler(users, opts...))
 	// Saves are up to 512 KiB of JSON; allow a little more for the envelope.
@@ -141,11 +159,20 @@ func main() {
 		t := time.NewTicker(time.Hour)
 		defer t.Stop()
 		for {
-			if n, err := pg.PurgeExpired(ctx, time.Now()); err != nil {
-				slog.Error("purge", "error", err)
-			} else if n > 0 {
-				slog.Info("purged deleted accounts", "count", n)
+			start := time.Now()
+			purgeCtx, span := obs.Tracer().Start(ctx, "purge expired accounts")
+			if n, err := pg.PurgeExpired(purgeCtx, start); err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, "purge failed")
+				slog.ErrorContext(purgeCtx, "purge failed", "logger", "purge", "error", err)
+			} else {
+				span.SetAttributes(attribute.Int64("purge.count", int64(n)))
+				obs.AccountsPurged.Add(purgeCtx, n)
+				if n > 0 {
+					slog.InfoContext(purgeCtx, "purged deleted accounts", "logger", "purge", "count", n, "duration_ms", time.Since(start).Milliseconds())
+				}
 			}
+			span.End()
 			select {
 			case <-ctx.Done():
 				return
@@ -157,11 +184,13 @@ func main() {
 	srv := &http.Server{Addr: ":" + env("PORT", "8080"), Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
+		slog.Info("shutting down", "logger", "server", "grace_s", 15)
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
 	}()
-	slog.Info("platform listening", "addr", srv.Addr)
+	slog.Info("platform listening", "logger", "server", "addr", srv.Addr, "delete_grace_h", int64(grace.Hours()),
+		"keycloak.issuer", env("KEYCLOAK_ISSUER", "https://auth.whalenet.dev/realms/whalenet"))
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		obs.Fatal("serve", "error", err)
 	}
