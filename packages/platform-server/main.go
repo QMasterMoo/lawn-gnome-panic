@@ -1,4 +1,5 @@
-// The platform service: player accounts for the arcade (gnome.user.v1.UserService over Connect).
+// The platform service: player accounts and cloud saves for the arcade (gnome.user.v1.UserService and
+// gnome.save.v1.SaveService over Connect).
 // Sign-in is Keycloak (see internal/auth); accounts live in Postgres (see internal/store).
 //
 // Environment:
@@ -8,7 +9,7 @@
 //	PG_SEARCH_PATH    schema for the tables (default "gnome")
 //	KEYCLOAK_ISSUER   default https://auth.whalenet.dev/realms/whalenet
 //	KEYCLOAK_AUDIENCE default gnome-web
-//	ALLOWED_ORIGINS   comma-separated CORS origins (default: the two arcade sites and localhost dev ports)
+//	ALLOWED_ORIGINS   comma-separated CORS origins (default: the two arcade sites); local dev servers are always allowed
 //	DELETE_GRACE      how long a deleted account can be restored, Go duration (default 168h)
 //
 // Routes: /api/<Connect procedure> (e.g. POST /api/gnome.user.v1.UserService/GetMe) and GET /healthz.
@@ -19,23 +20,41 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	"connectrpc.com/connect"
 	connectcors "connectrpc.com/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/cors"
 
+	"github.com/cstabnick/lawn-gnome-panic/packages/platform-server/gen/gnome/save/v1/savev1connect"
 	"github.com/cstabnick/lawn-gnome-panic/packages/platform-server/gen/gnome/user/v1/userv1connect"
 	"github.com/cstabnick/lawn-gnome-panic/packages/platform-server/internal/auth"
 	"github.com/cstabnick/lawn-gnome-panic/packages/platform-server/internal/service"
 	"github.com/cstabnick/lawn-gnome-panic/packages/platform-server/internal/store"
 )
 
-const defaultOrigins = "https://gnome.whalenet.app,https://cstabnick.github.io,http://localhost:5173,http://localhost:5199,http://127.0.0.1:5199"
+// Default CORS origins: the two arcade sites. Any http://localhost:<port> and http://127.0.0.1:<port> is also
+// allowed (every game's dev server has its own port), see allowOrigin.
+const defaultOrigins = "https://gnome.whalenet.app,https://cstabnick.github.io"
+
+// allowOrigin: an exact match from ALLOWED_ORIGINS, or a local dev server (http, localhost or 127.0.0.1, any port).
+func allowOrigin(allowed []string) func(*http.Request, string) bool {
+	return func(_ *http.Request, origin string) bool {
+		for _, a := range allowed {
+			if origin == a {
+				return true
+			}
+		}
+		u, err := url.Parse(origin)
+		return err == nil && u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1")
+	}
+}
 
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
@@ -79,6 +98,8 @@ func main() {
 
 	api := http.NewServeMux()
 	api.Handle(userv1connect.NewUserServiceHandler(users))
+	// Saves are up to 512 KiB of JSON; allow a little more for the envelope.
+	api.Handle(savev1connect.NewSaveServiceHandler(service.NewSaveService(users), connect.WithReadMaxBytes(600*1024)))
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/", http.StripPrefix("/api", api))
@@ -93,11 +114,11 @@ func main() {
 	})
 
 	handler := cors.New(cors.Options{
-		AllowedOrigins: strings.Split(env("ALLOWED_ORIGINS", defaultOrigins), ","),
-		AllowedMethods: connectcors.AllowedMethods(),
-		AllowedHeaders: append(connectcors.AllowedHeaders(), "Authorization"),
-		ExposedHeaders: connectcors.ExposedHeaders(),
-		MaxAge:         7200,
+		AllowOriginRequestFunc: allowOrigin(strings.Split(env("ALLOWED_ORIGINS", defaultOrigins), ",")),
+		AllowedMethods:         connectcors.AllowedMethods(),
+		AllowedHeaders:         append(connectcors.AllowedHeaders(), "Authorization"),
+		ExposedHeaders:         connectcors.ExposedHeaders(),
+		MaxAge:                 7200,
 	}).Handler(mux)
 
 	// Deleted accounts past their grace period go once an hour.
