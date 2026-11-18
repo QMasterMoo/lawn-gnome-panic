@@ -1,6 +1,6 @@
 # Agent index
 
-A map of the repo for agents: where things are, which command does what, and the traps. Read this instead of `ls`-ing around. Rules and priorities live in [CLAUDE.md](CLAUDE.md) and [SOUL.md](SOUL.md); this file only points.
+A map of the repo for agents: where things are, which command does what, and the traps. Read this instead of `ls`-ing around. Rules and priorities live in [AGENTS.md](AGENTS.md) (`CLAUDE.md` imports it) and [SOUL.md](SOUL.md); this file only points.
 
 Keep it current: if you add, rename or delete a game, package, tool or doc, update its row here in the same PR.
 
