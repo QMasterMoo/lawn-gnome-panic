@@ -118,3 +118,4 @@ Every new game adds its row: a slice idea, or why not (yet).
 | oly-gnome-hero | gnomylpics | Gnome Hero: a random beat-driven 4-lane jam, hit the notes on the beat, most points | building |
 | — | gnomeokemon | Model viewer / field guide only; add a battle or capture slice once gameplay exists | later |
 | — | giant-pup | Pet care is a slow, solo loop; a 4-gnome fetch race (swipe to throw, first dog back wins) could work once there is more than one dog | later |
+| — | tribute-schedule | later: solo 3am first-person domestic horror; could become a "nod & chirp on cue" reaction slice once mechanics settle | later |
