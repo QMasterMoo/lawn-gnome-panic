@@ -272,13 +272,9 @@ function paintNameTag(t: NameTag, name: string, color: number, arrow: boolean): 
   t.tex.needsUpdate = true;
 }
 
-function hasEquippedHand(look: GnomeLook): boolean {
-  return Boolean(look.equipment?.hand && getPrefab(look.equipment.hand));
-}
-
 export function createParty(ctx: Ctx): System {
   const golferLook = getMyGnome()?.look ?? GOLFER_LOOK;
-  const golfer: Actor = { model: createGnomeModel(golferLook), ps: makePlayerState() };
+  const golfer: Actor = { model: createGnomeModel(golferLook, { overrideEquipment: ['hand'] }), ps: makePlayerState() };
   const partner: Actor = { model: createGnomeModel(PARTNER_LOOK), ps: makePlayerState() };
   // Both rides are built up front; state.ride (the 350z title cheat) picks which one is shown.
   const mowerCart = createCartModel();
@@ -292,9 +288,7 @@ export function createParty(ctx: Ctx): System {
     club.rotation.x = Math.PI;
     return club;
   };
-  if (!hasEquippedHand(golferLook)) {
-    golfer.model.arms.right.add(makeClub());
-  }
+  golfer.model.arms.right.add(makeClub());
 
   ctx.scene.add(golfer.model.object, partner.model.object, mowerCart.group, z33.group);
 
@@ -391,11 +385,9 @@ export function createParty(ctx: Ctx): System {
 
   const makeOnlineGnome = (g: Golfer): OnlineGnome => {
     const look = lookWithHat(g.color, g.look);
-    const model = createGnomeModel(look);
+    const model = createGnomeModel(look, { overrideEquipment: ['hand'] });
     const club = makeClub();
-    if (!hasEquippedHand(look)) {
-      model.arms.right.add(club);
-    }
+    model.arms.right.add(club);
     const can = makeCan();
     can.position.set(0, -0.34, 0.04);
     model.arms.left.add(can);
