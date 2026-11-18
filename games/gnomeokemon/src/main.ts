@@ -17,7 +17,7 @@ import { createViewer } from './viewer';
 const ui = document.getElementById('ui')!;
 const params = new URLSearchParams(location.search);
 
-type AppMode = 'menu' | 'gnokomindex' | 'snap' | 'gallery';
+type AppMode = 'menu' | 'gnomokedex' | 'snap' | 'gallery';
 
 const ELEMENT_META: Record<GnomeokemonElement, { label: string; color: string; bg: string }> = {
   bloom: { label: 'Bloom', color: '#8ae278', bg: '#274523' },
@@ -101,7 +101,7 @@ function makeBtn(label: string, onClick: () => void, active = false): HTMLButton
 function renderContactSheet(): void {
   const sheet = el('div', { padding: '16px' });
   sheet.id = 'sheet';
-  sheet.append(el('h2', { margin: '0 0 12px', color: 'var(--accent)' }, `Gnokomindex Prefab Sheet (${allGnomeokemon().length})`));
+  sheet.append(el('h2', { margin: '0 0 12px', color: 'var(--accent)' }, `Gnomokedex Prefab Sheet (${allGnomeokemon().length})`));
   const grid = el('div', { display: 'flex', flexWrap: 'wrap', gap: '10px' });
   for (const entry of allGnomeokemon()) {
     const card = el('div', {
@@ -125,7 +125,7 @@ function renderContactSheet(): void {
   ui.append(sheet);
 }
 
-function renderGnokomindex(container: HTMLElement): void {
+function renderGnomokedex(container: HTMLElement): void {
   container.replaceChildren();
   const entries = allGnomeokemon();
   const root = el('div', {
@@ -137,7 +137,7 @@ function renderGnokomindex(container: HTMLElement): void {
     maxWidth: '1360px',
     margin: '0 auto',
   });
-  root.id = 'gnokomindex-view';
+  root.id = 'gnomokedex-view';
 
   const left = el('div', { flex: '1 1 460px', minWidth: '0' });
   const right = el('div', { flex: '1 1 380px', maxWidth: '520px', width: '100%', position: 'sticky', top: '16px' });
@@ -145,7 +145,7 @@ function renderGnokomindex(container: HTMLElement): void {
   container.append(root);
 
   left.append(
-    el('h1', { margin: '0 0 4px', fontSize: '24px', letterSpacing: '-0.01em' }, 'Gnokomindex'),
+    el('h1', { margin: '0 0 4px', fontSize: '24px', letterSpacing: '-0.01em' }, 'Gnomokedex'),
     el(
       'div',
       { color: 'var(--dim)', fontSize: '13px', marginBottom: '12px', lineHeight: '1.45' },
@@ -164,7 +164,7 @@ function renderGnokomindex(container: HTMLElement): void {
     fontSize: '14px',
   });
   search.placeholder = 'Search name, region (Mossbottom, Rockery...), element, or emoji';
-  search.setAttribute('aria-label', 'Search Gnokomindex models');
+  search.setAttribute('aria-label', 'Search Gnomokedex models');
   left.append(search);
 
   const chips = el('div', { display: 'flex', flexWrap: 'wrap', gap: '8px', margin: '10px 0 14px' });
@@ -507,7 +507,7 @@ function renderShell(): void {
       ? urlCourse
       : 'lawn';
   let mode: AppMode = (params.get('mode') as AppMode) || 'menu';
-  if (mode !== 'menu' && mode !== 'snap' && mode !== 'gnokomindex' && mode !== 'gallery') mode = 'menu';
+  if (mode !== 'menu' && mode !== 'snap' && mode !== 'gnomokedex' && mode !== 'gallery') mode = 'menu';
 
   function switchMode(next: AppMode, courseOverride?: CourseId): void {
     if (activeCleanup) {
@@ -521,7 +521,7 @@ function renderShell(): void {
       setMusicScene('menu');
       renderSnap64Menu(body, {
         onStartCourse: (cid) => switchMode('snap', cid),
-        onOpenGnokomindex: () => switchMode('gnokomindex'),
+        onOpenGnomokedex: () => switchMode('gnomokedex'),
         onOpenGallery: () => switchMode('gallery'),
       });
     } else if (mode === 'snap') {
@@ -532,7 +532,7 @@ function renderShell(): void {
       renderPhotoGallery(body, () => switchMode('menu'));
     } else {
       setMusicScene('menu');
-      renderGnokomindex(body);
+      renderGnomokedex(body);
     }
   }
 
@@ -540,7 +540,7 @@ function renderShell(): void {
     tabs.replaceChildren(
       makeBtn('🏠 Snap 64 Menu', () => switchMode('menu'), mode === 'menu'),
       makeBtn('📸 Gnomokemon Snap', () => switchMode('snap'), mode === 'snap'),
-      makeBtn('📖 Gnokomindex', () => switchMode('gnokomindex'), mode === 'gnokomindex'),
+      makeBtn('📖 Gnomokedex', () => switchMode('gnomokedex'), mode === 'gnomokedex'),
       makeBtn('🖼️ Photo Gallery', () => switchMode('gallery'), mode === 'gallery'),
     );
   }
