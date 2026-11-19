@@ -1,9 +1,9 @@
 // The tabbed side panel (RuneScape style): inventory, equipment, stats, quests, spells and talents.
 import { bus, say } from '../events';
 import { state, maxHp, maxMp, equippedWeapon } from '../state';
-import { EQUIP_SLOTS, INVENTORY_SIZE, UI, type BookDef, type EquipSlot, type ItemDef, type QuestDef, type Rarity, type SpellDef } from '../config';
+import { EQUIP_SLOTS, INVENTORY_SIZE, UI, type BookDef, type EquipSlot, type ItemDef, type QuestDef, type Rarity, type SpellDef, type ZoneId } from '../config';
 import { CLASSES } from '../data/classes';
-import { BOOKS, ITEMS, QUESTS } from '../content';
+import { BOOKS, ITEMS, NPCS, QUESTS, ZONES } from '../content';
 import { ATTRIBUTES, SKILLS, SPELLS } from '../data/core';
 import { castSpell, playerArmor, playerDefense } from '../combat';
 import { armorValue, attributeMod, mitigation, skillXpToNext, weaponRange } from '../rules';
@@ -423,52 +423,243 @@ function buildStats(): HTMLElement {
 
 // ---------------------------------------------------------------- quests
 
-/** One quest in the journal: name, and the current stage text when started. */
-function questRow(q: QuestDef): HTMLElement {
+type QuestFilter = 'all' | 'active' | 'available' | 'finished';
+type QuestGroupBy = 'chapter' | 'zone' | 'giver' | 'type';
+type QuestStatus = 'available' | 'active' | 'finished';
+
+const QUEST_FILTERS: { id: QuestFilter; name: string }[] = [
+  { id: 'all', name: 'All' },
+  { id: 'active', name: 'Active' },
+  { id: 'available', name: 'Not started' },
+  { id: 'finished', name: 'Finished' },
+];
+const QUEST_GROUPS: { id: QuestGroupBy; name: string }[] = [
+  { id: 'chapter', name: 'Chapter' },
+  { id: 'zone', name: 'Zone' },
+  { id: 'giver', name: 'Quest giver' },
+  { id: 'type', name: 'Main / side' },
+];
+const OTHER_STORYLINES = 'Other storylines';
+
+/** Journal view settings. Kept across redraws and tab switches, not saved. */
+let questFilter: QuestFilter = 'all';
+let questGroupBy: QuestGroupBy = 'chapter';
+/** Quests whose detail card is open. */
+const openQuestIds = new Set<string>();
+
+function questState(q: QuestDef): QuestStatus {
   const prog = state.quests[q.id];
-  const row = make('div', { marginBottom: '8px' });
-  if (!prog) {
-    row.append(make('div', { color: UI.bad }, q.name));
-  } else if (prog.done) {
-    row.append(make('div', { color: UI.good }, `${q.name} ✔`));
-  } else {
-    row.append(make('div', { color: UI.gold }, q.name));
-    const stage = q.stages[prog.stage];
-    if (stage) {
-      let text = stage.text;
-      const obj = stage.objective;
-      if (obj.type === 'kill') text += ` (${prog.count}/${obj.count})`;
-      if (obj.type === 'collect') text += ` (${countItem(obj.item)}/${obj.count})`;
-      row.append(make('div', { color: UI.text }, text));
-    }
-  }
-  return row;
+  if (!prog) return 'available';
+  return prog.done ? 'finished' : 'active';
 }
 
-/** Groups with main chapters first, then storylines. Finished quests sit in a collapsed list. */
+function questZoneName(zone: ZoneId): string {
+  return ZONES[zone]?.name ?? zone;
+}
+
+/** The group a quest sits under for the current "group by" choice. */
+function questGroupName(q: QuestDef, by: QuestGroupBy): string {
+  switch (by) {
+    case 'chapter': return q.chain ?? OTHER_STORYLINES;
+    case 'zone': return questZoneName(q.zone);
+    case 'giver': return NPCS[q.giver]?.name ?? q.giver;
+    case 'type': return q.tier === 'side' ? 'Side quests' : 'Main story';
+  }
+}
+
+/** Progress suffix for an active stage, e.g. ' (3/5)'. */
+function stageProgress(q: QuestDef, count: number, stage: number): string {
+  const obj = q.stages[stage]?.objective;
+  if (!obj) return '';
+  if (obj.type === 'kill') return ` (${count}/${obj.count})`;
+  if (obj.type === 'collect') return ` (${countItem(obj.item)}/${obj.count})`;
+  return '';
+}
+
+/** Small pill button for the filter row. */
+function questChip(label: string, active: boolean, onPick: () => void): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.textContent = label;
+  Object.assign(b.style, {
+    minHeight: '26px', padding: '2px 7px', fontFamily: UI.font, fontSize: '11px', color: UI.text, cursor: 'pointer',
+    border: `1px solid ${active ? UI.gold : UI.border}`, background: active ? UI.borderLight : UI.panelBgDark, borderRadius: '3px',
+  });
+  b.onclick = onPick;
+  return b;
+}
+
+/** Filter chips (with counts) and the group-by picker. */
+function questControls(all: QuestDef[]): HTMLElement {
+  const wrap = make('div', { marginBottom: '6px' });
+  const counts: Record<QuestFilter, number> = { all: all.length, active: 0, available: 0, finished: 0 };
+  for (const q of all) counts[questState(q)]++;
+
+  const chips = make('div', { display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' });
+  for (const f of QUEST_FILTERS) {
+    chips.append(questChip(`${f.name} ${counts[f.id]}`, questFilter === f.id, () => {
+      questFilter = f.id;
+      render();
+    }));
+  }
+  wrap.append(chips);
+
+  const row = make('label', { display: 'flex', alignItems: 'center', gap: '6px', color: UI.textDim, fontSize: '11px' });
+  row.append('Group by');
+  const sel = document.createElement('select');
+  Object.assign(sel.style, {
+    flex: '1', minHeight: '26px', fontFamily: UI.font, fontSize: '11px', color: UI.text,
+    background: UI.panelBgDark, border: `1px solid ${UI.border}`,
+  });
+  for (const g of QUEST_GROUPS) {
+    const o = document.createElement('option');
+    o.value = g.id;
+    o.textContent = g.name;
+    o.selected = g.id === questGroupBy;
+    sel.append(o);
+  }
+  sel.onchange = () => {
+    questGroupBy = sel.value as QuestGroupBy;
+    render();
+  };
+  row.append(sel);
+  wrap.append(row);
+  return wrap;
+}
+
+/** The expanded card under a quest: who gives it, where, every step so far, and the reward. */
+function questDetail(q: QuestDef): HTMLElement {
+  const status = questState(q);
+  const prog = state.quests[q.id];
+  const box = make('div', { padding: '2px 4px 8px 18px', fontSize: '12px', color: UI.text, lineHeight: '1.35' });
+
+  const giver = NPCS[q.giver]?.name ?? q.giver;
+  const tier = q.tier === 'side' ? 'Side quest' : 'Main story';
+  box.append(make('div', { color: UI.textDim, fontSize: '11px' },
+    `Given by ${giver} · ${questZoneName(q.zone)} · Level ${q.level} · ${tier}`));
+
+  if (status === 'available') {
+    box.append(make('div', { color: UI.textDim, fontStyle: 'italic', marginTop: '4px' },
+      `Not started. Talk to ${giver} to take it.`));
+  } else {
+    q.stages.forEach((stage, i) => {
+      let mark: string;
+      let color: string;
+      let text: string;
+      if (status === 'finished' || (prog && i < prog.stage)) {
+        mark = '✔';
+        color = UI.good;
+        text = stage.text;
+      } else if (prog && i === prog.stage) {
+        mark = '▸';
+        color = UI.gold;
+        text = stage.text + stageProgress(q, prog.count, i);
+      } else {
+        mark = '·';
+        color = UI.textDim;
+        text = '…';
+      }
+      box.append(make('div', { color, marginTop: '3px', display: 'flex', gap: '6px' },
+        `${mark} ${text}`));
+    });
+  }
+
+  const r = q.reward;
+  const parts: string[] = [];
+  if (r.gold > 0) parts.push(`${r.gold} gold`);
+  for (const it of r.items) parts.push(`${it.count}× ${ITEMS[it.item]?.name ?? it.item}`);
+  if (parts.length > 0) {
+    box.append(make('div', { color: UI.gold, fontSize: '11px', marginTop: '5px' }, `Reward: ${parts.join(', ')}`));
+  }
+  return box;
+}
+
+/** One quest in the journal: status mark, name and level. Click to open or close its card. */
+function questRow(q: QuestDef): HTMLElement {
+  const status = questState(q);
+  const open = openQuestIds.has(q.id);
+  const color = status === 'finished' ? UI.good : status === 'active' ? UI.gold : UI.bad;
+  const mark = status === 'finished' ? '✔' : status === 'active' ? '●' : '○';
+
+  const wrap = make('div', { borderBottom: `1px solid ${UI.border}` });
+  const head = make('div', {
+    display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 4px', cursor: 'pointer',
+    background: open ? UI.panelBgDark : '',
+  });
+  head.setAttribute('role', 'button');
+  head.setAttribute('aria-expanded', String(open));
+  head.tabIndex = 0;
+  head.title = open ? 'Close' : 'Show details';
+  head.append(
+    make('span', { color, width: '12px', textAlign: 'center', flexShrink: '0' }, mark),
+    make('span', { flex: '1', color: status === 'finished' ? UI.textDim : color }, q.name),
+    make('span', { color: UI.textDim, fontSize: '11px', flexShrink: '0' }, `Lv ${q.level}`),
+    make('span', { color: UI.textDim, fontSize: '11px', flexShrink: '0' }, open ? '▴' : '▾'),
+  );
+  const toggle = () => {
+    if (openQuestIds.has(q.id)) openQuestIds.delete(q.id);
+    else openQuestIds.add(q.id);
+    render();
+  };
+  head.onclick = toggle;
+  head.onkeydown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggle();
+    }
+  };
+  head.onmouseenter = () => { if (!open) head.style.background = UI.borderLight; };
+  head.onmouseleave = () => { if (!open) head.style.background = ''; };
+  wrap.append(head);
+  if (open) wrap.append(questDetail(q));
+  return wrap;
+}
+
+/** The quest journal: a finished count, filter chips, a group-by picker, then the grouped list. */
 function buildQuests(): HTMLElement {
   const wrap = make('div');
+  const all = Object.values(QUESTS);
+  const finished = all.filter((q) => questState(q) === 'finished').length;
+  wrap.append(make('div', { color: UI.gold, marginBottom: '4px' }, `Quests finished: ${finished} of ${all.length}`));
+  wrap.append(questControls(all));
+
+  const shown = all.filter((q) => questFilter === 'all' || questState(q) === questFilter);
+  if (shown.length === 0) {
+    wrap.append(make('div', { color: UI.textDim, fontStyle: 'italic', marginTop: '8px' }, 'No quests match this filter.'));
+    return wrap;
+  }
+
   const groups = new Map<string, QuestDef[]>();
-  for (const q of Object.values(QUESTS)) {
-    const key = q.chain ?? 'Other storylines';
+  for (const q of shown) {
+    const key = questGroupName(q, questGroupBy);
     const list = groups.get(key) ?? [];
     list.push(q);
     groups.set(key, list);
   }
-  const isMain = (list: QuestDef[]) => list.some((q) => q.tier !== 'side');
-  const ordered = [...groups.entries()].sort((a, b) => Number(isMain(b[1])) - Number(isMain(a[1])));
-
-  for (const [chain, list] of ordered) {
-    wrap.append(make('div', { marginTop: '6px', color: UI.gold, fontWeight: 'bold' }, chain));
-    const open = list.filter((q) => !state.quests[q.id]?.done);
-    const finished = list.filter((q) => state.quests[q.id]?.done);
-    for (const q of open) wrap.append(questRow(q));
-    if (finished.length > 0) {
-      const details = document.createElement('details');
-      details.append(make('summary', { color: UI.textDim, cursor: 'pointer', marginBottom: '6px' }, `Finished (${finished.length})`));
-      for (const q of finished) details.append(questRow(q));
-      wrap.append(details);
+  const isMain = (name: string) => (groups.get(name) ?? []).some((q) => q.tier !== 'side');
+  const names = [...groups.keys()].sort((a, b) => {
+    if (questGroupBy === 'chapter') {
+      const m = Number(isMain(b)) - Number(isMain(a));
+      if (m !== 0) return m;
+      if (a === OTHER_STORYLINES) return 1;
+      if (b === OTHER_STORYLINES) return -1;
     }
+    return a.localeCompare(b);
+  });
+
+  for (const name of names) {
+    const inGroup = all.filter((q) => questGroupName(q, questGroupBy) === name);
+    const doneInGroup = inGroup.filter((q) => questState(q) === 'finished').length;
+    const head = make('div', {
+      display: 'flex', justifyContent: 'space-between', gap: '6px', marginTop: '8px',
+      color: UI.gold, fontWeight: 'bold', borderBottom: `1px solid ${UI.borderLight}`, paddingBottom: '2px',
+    });
+    head.append(
+      make('span', {}, name),
+      make('span', { color: UI.textDim, fontWeight: 'normal', fontSize: '11px', flexShrink: '0' }, `${doneInGroup}/${inGroup.length}`),
+    );
+    wrap.append(head);
+    // Story order within a group: the level, with pack order kept for ties (the sort is stable).
+    for (const q of (groups.get(name) ?? []).sort((a, b) => a.level - b.level)) wrap.append(questRow(q));
   }
   return wrap;
 }
