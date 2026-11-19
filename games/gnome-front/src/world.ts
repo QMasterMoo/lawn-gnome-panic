@@ -4,6 +4,7 @@ import { buildPrefab, buildPrefabInstances } from '@lawn/prefabs';
 import { ARENA_HALF, BASES, FLAGS, GRASS_COLOR, TEAM_COLORS, VEHICLE_SLOTS } from './config';
 import type { Obstacle } from './config';
 import { heightAt } from './terrain';
+import { ARENA_DOC, type ArenaData } from './levelDoc';
 
 /** Builds the static battlefield into the scene and returns every piece of cover for collision and bullets. */
 export function buildWorld(scene: THREE.Scene): Obstacle[] {
@@ -14,10 +15,31 @@ export function buildWorld(scene: THREE.Scene): Obstacle[] {
   const root = new THREE.Group();
   scene.add(root);
 
+  return buildArenaObjects(root, gameArena());
+}
+
+/** What the landmark, HQ and cover builders need to know about an arena. The game passes its own (gameArena()); the level
+ * editor passes its live, editable copy and rebuilds after every edit. */
+export interface Arena {
+  half: number;
+  bases: readonly { x: number; z: number }[];
+  flags: readonly { id: string; x: number; z: number }[];
+  slots: readonly { x: number; z: number }[];
+  data: Pick<ArenaData, 'landmarks' | 'cover'>;
+  heightAt: (x: number, z: number) => number;
+}
+
+/** The arena the game plays on: the constants from the arena document. */
+export function gameArena(): Arena {
+  return { half: ARENA_HALF, bases: BASES, flags: FLAGS, slots: VEHICLE_SLOTS, data: ARENA_DOC.data, heightAt };
+}
+
+/** Puts the landmarks, headquarters and scattered cover into `root` and returns every collision circle, in creation order. */
+export function buildArenaObjects(root: THREE.Group, a: Arena): Obstacle[] {
   const obstacles: Obstacle[] = [];
-  buildLandmarks(root, obstacles);
-  buildHQs(root, obstacles);
-  buildCover(root, obstacles);
+  buildLandmarks(root, obstacles, a);
+  buildHQs(root, obstacles, a);
+  buildCover(root, obstacles, a);
   return obstacles;
 }
 
@@ -42,15 +64,8 @@ function hash2(i: number, j: number): number {
   return h - Math.floor(h);
 }
 
-/** A prefab built with its root at (x, y, z). */
-function propAt(id: string, opts: { scale?: number; tint?: number }, x: number, y: number, z: number): THREE.Group {
-  const g = buildPrefab(id, opts);
-  g.position.set(x, y, z);
-  return g;
-}
-
-function flagXZ(id: string): { x: number; z: number } {
-  const f = FLAGS.find((d) => d.id === id);
+function flagXZ(a: Arena, id: string): { x: number; z: number } {
+  const f = a.flags.find((d) => d.id === id);
   if (!f) throw new Error(`world: no flag ${id}`);
   return { x: f.x, z: f.z };
 }
@@ -138,72 +153,17 @@ function buildFence(scene: THREE.Scene): void {
 // Landmarks at the five flags
 // ---------------------------------------------------------------------
 
-function buildLandmarks(root: THREE.Group, out: Obstacle[]): void {
-  // A: Birdbath at the flag centre.
-  {
-    const { x, z } = flagXZ('A');
-    const g = heightAt(x, z);
-    const bath = buildPrefab('birdbath', { scale: 2.0 });
-    bath.position.set(x, g, z);
-    root.add(bath);
-    out.push({ x, z, r: 1.2, h: 1.6 });
-  }
-
-  // B: Veggie Patch. Four beds about 6 units out, each with three obstacles.
-  {
-    const { x, z } = flagXZ('B');
-    const beds: { dx: number; dz: number; alongZ: boolean }[] = [
-      { dx: 6, dz: 0, alongZ: true },
-      { dx: -6, dz: 0, alongZ: true },
-      { dx: 0, dz: 6, alongZ: false },
-      { dx: 0, dz: -6, alongZ: false },
-    ];
-    for (const bed of beds) {
-      const cx = x + bed.dx;
-      const cz = z + bed.dz;
-      const g = heightAt(cx, cz);
-      const plot = buildPrefab('veggie-bed', { scale: 4 });
-      plot.position.set(cx, g, cz);
-      if (!bed.alongZ) plot.rotation.y = Math.PI / 2;
-      root.add(plot);
-      for (const t of [-2.8, 0, 2.8]) {
-        const px = bed.alongZ ? cx : cx + t;
-        const pz = bed.alongZ ? cz + t : cz;
-        out.push({ x: px, z: pz, r: 1.0, h: 0.8 });
-      }
-    }
-  }
-
-  // C: Fountain at the flag centre.
-  {
-    const { x, z } = flagXZ('C');
-    const g = heightAt(x, z);
-    root.add(propAt('stone-fountain', { scale: 2 }, x, g, z));
-    out.push({ x, z, r: 2.5, h: 1.2 });
-  }
-
-  // D: Shed, 11 units west of the flag.
-  {
-    const f = flagXZ('D');
-    const sx = f.x - 11;
-    const sz = f.z;
-    const g = heightAt(sx, sz);
-    root.add(propAt('garden-shed', { scale: 4 }, sx, g, sz));
-    for (const ox of [-2.5, 2.5]) {
-      for (const oz of [-1.5, 1.5]) {
-        out.push({ x: sx + ox, z: sz + oz, r: 2.0, h: 4 });
-      }
-    }
-  }
-
-  // E: Compost Heap, 12 units east of the flag.
-  {
-    const f = flagXZ('E');
-    const ex = f.x + 12;
-    const ez = f.z;
-    const g = heightAt(ex, ez);
-    root.add(propAt('compost-heap', { scale: 3 }, ex, g, ez));
-    out.push({ x: ex, z: ez, r: 3, h: 2 });
+/** The landmarks at the flags, in the order the document lists them (object and obstacle order both matter). */
+function buildLandmarks(root: THREE.Group, out: Obstacle[], a: Arena): void {
+  for (const L of a.data.landmarks) {
+    const f = flagXZ(a, L.at);
+    const x = f.x + L.dx;
+    const z = f.z + L.dz;
+    const obj = buildPrefab(L.prefab, { scale: L.scale });
+    obj.position.set(x, a.heightAt(x, z), z);
+    obj.rotation.y = L.rotY;
+    root.add(obj);
+    for (const o of L.obstacles) out.push({ x: f.x + o.dx, z: f.z + o.dz, r: o.r, h: o.h });
   }
 }
 
@@ -211,12 +171,12 @@ function buildLandmarks(root: THREE.Group, out: Obstacle[]): void {
 // Team headquarters
 // ---------------------------------------------------------------------
 
-function buildHQs(root: THREE.Group, out: Obstacle[]): void {
+function buildHQs(root: THREE.Group, out: Obstacle[], a: Arena): void {
   for (const team of [0, 1] as const) {
-    const base = BASES[team];
+    const base = a.bases[team];
     const outward = Math.sign(base.z); // away from the map centre
     const tz = base.z + outward * 14;
-    const g = heightAt(0, tz);
+    const g = a.heightAt(0, tz);
 
     const tent = buildPrefab('hq-tent', { scale: 4, tint: TEAM_COLORS[team] });
     tent.position.set(0, g, tz);
@@ -238,64 +198,33 @@ function buildHQs(root: THREE.Group, out: Obstacle[]): void {
 // ---------------------------------------------------------------------
 
 /** A spot is free if it is clear of flags, bases, vehicle slots, other cover and the fence. */
-function isFree(x: number, z: number, placed: readonly Obstacle[]): boolean {
-  if (ARENA_HALF - Math.max(Math.abs(x), Math.abs(z)) < 8) return false;
-  for (const f of FLAGS) if (Math.hypot(x - f.x, z - f.z) < 14) return false;
-  for (const b of BASES) if (Math.hypot(x - b.x, z - b.z) < 26) return false;
-  for (const s of VEHICLE_SLOTS) if (Math.hypot(x - s.x, z - s.z) < 6) return false;
-  for (const o of placed) if (Math.hypot(x - o.x, z - o.z) < 8) return false;
+function isFree(a: Arena, x: number, z: number, placed: readonly Obstacle[], avoid: { flag: number; base: number; slot: number; cover: number }, edge: number): boolean {
+  if (a.half - Math.max(Math.abs(x), Math.abs(z)) < edge) return false;
+  for (const f of a.flags) if (Math.hypot(x - f.x, z - f.z) < avoid.flag) return false;
+  for (const b of a.bases) if (Math.hypot(x - b.x, z - b.z) < avoid.base) return false;
+  for (const s of a.slots) if (Math.hypot(x - s.x, z - s.z) < avoid.slot) return false;
+  for (const o of placed) if (Math.hypot(x - o.x, z - o.z) < avoid.cover) return false;
   return true;
 }
 
-function buildCover(root: THREE.Group, placed: Obstacle[]): void {
-  const rand = mulberry32(1234);
+/** Scattered cover, one layer of the document at a time. The seeded generator is order-sensitive: two draws per
+ * try, and one more per placed object on a spin layer. */
+function buildCover(root: THREE.Group, placed: Obstacle[], a: Arena): void {
+  const C = a.data.cover;
+  const rand = mulberry32(C.seed);
 
-  const scatter = (count: number, build: (x: number, z: number, g: number) => Obstacle): void => {
+  for (const layer of C.layers) {
     let n = 0;
-    for (let k = 0; k < 5000 && n < count; k++) {
-      const x = (rand() * 2 - 1) * (ARENA_HALF - 8);
-      const z = (rand() * 2 - 1) * (ARENA_HALF - 8);
-      if (!isFree(x, z, placed)) continue;
-      const o = build(x, z, heightAt(x, z));
-      placed.push(o);
+    for (let k = 0; k < C.tries && n < layer.count; k++) {
+      const x = (rand() * 2 - 1) * (a.half - C.edge);
+      const z = (rand() * 2 - 1) * (a.half - C.edge);
+      if (!isFree(a, x, z, placed, C.avoid, C.edge)) continue;
+      const obj = buildPrefab(layer.prefab, { scale: layer.scale });
+      obj.position.set(x, a.heightAt(x, z) - (layer.sink ?? 0), z);
+      if (layer.spin) obj.rotation.y = rand() * 2 * Math.PI;
+      root.add(obj);
+      placed.push({ x, z, r: layer.obstacle.r, h: layer.obstacle.h });
       n++;
     }
-  };
-
-  // Bushes. Sunk a little so the lowest leaf ball sits in the turf.
-  scatter(70, (x, z, g) => {
-    root.add(propAt('round-bush', { scale: 2 }, x, g - 0.25, z));
-    return { x, z, r: 1.6, h: 2.2 };
-  });
-
-  // Stones.
-  scatter(30, (x, z, g) => {
-    const m = buildPrefab('garden-rock', { scale: 3.0 });
-    m.position.set(x, g, z);
-    m.rotation.y = rand() * Math.PI * 2;
-    root.add(m);
-    return { x, z, r: 1.2, h: 1.4 };
-  });
-
-  // Flower pots.
-  scatter(20, (x, z, g) => {
-    const pot = buildPrefab('flower-pot', { scale: 4.5 });
-    pot.position.set(x, g, z);
-    root.add(pot);
-    return { x, z, r: 0.9, h: 1.3 };
-  });
-
-  // Tree stumps.
-  scatter(15, (x, z, g) => {
-    const stump = buildPrefab('tree-stump', { scale: 3.2 });
-    stump.position.set(x, g, z);
-    root.add(stump);
-    return { x, z, r: 1.1, h: 1.0 };
-  });
-
-  // Trees: trunk is the obstacle, crown is decor.
-  scatter(8, (x, z, g) => {
-    root.add(propAt('cone-pine', { scale: 5 }, x, g, z));
-    return { x, z, r: 1.0, h: 12 };
-  });
+  }
 }
