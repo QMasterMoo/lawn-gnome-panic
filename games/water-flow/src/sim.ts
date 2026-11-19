@@ -65,6 +65,7 @@ export class WaterSim {
   private pDensity: GPUComputePipeline;
   private pMomentum: GPUComputePipeline;
   private pGrid: GPUComputePipeline;
+  private pVisc: GPUComputePipeline;
   private pG2p: GPUComputePipeline;
   private pStats: GPUComputePipeline;
   private rParticles: GPURenderPipeline;
@@ -98,6 +99,7 @@ export class WaterSim {
     this.particleBuf = mk(MAX_PARTICLES * PARTICLE_BYTES, U.STORAGE | U.COPY_DST | U.COPY_SRC);
     const gridA = mk(NODE_COUNT * 16, U.STORAGE);
     const gridV = mk(NODE_COUNT * 16, U.STORAGE);
+    const gridV2 = mk(NODE_COUNT * 16, U.STORAGE);
     this.statsBuf = mk(16, U.STORAGE | U.COPY_SRC | U.COPY_DST);
     this.readBuf = mk(16, U.MAP_READ | U.COPY_DST);
     this.simUni = mk(UNIFORM_STRIDE * MAX_SUBSTEPS, U.UNIFORM | U.COPY_DST);
@@ -112,6 +114,7 @@ export class WaterSim {
         { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
         { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
         { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
       ],
     });
     const simModule = this.module(SIM_WGSL, 'sim');
@@ -121,6 +124,7 @@ export class WaterSim {
     this.pDensity = cp('p2g_density');
     this.pMomentum = cp('p2g_momentum');
     this.pGrid = cp('grid_update');
+    this.pVisc = cp('grid_visc');
     this.pG2p = cp('g2p');
     this.pStats = cp('stats_pass');
     this.simGroup = device.createBindGroup({
@@ -131,6 +135,7 @@ export class WaterSim {
         { binding: 2, resource: { buffer: gridA } },
         { binding: 3, resource: { buffer: gridV } },
         { binding: 4, resource: { buffer: this.statsBuf } },
+        { binding: 5, resource: { buffer: gridV2 } },
       ],
     });
 
@@ -301,6 +306,8 @@ export class WaterSim {
       cpass.setPipeline(this.pMomentum);
       cpass.dispatchWorkgroups(groups);
       cpass.setPipeline(this.pGrid);
+      cpass.dispatchWorkgroups(nodeGroups);
+      cpass.setPipeline(this.pVisc);
       cpass.dispatchWorkgroups(nodeGroups);
       cpass.setPipeline(this.pG2p);
       cpass.dispatchWorkgroups(groups);
