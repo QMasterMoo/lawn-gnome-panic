@@ -18,6 +18,7 @@ import { createHotbar } from './ui/hotbar';
 import { createPanels } from './ui/panels';
 import { createDialogue } from './ui/dialogue';
 import { createShop } from './ui/shop';
+import { createTradeUi } from './ui/trade';
 import { createBookReader } from './ui/book';
 import { initInteriors, updateInteriorCutaway } from './interiors';
 import { initQuests, updateQuests } from './quests';
@@ -94,6 +95,7 @@ createDockVolumeButton(ui);
 // Dialogue subscribes to 'talk' before quests do, so it picks its greeting from the state before a turn-in.
 createDialogue(ui);
 createShop(ui);
+createTradeUi(ui);
 createBookReader(ui);
 initQuests();
 initAudio();
