@@ -42,6 +42,9 @@ Particle mass is conserved by construction (finite particle set, nothing created
 - Thin sheets and splash droplets stay as loose particles; there is no surface tension or surface mesh, so thin films look like sprinkled dots.
 - A wall plane has to sit on a grid node, and every node on or past it must stop inward flow. Getting that off by one cell makes water slide on the floor with no support. That is the kind of bug to watch for when embedding.
 
+- Settling: damping grows as water comes to rest, so a finished pour stops fizzing (max speed after a pour falls to ~0.1 m/s, kinetic energy to ~0).
+- Viscosity is a grid-space diffusion pass plus implicit shear damping on the particles' affine matrix, both clamped, so any slider value is stable. The first version added viscous stress explicitly to the momentum scatter and turned to noise at high viscosity.
+
 ## Not done yet (from the design doc)
 
 - PB-MPM liquid constraint (this uses the Milestone 1 Tait pressure).

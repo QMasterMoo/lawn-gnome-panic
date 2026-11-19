@@ -126,6 +126,7 @@ struct Particle { pos: vec4f, vel: vec4f, c0: vec4f, c1: vec4f, c2: vec4f }
 @group(0) @binding(2) var<storage, read_write> gridA: array<atomic<i32>>; // px,py,pz,mass per node
 @group(0) @binding(3) var<storage, read_write> gridV: array<vec4f>;
 @group(0) @binding(4) var<storage, read_write> stats: array<atomic<u32>>; // nan, inWall, keFixed, maxSpeedFixed
+@group(0) @binding(5) var<storage, read_write> gridV2: array<vec4f>;   // gridV after the viscosity pass
 
 fn weights(fx: vec3f) -> array<vec3f, 3> {
   return array<vec3f, 3>(
@@ -181,9 +182,8 @@ fn p2g_momentum(@builtin(global_invocation_id) id: vec3u) {
   pressure = max(pressure, 0.0);           // compression only: stray droplets must not pull themselves apart
 
   let cmat = mat3x3f(p.c0.xyz, p.c1.xyz, p.c2.xyz);
-  let strain = cmat + transpose(cmat);     // 2 * rate of strain
-  let mu = sim.visc / (DX * DX) * REST;
-  let stress = mat3x3f(vec3f(-pressure, 0.0, 0.0), vec3f(0.0, -pressure, 0.0), vec3f(0.0, 0.0, -pressure)) + mu * strain;
+  // viscosity is applied implicitly in g2p (explicit viscous stress blows up at high viscosity)
+  let stress = mat3x3f(vec3f(-pressure, 0.0, 0.0), vec3f(0.0, -pressure, 0.0), vec3f(0.0, 0.0, -pressure));
   let term = (-vol * 4.0 * sim.dt) * stress;
   let affine = term + cmat;                // mass is 1
 
@@ -208,7 +208,9 @@ fn grid_update(@builtin(global_invocation_id) id: vec3u) {
   let mom = vec3f(f32(atomicLoad(&gridA[idx * 4u])), f32(atomicLoad(&gridA[idx * 4u + 1u])), f32(atomicLoad(&gridA[idx * 4u + 2u]))) / SCALE;
   var v = mom / m;
   v.y -= sim.gravity / DX * sim.dt;
-  v *= 1.0 - 0.2 * sim.dt;
+  // light damping that grows as the water comes to rest, so a finished pour settles instead of fizzing
+  let spd = length(v) * DX / 0.15;
+  v *= 1.0 - (0.2 + 3.0 / (1.0 + spd * spd)) * sim.dt;
 
   let gz = idx % GZ;
   let gy = (idx / GZ) % GY;
@@ -247,6 +249,32 @@ fn grid_update(@builtin(global_invocation_id) id: vec3u) {
   gridV[idx] = vec4f(v, m);
 }
 
+// Viscosity: diffuse grid velocity between occupied neighbours. The step is explicit but clamped
+// (alpha <= 0.9), which keeps it stable at any slider value; empty neighbours are skipped so the
+// free surface does not drag.
+@compute @workgroup_size(64)
+fn grid_visc(@builtin(global_invocation_id) id: vec3u) {
+  if (id.x >= NODES) { return; }
+  let idx = id.x;
+  let c = gridV[idx];
+  let a = min(sim.visc / (DX * DX) * sim.dt * 6.0, 0.9);
+  if (c.w <= 1e-4 || a <= 0.0) { gridV2[idx] = c; return; }
+  let gz = idx % GZ;
+  let gy = (idx / GZ) % GY;
+  let gx = idx / (GZ * GY);
+  var sum = vec3f(0.0);
+  var cnt = 0.0;
+  if (gx > 0u)      { let n = gridV[idx - GY * GZ]; if (n.w > 1e-4) { sum += n.xyz; cnt += 1.0; } }
+  if (gx < GX - 1u) { let n = gridV[idx + GY * GZ]; if (n.w > 1e-4) { sum += n.xyz; cnt += 1.0; } }
+  if (gy > 0u)      { let n = gridV[idx - GZ]; if (n.w > 1e-4) { sum += n.xyz; cnt += 1.0; } }
+  if (gy < GY - 1u) { let n = gridV[idx + GZ]; if (n.w > 1e-4) { sum += n.xyz; cnt += 1.0; } }
+  if (gz > 0u)      { let n = gridV[idx - 1u]; if (n.w > 1e-4) { sum += n.xyz; cnt += 1.0; } }
+  if (gz < GZ - 1u) { let n = gridV[idx + 1u]; if (n.w > 1e-4) { sum += n.xyz; cnt += 1.0; } }
+  if (cnt < 0.5) { gridV2[idx] = c; return; }
+  let avg = sum / cnt;
+  gridV2[idx] = vec4f(c.xyz + a * (cnt / 6.0) * (avg - c.xyz), c.w);
+}
+
 fn pushOut(pos: ptr<function, vec3f>, vel: ptr<function, vec3f>) {
   let pw = (*pos) * DX;
   let s = scene(pw);
@@ -276,12 +304,19 @@ fn g2p(@builtin(global_invocation_id) id: vec3u) {
   for (var i = 0; i < 3; i++) { for (var j = 0; j < 3; j++) { for (var k = 0; k < 3; k++) {
     let wt = w[i].x * w[j].y * w[k].z;
     let dist = vec3f(f32(i), f32(j), f32(k)) - fx;
-    let gv = gridV[nodeIndex(base + vec3i(i, j, k))].xyz * wt;
+    let gv = gridV2[nodeIndex(base + vec3i(i, j, k))].xyz * wt;
     v += gv;
     c0 += 4.0 * gv.x * dist; c1 += 4.0 * gv.y * dist; c2 += 4.0 * gv.z * dist;
   }}}
   // c0..c2 hold the rows of C; store columns so that C * dist = sum(v * dist^T) * dist
-  let cm = transpose(mat3x3f(c0, c1, c2));
+  var cm = transpose(mat3x3f(c0, c1, c2));
+  // implicit viscosity: shrink the trace-free symmetric part (shear rate) of C. Stable for any viscosity;
+  // the antisymmetric part (spin) is left alone.
+  let tr = (cm[0][0] + cm[1][1] + cm[2][2]) / 3.0;
+  let sym = (cm + transpose(cm)) * 0.5;
+  let dev = sym - mat3x3f(vec3f(tr, 0.0, 0.0), vec3f(0.0, tr, 0.0), vec3f(0.0, 0.0, tr));
+  let va = min(sim.visc / (DX * DX) * sim.dt * 6.0, 8.0);
+  cm = cm - dev * (va / (1.0 + va));
 
   let maxV = 14.0 / DX;
   let sp = length(v);
