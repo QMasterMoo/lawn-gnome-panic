@@ -23,7 +23,7 @@ function waterMeshes(scene: THREE.Scene): THREE.Mesh[] {
   const out: THREE.Mesh[] = [];
   scene.traverse((o) => {
     const m = o as THREE.Mesh;
-    if (m.isMesh && m.geometry.getAttribute('color')) out.push(m);
+    if (m.isMesh && m.geometry.getAttribute('aInfo')) out.push(m);
   });
   return out;
 }

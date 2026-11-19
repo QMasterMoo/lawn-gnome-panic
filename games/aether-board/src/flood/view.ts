@@ -15,8 +15,6 @@ export interface FloodView {
 const WATER_NEAR = 700;
 const OBJECT_NEAR = 600;
 const SPRAY_N = 40;
-const SHALLOW = new THREE.Color(0x38bdf8);
-const DEEP = new THREE.Color(0x0284c7);
 const UP = new THREE.Vector3(0, 1, 0);
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -25,7 +23,9 @@ interface WaterRun {
   mesh: THREE.Mesh;
   geo: THREE.BufferGeometry;
   pos: Float32Array;
-  col: Float32Array;
+  /** Per-vertex (depth, speed) for the water shader. */
+  info: Float32Array;
+  mat: THREE.ShaderMaterial;
   cx: number;
   cz: number;
 }
@@ -59,8 +59,73 @@ export function createFloodView(scene: THREE.Scene, _world: World, flood: Flood,
   scene.add(root);
 
   // ---- shared materials and geometries
-  const waterMat = new THREE.MeshBasicMaterial({
-    vertexColors: true, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false,
+  // Water shader: all cheats, no extra simulation. Scrolling layered noise stretched along the flow gives ripples and a
+  // normal, which lights it (banded, to match the toon look) with a sun glint and a fresnel rim; foam streaks come from
+  // flow speed and thin edges; the edge fades out by depth instead of cutting off; glitter on top.
+  const WATER_VERT = `
+    attribute vec2 aInfo;
+    varying vec2 vInfo;
+    varying vec3 vWorld;
+    void main() {
+      vInfo = aInfo;
+      vec4 w = modelMatrix * vec4(position, 1.0);
+      vWorld = w.xyz;
+      gl_Position = projectionMatrix * viewMatrix * w;
+    }`;
+  const WATER_FRAG = `
+    uniform float uTime;
+    uniform vec2 uFlow;
+    varying vec2 vInfo;
+    varying vec3 vWorld;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    float vnoise(vec2 p) {
+      vec2 i = floor(p), f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+    }
+    float height(vec2 p, float spd) {
+      vec2 side = vec2(-uFlow.y, uFlow.x);
+      float t = uTime * (2.0 + spd * 0.9);
+      vec2 q = vec2(dot(p, uFlow) - t, dot(p, side));
+      return vnoise(q * vec2(0.30, 0.80)) * 0.55 + vnoise(q * vec2(0.85, 2.0) + 7.0) * 0.30 + vnoise(q * vec2(2.1, 4.2) + 3.0) * 0.15;
+    }
+    void main() {
+      float depth = vInfo.x;
+      float spd = vInfo.y;
+      float alpha = smoothstep(0.012, 0.24, depth);
+      if (alpha < 0.01) discard;
+      vec2 p = vWorld.xz;
+      float e = 0.3;
+      float h = height(p, spd);
+      float amp = 1.4 + spd * 0.22;
+      vec3 n = normalize(vec3(-(height(p + vec2(e, 0.0), spd) - h) / e * amp, 1.0, -(height(p + vec2(0.0, e), spd) - h) / e * amp));
+      vec3 L = normalize(vec3(0.42, 0.8, 0.43));
+      vec3 V = normalize(cameraPosition - vWorld);
+      float diff = max(dot(n, L), 0.0);
+      float cel = mix(diff, floor(diff * 3.0 + 0.5) / 3.0, 0.55);
+      float fres = pow(1.0 - max(dot(n, V), 0.0), 3.0);
+      float spec = smoothstep(0.5, 0.62, pow(max(dot(n, normalize(L + V)), 0.0), 70.0));
+      vec3 shallow = vec3(0.34, 0.80, 0.98);
+      vec3 deep = vec3(0.01, 0.34, 0.74);
+      vec3 col = mix(shallow, deep, clamp(depth / 2.2, 0.0, 1.0)) * (0.62 + 0.5 * cel);
+      col += fres * vec3(0.55, 0.85, 1.0) * 0.35 + spec * vec3(1.0);
+      // foam: fast water and thin edges, in streaks along the flow
+      float foamAmt = max(smoothstep(4.5, 11.0, spd) * 0.8, 1.0 - smoothstep(0.02, 0.2, depth));
+      vec2 side = vec2(-uFlow.y, uFlow.x);
+      float fn = vnoise(vec2(dot(p, uFlow) * 0.45 - uTime * (3.0 + spd), dot(p, side) * 2.6));
+      float foam = clamp(foamAmt * smoothstep(0.3, 0.65, fn + foamAmt * 0.45), 0.0, 1.0);
+      col = mix(col, vec3(1.0), foam);
+      // glitter
+      col += step(0.992, hash(floor(p * 14.0) + floor(uTime * 7.0))) * (1.0 - foam) * 0.5;
+      gl_FragColor = vec4(col, alpha * 0.92);
+    }`;
+  const waterMat = new THREE.ShaderMaterial({
+    vertexShader: WATER_VERT,
+    fragmentShader: WATER_FRAG,
+    uniforms: { uTime: { value: 0 }, uFlow: { value: new THREE.Vector2(0, 1) } },
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
   });
   const sphereGeo = new THREE.SphereGeometry(0.3, 10, 8);
   const sphereMat = new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.9, depthWrite: false });
@@ -80,7 +145,7 @@ export function createFloodView(scene: THREE.Scene, _world: World, flood: Flood,
   function buildWater(r: RunGrid): WaterRun {
     const n = r.nu * r.nv;
     const pos = new Float32Array(n * 3);
-    const col = new Float32Array(n * 3);
+    const info = new Float32Array(n * 2);
     for (let j = 0; j < r.nv; j++) {
       for (let k = 0; k < r.nu; k++) {
         const i = j * r.nu + k;
@@ -105,18 +170,20 @@ export function createFloodView(scene: THREE.Scene, _world: World, flood: Flood,
     const geo = new THREE.BufferGeometry();
     const posAttr = new THREE.BufferAttribute(pos, 3);
     posAttr.setUsage(THREE.DynamicDrawUsage);
-    const colAttr = new THREE.BufferAttribute(col, 3);
-    colAttr.setUsage(THREE.DynamicDrawUsage);
+    const infoAttr = new THREE.BufferAttribute(info, 2);
+    infoAttr.setUsage(THREE.DynamicDrawUsage);
     geo.setAttribute('position', posAttr);
-    geo.setAttribute('color', colAttr);
+    geo.setAttribute('aInfo', infoAttr);
     geo.setIndex(new THREE.BufferAttribute(idx.subarray(0, m), 1));
-    const mesh = new THREE.Mesh(geo, waterMat);
+    const mat = waterMat.clone();
+    mat.uniforms.uFlow.value.set(r.fx, r.fz);
+    const mesh = new THREE.Mesh(geo, mat);
     mesh.renderOrder = 2;
     mesh.frustumCulled = false;
     mesh.visible = false;
     root.add(mesh);
     return {
-      mesh, geo, pos, col,
+      mesh, geo, pos, info, mat,
       cx: r.ox + (r.fx * (r.nu - 1) * r.cell + r.sx * (r.nv - 1) * r.cell) / 2,
       cz: r.oz + (r.fz * (r.nu - 1) * r.cell + r.sz * (r.nv - 1) * r.cell) / 2,
     };
@@ -129,20 +196,11 @@ export function createFloodView(scene: THREE.Scene, _world: World, flood: Flood,
       const bed = r.bed[i];
       // Dry cells sink under the ground so they vanish.
       w.pos[i * 3 + 1] = d >= 0.02 ? bed + d : bed - 0.25;
-      const tDeep = clamp01(d / 2.5);
-      let cr = SHALLOW.r + (DEEP.r - SHALLOW.r) * tDeep;
-      let cg = SHALLOW.g + (DEEP.g - SHALLOW.g) * tDeep;
-      let cb = SHALLOW.b + (DEEP.b - SHALLOW.b) * tDeep;
-      const foam = Math.max(clamp01((r.speed[i] - 6) / 8), d >= 0.02 && d < 0.15 ? 0.9 : 0);
-      cr += (1 - cr) * foam;
-      cg += (1 - cg) * foam;
-      cb += (1 - cb) * foam;
-      w.col[i * 3] = cr;
-      w.col[i * 3 + 1] = cg;
-      w.col[i * 3 + 2] = cb;
+      w.info[i * 2] = d;
+      w.info[i * 2 + 1] = r.speed[i];
     }
     w.geo.attributes.position.needsUpdate = true;
-    w.geo.attributes.color.needsUpdate = true;
+    w.geo.attributes.aInfo.needsUpdate = true;
   }
 
   // ---- cannons
@@ -224,6 +282,7 @@ export function createFloodView(scene: THREE.Scene, _world: World, flood: Flood,
 
   return {
     update(_dt, t, camPos) {
+      for (const w of waters) if (w) w.mat.uniforms.uTime.value = t;
       // Water: only the active runs near the camera.
       for (let ri = 0; ri < flood.runs.length; ri++) {
         const r = flood.runs[ri];
@@ -316,6 +375,7 @@ export function createFloodView(scene: THREE.Scene, _world: World, flood: Flood,
       ringGeo.dispose();
       columnGeo.dispose();
       waterMat.dispose();
+      for (const w of waters) w?.mat.dispose();
     },
   };
 }
