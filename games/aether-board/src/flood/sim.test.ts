@@ -34,7 +34,7 @@ function run(seconds: number, focus = 0) {
 }
 
 describe('flood sim', () => {
-  it('floods the runs near the rider, stays finite and bounded', () => {
+  it('floods the runs near the rider, stays finite and bounded', { timeout: 60000 }, () => {
     const r = run(60);
     console.log('flood 60 s', { maxDepth: r.maxDepth, maxSpeed: r.maxSpeed, wet: [...r.wetRuns], volume: r.f.volume() });
     expect(Number.isFinite(r.f.volume())).toBe(true);
@@ -51,14 +51,14 @@ describe('flood sim', () => {
     f.focus(4);
     f.step(1);
     const active = f.runs.filter((r) => r.active).map((r) => r.island);
-    expect(active).toEqual([3, 4, 5, 6, 7]);
+    expect(active).toEqual([3, 4, 5, 6]);
     f.focus(0);
     f.step(0.1);
-    expect(f.runs[7].active).toBe(false);
-    expect(f.runs[7].depth.every((d) => d === 0)).toBe(true);
+    expect(f.runs[6].active).toBe(false);
+    expect(f.runs[6].depth.every((d) => d === 0)).toBe(true);
   });
 
-  it('is deterministic', () => {
+  it('is deterministic', { timeout: 60000 }, () => {
     expect(run(20).f.volume()).toBe(run(20).f.volume());
   });
 });

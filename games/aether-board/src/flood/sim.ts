@@ -8,7 +8,80 @@ import { FLOOD, makeRng, type Flood, type FlowSample, type RunGrid } from './typ
 const HOLE_BED = -60;
 const THIN = 0.004;
 
+/**
+ * Priority-flood (Barnes et al. 2014): the water level each cell would settle at if every dip were filled to its spill
+ * point, with the grid's edge and the holes as outlets. Returns depth per cell: the ponds the mountain starts with, so
+ * a stream runs through straight away instead of spending its first minute filling dips.
+ */
+function fillDips(bed: Float32Array, hole: Uint8Array, nu: number, nv: number): Float32Array {
+  const n = nu * nv;
+  const level = new Float64Array(n).fill(Infinity);
+  const heapKey: number[] = [];
+  const heapIdx: number[] = [];
+  const push = (key: number, idx: number): void => {
+    let i = heapKey.length;
+    heapKey.push(key);
+    heapIdx.push(idx);
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (heapKey[p] <= key) break;
+      heapKey[i] = heapKey[p];
+      heapIdx[i] = heapIdx[p];
+      i = p;
+    }
+    heapKey[i] = key;
+    heapIdx[i] = idx;
+  };
+  const pop = (): number => {
+    const top = heapIdx[0];
+    const key = heapKey.pop() as number;
+    const idx = heapIdx.pop() as number;
+    const len = heapKey.length;
+    if (len > 0) {
+      let i = 0;
+      for (;;) {
+        let c = 2 * i + 1;
+        if (c >= len) break;
+        if (c + 1 < len && heapKey[c + 1] < heapKey[c]) c++;
+        if (heapKey[c] >= key) break;
+        heapKey[i] = heapKey[c];
+        heapIdx[i] = heapIdx[c];
+        i = c;
+      }
+      heapKey[i] = key;
+      heapIdx[i] = idx;
+    }
+    return top;
+  };
+  for (let j = 0; j < nv; j++) {
+    for (let k = 0; k < nu; k++) {
+      const i = j * nu + k;
+      // outlets: holes, the downhill end and the sides (the top end is a wall)
+      if (hole[i] || k === nu - 1 || j === 0 || j === nv - 1) {
+        level[i] = bed[i];
+        push(bed[i], i);
+      }
+    }
+  }
+  while (heapKey.length > 0) {
+    const i = pop();
+    const k = i % nu;
+    const j = (i - k) / nu;
+    const nb = [k > 0 ? i - 1 : -1, k < nu - 1 ? i + 1 : -1, j > 0 ? i - nu : -1, j < nv - 1 ? i + nu : -1];
+    for (const m of nb) {
+      if (m < 0 || level[m] !== Infinity) continue;
+      level[m] = Math.max(bed[m], level[i]);
+      push(level[m], m);
+    }
+  }
+  const depth = new Float32Array(n);
+  for (let i = 0; i < n; i++) if (!hole[i] && level[i] > bed[i] + 0.02) depth[i] = level[i] - bed[i];
+  return depth;
+}
+
 interface RunSim extends RunGrid {
+  /** Depth the run starts with when it enters the window (filled dips). */
+  prefill: Float32Array;
   /** Outflow (m³/s) toward +k (downhill), -k, +j, -j, per cell. */
   fA: Float32Array;
   fB: Float32Array;
@@ -69,6 +142,7 @@ export function createFlood(world: World, seed = 1): Flood {
     return {
       island: i, nu, nv, ox, oz, fx, fz, sx, sz, cell: C, bed, hole,
       depth: new Float32Array(n),
+      prefill: fillDips(bed, hole, nu, nv),
       speed: new Float32Array(n),
       active: false,
       fA: new Float32Array(n), fB: new Float32Array(n), fC: new Float32Array(n), fD: new Float32Array(n),
@@ -113,11 +187,15 @@ export function createFlood(world: World, seed = 1): Flood {
         const b = bed[idx];
         const d = depth[idx];
         const H = b + d;
-        const damp = 1 / (1 + dt * 0.9 * (0.4 + 1 / Math.max(d, 0.2)));
+        const dm = Math.max(d, 0.1);
+        const dpow = Math.pow(dm, 4 / 3);
         const flux = (old: number, nb: number, nd: number): number => {
           const Hn = nb + nd;
           const open = Math.max(0, Math.max(H, Hn) - Math.max(b, nb));
-          const f = Math.max(0, (old + dt * g * open * (H - Hn)) * damp);
+          const f0 = Math.max(0, old + dt * g * open * (H - Hn));
+          // Manning-style friction (rough snow-melt channel), implicit so it can never reverse the flow
+          const fr = FLOOD.friction + (g * FLOOD.manning2 * (f0 / (C * dm))) / dpow;
+          const f = f0 / (1 + dt * fr);
           return d < THIN && f < 1e-4 ? 0 : f;
         };
         // downhill neighbour; past the run's lower end it is a drain (the tail is handed to the next run)
@@ -201,7 +279,11 @@ export function createFlood(world: World, seed = 1): Flood {
         }
         continue;
       }
-      r.active = true;
+      if (!r.active) {
+        clearRun(r);
+        r.depth.set(r.prefill);
+        r.active = true;
+      }
       // source: the middle 60% across, top three rows
       const q = sourceFlow(r.period, r.phase, r.peak, time) * dt;
       addToRun(r, 0.5, q);

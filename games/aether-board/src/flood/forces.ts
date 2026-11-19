@@ -82,7 +82,7 @@ export function createFloodForces(flood: Flood, obstacles: Obstacles, stats: Flo
       if (riding) {
         const factor = Math.min(1, sample.depth / (FLOOD.minDepth * 4));
         const along = p.vel.x * fdx + p.vel.z * fdz;
-        const cap = fs + FLOOD.bonusMax;
+        const cap = Math.max(fs + FLOOD.bonusMax, FLOOD.rideSpeedCap);
         if (along < cap) {
           p.vel.x += fdx * FLOOD.rideAccel * factor * dt;
           p.vel.z += fdz * FLOOD.rideAccel * factor * dt;

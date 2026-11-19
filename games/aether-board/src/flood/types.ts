@@ -9,17 +9,20 @@ export const FLOOD_SEED = 11;
 
 export const FLOOD = {
   // ---- shallow-water sim (flood/sim.ts, virtual pipes after Mei et al. 2007)
-  cell: 2,             // m, grid cell size
+  cell: 3,             // m, grid cell size
   simHz: 30,           // fixed sim rate of the water
   gravity: 9.81,
+  /** Flow friction: a baseline (1/s) plus Manning's n squared (n = 0.02, smooth wet snow). */
+  friction: 0.05,
+  manning2: 0.0004,
   /** Sampled flow speed is clamped to this (m/s): thin edges make the raw estimate spiky. */
   maxFlowSpeed: 22,
   /** Runs simulated ahead of / behind the rider's run. Others are reset dry. */
   windowBehind: 1,
-  windowAhead: 3,
+  windowAhead: 2,
   /** Per-run source at the top of every run: a steady stream plus a surge every `period` s (m³/s). */
-  baseFlow: 30,
-  surgePeak: 300,
+  baseFlow: 160,
+  surgePeak: 900,
   periodMin: 24,
   periodMax: 38,
   /** Seconds water takes to cross from one run to the next: joined, a jump, a halfpipe. */
@@ -33,7 +36,8 @@ export const FLOOD = {
   minAlign: 0.55,
   minFlow: 3,
   rideAccel: 18,       // m/s² toward the flow speed (never pushes past flow speed + bonusMax)
-  bonusMax: 16,        // m/s over the flow speed that the current will still push you
+  bonusMax: 16,        // m/s over the flow speed that the current will still push you...
+  rideSpeedCap: 55,    // ...or up to this speed, whichever is higher: a fast rider is still pushed along in the water
   /** Against the flow (cos < -0.3): extra drag (1/s). */
   againstDrag: 1.4,
   /** Sideways push from flow you are not moving with (m/s² per m/s of cross flow). */

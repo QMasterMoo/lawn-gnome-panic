@@ -105,6 +105,13 @@ const floodStats = newFloodStats();
 const floodView = flood && obstacles ? createFloodView(scene, world, flood, obstacles) : null;
 const floodHud = floodMode ? createFloodHud(ui) : null;
 let floodClock = 0;
+// ?warm=N pre-rolls N seconds of water before the first frame (demos and smoke tests that skip the title card; the
+// water keeps flowing behind the title card anyway).
+if (flood) {
+  const warm = Number(params.get('warm')) || 0;
+  flood.focus(0);
+  for (let i = 0; i < warm * 30; i++) flood.step(1 / 30);
+}
 if (flood && obstacles) setExternalForces(createFloodForces(flood, obstacles, floodStats, () => flood.time));
 
 // ---------------------------------------------------------------- Descent

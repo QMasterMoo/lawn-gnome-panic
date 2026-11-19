@@ -1,10 +1,18 @@
 {
   "title": "Flood Run: riding a meltwater surge",
   "url": "http://localhost:5195/",
-  "setup": { "mode": "flood", "autostart": "1" },
+  "setup": {
+    "mode": "flood",
+    "autostart": "1",
+    "warm": "40"
+  },
   "warmup": 6,
   "duration": 6,
   "steps": [
-    { "t": 0, "hold": "forward", "for": 6 }
+    {
+      "t": 0,
+      "hold": "forward",
+      "for": 6
+    }
   ]
 }
