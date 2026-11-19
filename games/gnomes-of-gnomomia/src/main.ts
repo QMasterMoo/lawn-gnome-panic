@@ -33,6 +33,7 @@ import { deleteSave, loadGame, saveGame } from './save';
 import { onCloudStatus, resolveConflict, syncAtStartup } from './cloudSave';
 import { chooseSave } from './ui/cloud';
 import { showTitle } from './ui/title';
+import { startTutorial } from './ui/tutorial';
 import { newGameState, state } from './state';
 import { goOnline, initMmo, updateMmo } from './net/mmo';
 import { createOnlineUi, updateOnlineUi } from './ui/online';
@@ -169,6 +170,7 @@ if (debugZone && debugZone in ZONES) {
     loadZone('mossbottom', SPAWN.x, SPAWN.z);
     teleportPlayer(SPAWN.x, SPAWN.z);
     say('Welcome to Gnomomia. Talk to Elder Fernwick, by the well.', UI.quest);
+    startTutorial(ui);
   } else {
     say('Welcome back to Gnomomia.', UI.quest);
   }
