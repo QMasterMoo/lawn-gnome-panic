@@ -3,7 +3,7 @@
 A tech demo, not a game: can WebGPU water that you pour, tilt and shake run well enough in a browser to put in our games? It is the "Architecture A" path from the water-flow design notes: 3D MLS-MPM (APIC) particles with analytic-SDF vessels, all on the GPU.
 
 ```
-npm run dev -w games/water-flow     # http://localhost:5180
+npm run dev -w games/water-flow     # http://localhost:5198
 npm run build -w games/water-flow
 ```
 

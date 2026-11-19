@@ -176,6 +176,7 @@ export const MAPS: Record<MapId, MapDef> = {
       { prefab: 'arcade-cabinet', x: 1.5, z: -5.6 },
       { prefab: 'arcade-cabinet', x: 4.5, z: -5.6 },
       { prefab: 'arcade-cabinet', x: 7.5, z: -5.6 },
+      { prefab: 'arcade-cabinet', x: 0, z: -2.6 },
       { prefab: 'vending-machine', x: 9, z: -1, rot: -Math.PI / 2 },
       { prefab: 'vending-machine', x: -9, z: -1, rot: Math.PI / 2 },
       { prefab: 'plant', x: 9.2, z: -3.5, rot: -Math.PI / 2 },
@@ -185,6 +186,7 @@ export const MAPS: Record<MapId, MapDef> = {
     ],
     blockers: [
       { x: 0, z: -5.6, w: 17, d: 0.9 },
+      { x: 0, z: -2.6, w: 0.9, d: 0.8 },
       { x: 9, z: -1, w: 0.63, d: 0.84 },
       { x: -9, z: -1, w: 0.63, d: 0.84 },
     ],
@@ -197,6 +199,7 @@ export const MAPS: Record<MapId, MapDef> = {
       { id: 'cab-panic', label: 'Play Lawn Gnome Panic', x: -1.5, z: -4.5, r: 1.4, game: 'panic' },
       { id: 'cab-sweet', label: 'Play Gnome Sweet Gnome', x: 1.5, z: -4.5, r: 1.4, game: 'sweet' },
       { id: 'cab-ftl', label: 'Play Faster Than Lawn', x: 4.5, z: -4.5, r: 1.4, game: 'ftl' },
+      { id: 'cab-water', label: 'Play Water Flow Demo', x: 0, z: -1.5, r: 1.2, game: 'water' },
       { id: 'cab-aether', label: 'Ride Aether Board', x: 7.5, z: -4.5, r: 1.4, game: 'aether' },
     ],
     signs: [
@@ -206,6 +209,7 @@ export const MAPS: Record<MapId, MapDef> = {
       { text: 'Gnome Sweet Gnome', x: 1.5, z: -6.9, y: 1.95 },
       { text: 'Faster Than Lawn', x: 4.5, z: -6.9, y: 1.95 },
       { text: 'Aether Board', x: 7.5, z: -6.9, y: 1.95 },
+      { text: 'Water Flow', x: 0, z: -3.9, y: 1.95 },
     ],
   },
 

@@ -151,6 +151,7 @@ export const GAME_LINKS = {
   panic: { game: 'sample-3d', title: 'Lawn Gnome Panic', port: 5174 },
   sweet: { game: 'gnome-sweet-gnome', title: 'Gnome Sweet Gnome', port: 5180 },
   ftl: { game: 'faster-than-lawn', title: 'Faster Than Lawn', port: 5181 },
+  water: { game: 'water-flow', title: 'Water Flow Demo', port: 5198 },
   aether: { game: 'aether-board', title: 'Aether Board', port: 5195 },
   front: { game: 'gnome-front', title: 'Gnome Front', port: 5182 },
   gnaft: { game: 'gnaft', title: 'Gnaft', port: 5183 },
