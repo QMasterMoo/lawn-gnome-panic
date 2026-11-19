@@ -2,7 +2,7 @@
 // its top (a steady stream plus a surge every few seconds), water flows downhill over the real ground height, pools
 // in dips, climbs and spills over lips when a surge is deep, drains off rims, and hands its tail to the next run.
 // Only the runs near the rider are simulated; the rest are reset dry. Pure.
-import { runY, type World } from '../world';
+import { runY, type Island, type World } from '../world';
 import { FLOOD, makeRng, type Flood, type FlowSample, type RunGrid } from './types';
 
 const HOLE_BED = -60;
@@ -81,6 +81,8 @@ function fillDips(bed: Float32Array, hole: Uint8Array, nu: number, nv: number): 
 }
 
 interface RunSim extends RunGrid {
+  built: boolean;
+  isl: Island;
   /** Depth the run starts with when it enters the window (filled dips). */
   prefill: Float32Array;
   /** Outflow (m³/s) toward +k (downhill), -k, +j, -j, per cell. */
@@ -115,6 +117,8 @@ export function sourceFlow(period: number, phase: number, peak: number, t: numbe
 export function createFlood(world: World, seed = 1): Flood {
   const rnd = makeRng(seed * 7919 + 13);
   const C = FLOOD.cell;
+  const emptyF = new Float32Array(0);
+  // Grids are only allocated and filled (ground height, holes, filled dips) the first time a run is simulated.
   const runs: RunSim[] = world.islands.map((isl, i) => {
     const ra = isl.r * isl.stretch;
     const nu = Math.max(4, Math.ceil((2 * ra) / C));
@@ -123,30 +127,14 @@ export function createFlood(world: World, seed = 1): Flood {
     const fz = isl.dz;
     const sx = -isl.dz;
     const sz = isl.dx;
-    const ox = isl.cx + fx * (-ra + C / 2) + sx * (-isl.r + C / 2);
-    const oz = isl.cz + fz * (-ra + C / 2) + sz * (-isl.r + C / 2);
-    const n = nu * nv;
-    const bed = new Float32Array(n);
-    const hole = new Uint8Array(n);
-    for (let j = 0; j < nv; j++) {
-      for (let k = 0; k < nu; k++) {
-        const x = ox + fx * k * C + sx * j * C;
-        const z = oz + fz * k * C + sz * j * C;
-        const y = runY(world, isl, x, z);
-        const idx = j * nu + k;
-        if (y === null) {
-          bed[idx] = HOLE_BED;
-          hole[idx] = 1;
-        } else bed[idx] = y;
-      }
-    }
     return {
-      island: i, nu, nv, ox, oz, fx, fz, sx, sz, cell: C, bed, hole,
-      depth: new Float32Array(n),
-      prefill: fillDips(bed, hole, nu, nv),
-      speed: new Float32Array(n),
-      active: false,
-      fA: new Float32Array(n), fB: new Float32Array(n), fC: new Float32Array(n), fD: new Float32Array(n),
+      island: i, isl, built: false, nu, nv,
+      ox: isl.cx + fx * (-ra + C / 2) + sx * (-isl.r + C / 2),
+      oz: isl.cz + fz * (-ra + C / 2) + sz * (-isl.r + C / 2),
+      fx, fz, sx, sz, cell: C,
+      bed: emptyF, depth: emptyF, speed: emptyF, prefill: emptyF, hole: new Uint8Array(0),
+      fA: emptyF, fB: emptyF, fC: emptyF, fD: emptyF,
+      active: false, lo: 0, hi: -1,
       period: FLOOD.periodMin + (FLOOD.periodMax - FLOOD.periodMin) * rnd(),
       phase: rnd() * FLOOD.periodMax,
       peak: FLOOD.surgePeak * (0.7 + 0.6 * rnd()),
@@ -154,33 +142,142 @@ export function createFlood(world: World, seed = 1): Flood {
     };
   });
 
+  function build(r: RunSim): void {
+    if (r.built) return;
+    const { nu, nv, isl } = r;
+    const n = nu * nv;
+    const bed = new Float32Array(n);
+    const hole = new Uint8Array(n);
+    for (let j = 0; j < nv; j++) {
+      for (let k = 0; k < nu; k++) {
+        const y = runY(world, isl, r.ox + r.fx * k * C + r.sx * j * C, r.oz + r.fz * k * C + r.sz * j * C);
+        const idx = j * nu + k;
+        if (y === null) {
+          bed[idx] = HOLE_BED;
+          hole[idx] = 1;
+        } else bed[idx] = y;
+      }
+    }
+    r.bed = bed;
+    r.hole = hole;
+    r.prefill = fillDips(bed, hole, nu, nv);
+    r.depth = new Float32Array(n);
+    r.speed = new Float32Array(n);
+    r.fA = new Float32Array(n);
+    r.fB = new Float32Array(n);
+    r.fC = new Float32Array(n);
+    r.fD = new Float32Array(n);
+    r.built = true;
+  }
+
   const queue: Handover[] = [];
   let focusRun = 0;
   let anchorPos: { x: number; z: number; island: number } | null = null;
   let acc = 0;
   let time = 0;
+  let stepCount = 0;
   const STEP = 1 / FLOOD.simHz;
 
-  const inWindow = (i: number): boolean => i >= focusRun - FLOOD.windowBehind && i <= focusRun + FLOOD.windowAhead;
+  /** Rows k1..k2 (inclusive) take the run's starting water (ponds and the wet film). */
+  function initRows(r: RunSim, k1: number, k2: number): void {
+    for (let j = 0; j < r.nv; j++) {
+      for (let k = k1; k <= k2; k++) {
+        const i = j * r.nu + k;
+        r.depth[i] = r.prefill[i];
+        r.fA[i] = r.fB[i] = r.fC[i] = r.fD[i] = 0;
+        r.speed[i] = 0;
+      }
+    }
+  }
+
+  /** Rows k1..k2 go dry (the rider has left them behind). */
+  function clearRows(r: RunSim, k1: number, k2: number): void {
+    for (let j = 0; j < r.nv; j++) {
+      for (let k = k1; k <= k2; k++) {
+        const i = j * r.nu + k;
+        r.depth[i] = 0;
+        r.fA[i] = r.fB[i] = r.fC[i] = r.fD[i] = 0;
+        r.speed[i] = 0;
+      }
+    }
+  }
 
   function clearRun(r: RunSim): void {
+    if (!r.built) return;
     r.depth.fill(0);
     r.fA.fill(0);
     r.fB.fill(0);
     r.fC.fill(0);
     r.fD.fill(0);
-    r.tail.fill(0);
     r.speed.fill(0);
+    r.tail.fill(0);
+  }
+
+  /** Cell coordinates of (x, z) in run r (float k, j), or null outside its grid. */
+  function locate(r: RunSim, x: number, z: number): { k: number; j: number } | null {
+    const dx = x - r.ox;
+    const dz = z - r.oz;
+    const k = (dx * r.fx + dz * r.fz) / C;
+    const j = (dx * r.sx + dz * r.sz) / C;
+    if (k < -0.5 || j < -0.5 || k > r.nu - 0.5 || j > r.nv - 0.5) return null;
+    return { k: Math.min(r.nu - 1, Math.max(0, k)), j: Math.min(r.nv - 1, Math.max(0, j)) };
+  }
+
+  /**
+   * Only a band of rows around the rider is simulated: FLOOD.windowBackM behind to FLOOD.windowAheadM ahead, and the top
+   * of the next run if the band reaches past this run's end. Rows entering the band start with the run's ponds and film;
+   * rows left behind go dry.
+   */
+  function updateWindows(): void {
+    const want = new Map<number, [number, number]>();
+    const a = anchorPos ? anchorPos.island : focusRun;
+    const ra = runs[a];
+    let kA = 0;
+    if (anchorPos && ra) {
+      const loc = locate(ra, anchorPos.x, anchorPos.z);
+      if (loc) kA = Math.round(loc.k);
+    }
+    if (ra) {
+      const back = Math.round(FLOOD.windowBackM / C);
+      const ahead = Math.round(FLOOD.windowAheadM / C);
+      want.set(a, [Math.max(0, kA - back), Math.min(ra.nu - 1, kA + ahead)]);
+      const over = kA + ahead - (ra.nu - 1);
+      const next = runs[a + 1];
+      if (over > 0 && next) want.set(a + 1, [0, Math.min(next.nu - 1, over + Math.round(20 / C))]);
+    }
+    for (const r of runs) {
+      const w = want.get(r.island);
+      if (!w) {
+        if (r.active) {
+          clearRun(r);
+          r.active = false;
+          r.hi = -1;
+        }
+        continue;
+      }
+      build(r);
+      const [lo, hi] = w;
+      if (!r.active) {
+        r.depth.fill(0);
+        initRows(r, lo, hi);
+        r.active = true;
+      } else {
+        if (lo > r.lo) clearRows(r, r.lo, Math.min(lo - 1, r.hi));
+        if (hi > r.hi) initRows(r, Math.max(lo, r.hi + 1), hi);
+      }
+      r.lo = lo;
+      r.hi = hi;
+    }
   }
 
   function stepRun(r: RunSim, dt: number): void {
-    const { nu, nv, bed, depth, hole, fA, fB, fC, fD } = r;
+    const { nu, nv, bed, depth, hole, fA, fB, fC, fD, lo, hi } = r;
     const g = FLOOD.gravity;
     const area = C * C;
 
     // 1. outflow fluxes from the height differences
     for (let j = 0; j < nv; j++) {
-      for (let k = 0; k < nu; k++) {
+      for (let k = lo; k <= hi; k++) {
         const idx = j * nu + k;
         if (hole[idx]) {
           fA[idx] = fB[idx] = fC[idx] = fD[idx] = 0;
@@ -200,10 +297,10 @@ export function createFlood(world: World, seed = 1): Flood {
           const f = f0 / (1 + dt * fr);
           return d < THIN && f < 1e-4 ? 0 : f;
         };
-        // downhill neighbour; past the run's lower end it is a drain (the tail is handed to the next run)
-        fA[idx] = k < nu - 1 ? flux(fA[idx], bed[idx + 1], depth[idx + 1]) : flux(fA[idx], HOLE_BED, 0);
-        // nothing flows uphill out of the top of a run
-        fB[idx] = k > 0 ? flux(fB[idx], bed[idx - 1], depth[idx - 1]) : 0;
+        // downhill: past the band's lower edge (or the run's end) is a drain; only the run's end hands water on
+        fA[idx] = k < hi ? flux(fA[idx], bed[idx + 1], depth[idx + 1]) : flux(fA[idx], HOLE_BED, 0);
+        // nothing flows uphill out of the band
+        fB[idx] = k > lo ? flux(fB[idx], bed[idx - 1], depth[idx - 1]) : 0;
         fC[idx] = j < nv - 1 ? flux(fC[idx], bed[idx + nu], depth[idx + nu]) : flux(fC[idx], HOLE_BED, 0);
         fD[idx] = j > 0 ? flux(fD[idx], bed[idx - nu], depth[idx - nu]) : flux(fD[idx], HOLE_BED, 0);
         const out = fA[idx] + fB[idx] + fC[idx] + fD[idx];
@@ -220,15 +317,15 @@ export function createFlood(world: World, seed = 1): Flood {
 
     // 2. volumes: gather what neighbours send, subtract what we send. Holes just absorb.
     for (let j = 0; j < nv; j++) {
-      for (let k = 0; k < nu; k++) {
+      for (let k = lo; k <= hi; k++) {
         const idx = j * nu + k;
         if (hole[idx]) {
           depth[idx] = 0;
           continue;
         }
         let dv = -(fA[idx] + fB[idx] + fC[idx] + fD[idx]);
-        if (k > 0) dv += fA[idx - 1];
-        if (k < nu - 1) dv += fB[idx + 1];
+        if (k > lo) dv += fA[idx - 1];
+        if (k < hi) dv += fB[idx + 1];
         if (j > 0) dv += fC[idx - nu];
         if (j < nv - 1) dv += fD[idx + nu];
         if (k === nu - 1) r.tail[j] += fA[idx] * dt;
@@ -237,9 +334,19 @@ export function createFlood(world: World, seed = 1): Flood {
     }
   }
 
+  /** Flow rates through a cell (m³/s along +k and +j), averaged over its two faces on each axis. */
+  function cellFlow(r: RunSim, k: number, j: number): { wu: number; wv: number } {
+    const i = j * r.nu + k;
+    const inA = k > r.lo ? r.fA[i - 1] : 0;
+    const inB = k < r.hi ? r.fB[i + 1] : 0;
+    const inC = j > 0 ? r.fC[i - r.nu] : 0;
+    const inD = j < r.nv - 1 ? r.fD[i + r.nu] : 0;
+    return { wu: 0.5 * (inA - r.fB[i] + r.fA[i] - inB), wv: 0.5 * (inC - r.fD[i] + r.fC[i] - inD) };
+  }
+
   function refreshSpeed(r: RunSim): void {
     for (let j = 0; j < r.nv; j++) {
-      for (let k = 0; k < r.nu; k++) {
+      for (let k = r.lo; k <= r.hi; k++) {
         const i = j * r.nu + k;
         const d = r.depth[i];
         if (d < 0.02) {
@@ -252,62 +359,52 @@ export function createFlood(world: World, seed = 1): Flood {
     }
   }
 
+  /** Pour `vol` m³ over columns jc ± half and rows k0..k0+rows-1 (clamped to the simulated band). */
   function addToRun(r: RunSim, frac: number, vol: number, half = 2, k0 = 0, rows = 3): void {
-    // spread over the three top rows, around column frac
     const jc = Math.min(r.nv - 1, Math.max(0, Math.round(frac * (r.nv - 1))));
+    const ka = Math.max(r.lo, k0);
+    const kb = Math.min(r.hi, k0 + rows - 1);
     let n = 0;
-    for (let jj = -half; jj <= half; jj++) for (let k = k0; k < k0 + rows; k++) {
+    for (let jj = -half; jj <= half; jj++) for (let k = ka; k <= kb; k++) {
       const j = jc + jj;
       if (j >= 0 && j < r.nv && !r.hole[j * r.nu + k]) n++;
     }
     if (n === 0) return;
     const dd = vol / (n * C * C);
-    for (let jj = -half; jj <= half; jj++) for (let k = k0; k < k0 + rows; k++) {
+    for (let jj = -half; jj <= half; jj++) for (let k = ka; k <= kb; k++) {
       const j = jc + jj;
       if (j >= 0 && j < r.nv && !r.hole[j * r.nu + k]) r.depth[j * r.nu + k] += dd;
     }
   }
 
-  let stepCount = 0;
   function tick(dt: number): void {
     time += dt;
     stepCount++;
+    updateWindows();
     // sources and hand-overs
     for (const r of runs) {
-      if (!inWindow(r.island)) {
-        if (r.active) {
-          r.active = false;
-          clearRun(r);
-        }
-        continue;
-      }
-      if (!r.active) {
-        clearRun(r);
-        r.depth.set(r.prefill);
-        r.active = true;
-      }
-      // source: the middle of the run across (FLOOD.sourceHalfWidth each side), top three rows
+      if (!r.active) continue;
       const q = sourceFlow(r.period, r.phase, r.peak, time) * dt;
       if (anchorPos && r.island === anchorPos.island) {
-        // the rider's run: the spring travels with the rider, a little uphill of them, so the water flows down with them
+        // the rider's run: a long spring travels with the rider, from FLOOD.anchorBehind m uphill of them to
+        // FLOOD.anchorAhead m downhill, so they ride the tail of a wave whose front is ahead
         const loc = locate(r, anchorPos.x, anchorPos.z);
         if (loc) {
-          // a long spring: from anchorBehind cells uphill of the rider to anchorAhead cells downhill, so the rider is
-          // always on the tail of a wave whose front is ahead of them
-          const k0 = Math.max(0, Math.min(r.nu - 3, Math.round(loc.k) - FLOOD.anchorBehind));
-          const rows = Math.min(r.nu - k0, FLOOD.anchorBehind + FLOOD.anchorAhead + 3);
+          const k0 = Math.round(loc.k) - Math.round(FLOOD.anchorBehind / C);
+          const rows = Math.round((FLOOD.anchorBehind + FLOOD.anchorAhead) / C) + 3;
           addToRun(r, loc.j / Math.max(1, r.nv - 1), q * FLOOD.anchorFlowScale, Math.floor(r.nv * FLOOD.anchorHalf), k0, rows);
           continue;
         }
       }
-      addToRun(r, 0.5, q, Math.floor(r.nv * FLOOD.sourceHalfWidth));
+      // any other run in the band is fed from its top
+      if (r.lo === 0) addToRun(r, 0.5, q, Math.floor(r.nv * FLOOD.sourceHalfWidth), 0, 3);
     }
     for (let i = queue.length - 1; i >= 0; i--) {
       const h = queue[i];
       if (h.at > time) continue;
       queue.splice(i, 1);
       const r = runs[h.to];
-      if (r && r.active) addToRun(r, h.frac, h.vol);
+      if (r && r.active && r.lo === 0) addToRun(r, h.frac, h.vol);
     }
     for (const r of runs) {
       if (!r.active) continue;
@@ -327,33 +424,13 @@ export function createFlood(world: World, seed = 1): Flood {
     }
   }
 
-  /** Cell coordinates of (x, z) in run r (float k, j), or null outside its grid. */
-  function locate(r: RunSim, x: number, z: number): { k: number; j: number } | null {
-    const dx = x - r.ox;
-    const dz = z - r.oz;
-    const k = (dx * r.fx + dz * r.fz) / C;
-    const j = (dx * r.sx + dz * r.sz) / C;
-    if (k < -0.5 || j < -0.5 || k > r.nu - 0.5 || j > r.nv - 0.5) return null;
-    return { k: Math.min(r.nu - 1, Math.max(0, k)), j: Math.min(r.nv - 1, Math.max(0, j)) };
-  }
-
-  /** Flow rates through a cell (m³/s along +k and +j), averaged over its two faces on each axis. */
-  function cellFlow(r: RunSim, k: number, j: number): { wu: number; wv: number } {
-    const i = j * r.nu + k;
-    const inA = k > 0 ? r.fA[i - 1] : 0;
-    const inB = k < r.nu - 1 ? r.fB[i + 1] : 0;
-    const inC = j > 0 ? r.fC[i - r.nu] : 0;
-    const inD = j < r.nv - 1 ? r.fD[i + r.nu] : 0;
-    return { wu: 0.5 * (inA - r.fB[i] + r.fA[i] - inB), wv: 0.5 * (inC - r.fD[i] + r.fC[i] - inD) };
-  }
-
   function sampleRun(r: RunSim, x: number, z: number, out: FlowSample): boolean {
     if (!r.active) return false;
     const loc = locate(r, x, z);
-    if (!loc) return false;
-    const k0 = Math.min(r.nu - 2, Math.floor(loc.k));
+    if (!loc || loc.k < r.lo || loc.k > r.hi || r.hi - r.lo < 1) return false;
+    const k0 = Math.min(r.hi - 1, Math.floor(loc.k));
     const j0 = Math.min(r.nv - 2, Math.floor(loc.j));
-    const tk = loc.k - k0;
+    const tk = Math.min(1, Math.max(0, loc.k - k0));
     const tj = loc.j - j0;
     let depth = 0;
     let bed = 0;
@@ -418,6 +495,7 @@ export function createFlood(world: World, seed = 1): Flood {
       for (const r of runs) {
         clearRun(r);
         r.active = false;
+        r.hi = -1;
       }
       // run 0's surge front is born firstSurgeIn seconds from now
       runs[0].phase = runs[0].period - firstSurgeIn;

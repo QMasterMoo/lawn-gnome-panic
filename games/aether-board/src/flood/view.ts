@@ -26,6 +26,8 @@ interface WaterRun {
   /** Per-vertex (depth, speed) for the water shader. */
   info: Float32Array;
   mat: THREE.ShaderMaterial;
+  /** Rows below the band that were written last frame (they go dry once, then are left alone). */
+  prevLo: number;
   cx: number;
   cz: number;
 }
@@ -150,6 +152,7 @@ export function createFloodView(scene: THREE.Scene, _world: World, flood: Flood,
       for (let k = 0; k < r.nu; k++) {
         const i = j * r.nu + k;
         pos[i * 3] = r.ox + r.fx * k * r.cell + r.sx * j * r.cell;
+        pos[i * 3 + 1] = r.bed[i] - 0.25;
         pos[i * 3 + 2] = r.oz + r.fz * k * r.cell + r.sz * j * r.cell;
       }
     }
@@ -183,22 +186,27 @@ export function createFloodView(scene: THREE.Scene, _world: World, flood: Flood,
     mesh.visible = false;
     root.add(mesh);
     return {
-      mesh, geo, pos, info, mat,
+      mesh, geo, pos, info, mat, prevLo: r.lo,
       cx: r.ox + (r.fx * (r.nu - 1) * r.cell + r.sx * (r.nv - 1) * r.cell) / 2,
       cz: r.oz + (r.fz * (r.nu - 1) * r.cell + r.sz * (r.nv - 1) * r.cell) / 2,
     };
   }
 
   function refreshWater(w: WaterRun, r: RunGrid): void {
-    const n = r.nu * r.nv;
-    for (let i = 0; i < n; i++) {
-      const d = r.depth[i];
-      const bed = r.bed[i];
-      // Dry cells sink under the ground so they vanish.
-      w.pos[i * 3 + 1] = d >= 0.02 ? bed + d : bed - 0.25;
-      w.info[i * 2] = d;
-      w.info[i * 2 + 1] = r.speed[i];
+    // Only the simulated band changes (plus the rows it just left, once, so they dry out).
+    const k1 = Math.max(0, Math.min(w.prevLo, r.lo) - 1);
+    const k2 = Math.min(r.nu - 1, r.hi + 1);
+    for (let j = 0; j < r.nv; j++) {
+      for (let k = k1; k <= k2; k++) {
+        const i = j * r.nu + k;
+        const d = r.depth[i];
+        // Dry cells sink under the ground so they vanish.
+        w.pos[i * 3 + 1] = d >= 0.02 ? r.bed[i] + d : r.bed[i] - 0.25;
+        w.info[i * 2] = d;
+        w.info[i * 2 + 1] = r.speed[i];
+      }
     }
+    w.prevLo = r.lo;
     w.geo.attributes.position.needsUpdate = true;
     w.geo.attributes.aInfo.needsUpdate = true;
   }

@@ -9,7 +9,7 @@ export const FLOOD_SEED = 11;
 
 export const FLOOD = {
   // ---- shallow-water sim (flood/sim.ts, virtual pipes after Mei et al. 2007)
-  cell: 2,             // m, grid cell size
+  cell: 0.75,           // m, grid cell size
   simHz: 30,           // fixed sim rate of the water
   gravity: 9.81,
   /** Flow friction: a baseline (1/s) plus Manning's n squared (n = 0.03, wet snow). */
@@ -17,15 +17,15 @@ export const FLOOD = {
   manning2: 0.001,
   /** Sampled flow speed is clamped to this (m/s): thin edges make the raw estimate spiky. */
   maxFlowSpeed: 12,
-  /** Runs simulated ahead of / behind the rider's run. Others are reset dry. */
-  windowBehind: 0,
-  windowAhead: 2,
+  /** The sim covers a band of rows around the rider (metres behind and ahead); the rest is dry. */
+  windowBackM: 50,
+  windowAheadM: 160,
   /** Per-run source at the top of every run: a steady stream plus a surge every `period` s (m³/s). */
   /** The source spreads over this share of the run's width on each side of the middle. */
   sourceHalfWidth: 0.32,
-  /** The rider's run has a spring that travels with them: this many cells uphill of the rider, this share of the width each side. */
-  anchorBehind: 8,
-  anchorAhead: 8,
+  /** The rider's run has a spring that travels with them: this many metres uphill of the rider, this share of the width each side. */
+  anchorBehind: 16,
+  anchorAhead: 16,
   /** The long spring spreads over many rows, so it gets more water. */
   anchorFlowScale: 0.9,
   anchorHalf: 0.16,
@@ -121,8 +121,10 @@ export interface RunGrid {
   speed: Float32Array;
   /** 1 where there is no ground (outside the island, or past its rim): water drains there. */
   hole: Uint8Array;
-  /** True while this run is being simulated (inside the window and wet or fed). */
+  /** True while this run is being simulated. Only rows lo..hi (inclusive) are: a band around the rider. */
   active: boolean;
+  lo: number;
+  hi: number;
 }
 
 export interface Flood {
