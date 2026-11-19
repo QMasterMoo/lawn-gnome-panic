@@ -62,6 +62,7 @@ const entrySource = `
     buildGardenLullaby, buildGolfAmbient,
     buildBowlingAmbient,
     buildTrickyTrack,
+    buildClubGnomeTrack, CLUB_GNOME_TRACKS,
     SECTOR_THEMES,
   } from ${JSON.stringify(path.join(pkgDir, 'src/index.ts'))};
   import { analyzeBuffer, encodeWav } from ${JSON.stringify(path.join(pkgDir, 'src/analyze/dsp.ts'))};
@@ -78,6 +79,8 @@ const entrySource = `
     bowlingAmbient: (s) => (T, keep, out) => buildBowlingAmbient(T, keep, out, s),
     // Aether Board's SSX-style track, with a fake run: hype building, a jump every 6 s (1.2 s of air).
     tricky: (s) => (T, keep, out) => buildTrickyTrack(T, keep, out, s, { air: () => T.now() % 6 > 4.8, hype: () => Math.min(1, T.now() / 40) }),
+    // Club Gnome area music: one entry per track id (clubGnome:fountain-folk, ...).
+    ...Object.fromEntries(CLUB_GNOME_TRACKS.map((t) => ['clubGnome:' + t.id, (s) => (T, keep, out) => buildClubGnomeTrack(T, keep, out, s, t.id)])),
   };
 
   window.__analyzeTrack = async (name, seed, durationS, wantWav) => {

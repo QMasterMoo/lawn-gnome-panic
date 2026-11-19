@@ -24,6 +24,15 @@ export { buildTwilightNocturne } from './themes/twilightNocturne';
 export { buildGnomeFanfare } from './themes/gnomeFanfare';
 export { buildAcousticJungle } from './themes/acousticJungle';
 export { buildDesertSands } from './themes/desertSands';
+export {
+  CLUB_GNOME_TRACKS,
+  buildClubGnomeTrack,
+  clubGnomeSong,
+  clubGnomeTracks,
+  type ClubGnomeArea,
+  type ClubGnomeTrackId,
+  type ClubGnomeTrackInfo,
+} from './themes/clubGnome';
 export { buildGnomomiaTheme, type GnomomiaThemeId } from './themes/gnomomia';
 export { pickThemeId, trackInfo, type ThemeId, type TrackInfo } from './names';
 export { buildGolfAmbient } from './golfAmbient';

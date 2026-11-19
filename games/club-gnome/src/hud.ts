@@ -38,6 +38,8 @@ export interface Hud {
   focusChat(): void;
   /** Hides the whole HUD while a game is open over the town, shows it again after. */
   setVisible(visible: boolean): void;
+  /** Adds an element (the volume button) under the map name, top left. It hides with the HUD. */
+  addTopControl(el: HTMLElement): void;
 }
 
 const STYLE_ID = 'th-style';
@@ -57,6 +59,7 @@ const CSS = `
 .th-pill{background:rgba(20,20,28,0.72);border-radius:14px;padding:6px 12px;max-width:60vw;box-sizing:border-box;}
 .th-map{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .th-status{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.th-vol{position:absolute;left:calc(env(safe-area-inset-left) + 8px);top:calc(env(safe-area-inset-top) + 64px);pointer-events:auto;}
 .th-top-right{display:flex;gap:8px;margin-left:auto;}
 .th-btn{pointer-events:auto;min-width:44px;min-height:44px;padding:0 12px;border:none;border-radius:12px;background:rgba(20,20,28,0.78);color:#fff;font-family:inherit;font-size:16px;font-weight:600;white-space:nowrap;cursor:pointer;box-sizing:border-box;}
 .th-acct{max-width:40vw;overflow:hidden;text-overflow:ellipsis;}
@@ -411,6 +414,10 @@ export function createHud(ui: HTMLElement, h: HudHandlers): Hud {
     focusChat() {
       openChat();
       input.focus();
+    },
+    addTopControl(el: HTMLElement) {
+      el.className = 'th-vol';
+      root.append(el);
     },
     setVisible(visible: boolean) {
       root.classList.toggle('th-hide', !visible);
