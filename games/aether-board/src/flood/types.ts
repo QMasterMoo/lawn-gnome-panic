@@ -4,7 +4,7 @@
 import type { HillParams } from '../descent/types';
 
 /** The hill Flood Run is played on (a snowy Descent-style mountain, long and fairly steep). */
-export const FLOOD_HILL: HillParams = { hazard: 1, steep: 3, tricky: 2, runs: 8 };
+export const FLOOD_HILL: HillParams = { hazard: 0, steep: 3, tricky: 2, runs: 8 };
 export const FLOOD_SEED = 11;
 
 export const FLOOD = {
@@ -21,6 +21,12 @@ export const FLOOD = {
   windowBehind: 1,
   windowAhead: 2,
   /** Per-run source at the top of every run: a steady stream plus a surge every `period` s (m³/s). */
+  /** The source spreads over this share of the run's width on each side of the middle. */
+  sourceHalfWidth: 0.32,
+  /** Grid row (cells from the top) of the first run's spring: just uphill of where the rider starts. */
+  startSourceK: 8,
+  /** Depth (m) of the wet film a run starts with everywhere. */
+  film: 0.15,
   baseFlow: 160,
   surgePeak: 900,
   periodMin: 24,
@@ -29,12 +35,12 @@ export const FLOOD = {
   linkDelay: { join: 0.4, jump: 1.6, pipe: 2.5 },
   // ---- the rider in water (flood/forces.ts)
   /** Water this deep (m) counts as water under the board. */
-  minDepth: 0.12,
+  minDepth: 0.08,
   /** Deeper than this the board floats: carving grip is reduced. */
   deepDepth: 1.1,
   /** Ride with a surge: moving within this cosine of the flow, and the flow at least minFlow m/s, adds rideAccel. */
   minAlign: 0.55,
-  minFlow: 3,
+  minFlow: 1.5,
   rideAccel: 18,       // m/s² toward the flow speed (never pushes past flow speed + bonusMax)
   bonusMax: 16,        // m/s over the flow speed that the current will still push you...
   rideSpeedCap: 55,    // ...or up to this speed, whichever is higher: a fast rider is still pushed along in the water
@@ -44,7 +50,7 @@ export const FLOOD = {
   crossPush: 1.2,
   /** Surf points per second while riding a surge, and the delay before riding counts (s). */
   surfPoints: 120,
-  surfHold: 0.4,
+  surfHold: 0.25,
   // ---- cannons and geysers (flood/obstacles.ts, flood/forces.ts)
   cannonsPerRun: 2,
   geysersPerRun: 2,
@@ -121,6 +127,8 @@ export interface Flood {
   runs: RunGrid[];
   /** Advance by real dt (the sim steps itself at FLOOD.simHz). */
   step(dt: number): void;
+  /** Restart the clock and the water: run 0's first surge starts in `firstSurgeIn` seconds (from the rider's start). */
+  restart(firstSurgeIn: number): void;
   /** The rider's run: only runs inside the window around it are simulated. */
   focus(island: number): void;
   /** Sample water at (x, z), trying run `hint` first then its neighbours. False (out filled with zeros) if there is no water. */

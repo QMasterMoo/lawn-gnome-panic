@@ -105,6 +105,8 @@ const floodStats = newFloodStats();
 const floodView = flood && obstacles ? createFloodView(scene, world, flood, obstacles) : null;
 const floodHud = floodMode ? createFloodHud(ui) : null;
 let floodClock = 0;
+/** The flood restarts when the rider first sets off (and on every warp), so a surge is born right under them. */
+let floodStarted = false;
 // ?warm=N pre-rolls N seconds of water before the first frame (demos and smoke tests that skip the title card; the
 // water keeps flowing behind the title card anyway).
 if (flood) {
@@ -305,6 +307,12 @@ function frame(): void {
   if (descentMode) descentEvents(snapped ? frameEvents.slice(1) : frameEvents);
 
   if (flood && floodView && floodHud) {
+    if (state === 'playing' && !floodStarted) {
+      floodStarted = true;
+      flood.restart(1);
+      floodClock = 0;
+    }
+    if (frameEvents.some((e) => e.e === 'warp')) flood.restart(2);
     flood.focus(player.island);
     flood.step(dt);
     if (state === 'playing' && !bookOpen) floodClock += dt;

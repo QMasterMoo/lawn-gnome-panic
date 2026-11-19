@@ -22,6 +22,7 @@ function fakeFlood(p: Player): FakeFlood {
     sample_: { depth: 1, vx: 10, vz: 0 },
     step() {},
     focus() {},
+    restart() {},
     sample(_x, _z, _hint, out: FlowSample) {
       if (!f.wet) {
         out.depth = 0; out.vx = 0; out.vz = 0; out.bedY = p.pos.y - 1; out.surfaceY = p.pos.y - 1;

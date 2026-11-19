@@ -75,7 +75,8 @@ function fillDips(bed: Float32Array, hole: Uint8Array, nu: number, nv: number): 
     }
   }
   const depth = new Float32Array(n);
-  for (let i = 0; i < n; i++) if (!hole[i] && level[i] > bed[i] + 0.02) depth[i] = level[i] - bed[i];
+  // ponds in the dips, plus a thin wet film everywhere so the stream is already running when a run comes into view
+  for (let i = 0; i < n; i++) if (!hole[i]) depth[i] = Math.max(FLOOD.film, level[i] - bed[i]);
   return depth;
 }
 
@@ -250,17 +251,17 @@ export function createFlood(world: World, seed = 1): Flood {
     }
   }
 
-  function addToRun(r: RunSim, frac: number, vol: number): void {
+  function addToRun(r: RunSim, frac: number, vol: number, half = 2, k0 = 0): void {
     // spread over the three top rows, around column frac
     const jc = Math.min(r.nv - 1, Math.max(0, Math.round(frac * (r.nv - 1))));
     let n = 0;
-    for (let jj = -2; jj <= 2; jj++) for (let k = 0; k < 3; k++) {
+    for (let jj = -half; jj <= half; jj++) for (let k = k0; k < k0 + 3; k++) {
       const j = jc + jj;
       if (j >= 0 && j < r.nv && !r.hole[j * r.nu + k]) n++;
     }
     if (n === 0) return;
     const dd = vol / (n * C * C);
-    for (let jj = -2; jj <= 2; jj++) for (let k = 0; k < 3; k++) {
+    for (let jj = -half; jj <= half; jj++) for (let k = k0; k < k0 + 3; k++) {
       const j = jc + jj;
       if (j >= 0 && j < r.nv && !r.hole[j * r.nu + k]) r.depth[j * r.nu + k] += dd;
     }
@@ -284,9 +285,10 @@ export function createFlood(world: World, seed = 1): Flood {
         r.depth.set(r.prefill);
         r.active = true;
       }
-      // source: the middle 60% across, top three rows
+      // source: the middle of the run across (FLOOD.sourceHalfWidth each side), top three rows
       const q = sourceFlow(r.period, r.phase, r.peak, time) * dt;
-      addToRun(r, 0.5, q);
+      // the first run's spring is where the rider starts, so the first surge is born under them
+      addToRun(r, 0.5, q, Math.floor(r.nv * FLOOD.sourceHalfWidth), r.island === 0 ? FLOOD.startSourceK : 0);
     }
     for (let i = queue.length - 1; i >= 0; i--) {
       const h = queue[i];
@@ -394,6 +396,18 @@ export function createFlood(world: World, seed = 1): Flood {
         tick(STEP);
         acc -= STEP;
       }
+    },
+    restart(firstSurgeIn: number): void {
+      time = 0;
+      acc = 0;
+      stepCount = 0;
+      queue.length = 0;
+      for (const r of runs) {
+        clearRun(r);
+        r.active = false;
+      }
+      // run 0's surge front is born firstSurgeIn seconds from now
+      runs[0].phase = runs[0].period - firstSurgeIn;
     },
     focus(island: number): void {
       focusRun = Math.max(0, Math.min(runs.length - 1, island));

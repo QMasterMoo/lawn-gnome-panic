@@ -3,10 +3,9 @@
   "url": "http://localhost:5195/",
   "setup": {
     "mode": "flood",
-    "autostart": "1",
-    "warm": "40"
+    "autostart": "1"
   },
-  "warmup": 6,
+  "warmup": 1.5,
   "duration": 6,
   "steps": [
     {
