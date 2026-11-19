@@ -166,6 +166,16 @@ function nearHazard(p: Player, w: World): boolean {
 
 // ---------------------------------------------------------------- step
 
+/**
+ * Extra forces from a game mode (Flood Run: water currents, cannons, geysers). Called every step after the board has
+ * moved and before the speed cap. Null in free ride and Descent, which therefore play exactly as before.
+ */
+export type ExternalForces = (p: Player, w: World, dt: number, ev: PhysEvent[]) => void;
+let externalForces: ExternalForces | null = null;
+export function setExternalForces(fn: ExternalForces | null): void {
+  externalForces = fn;
+}
+
 export function stepPlayer(p: Player, inp: Input, cmd: TrickCmd | null, w: World, dt: number, ev: PhysEvent[]): void {
   p.t += dt;
   p.grindCooldown = Math.max(0, p.grindCooldown - dt);
@@ -194,6 +204,8 @@ export function stepPlayer(p: Player, inp: Input, cmd: TrickCmd | null, w: World
     const hz = hitHazard(p, w);
     if (hz) spikeBail(p, hz, ev);
   }
+
+  if (externalForces && p.mode !== 'grind') externalForces(p, w, dt, ev);
 
   // Soft speed cap (flow raises it a little).
   const cap = TUNE.maxSpeed * (1 + 0.25 * p.flow);

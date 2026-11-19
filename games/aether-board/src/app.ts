@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { createVolumeButton } from '@arcade/volume';
 import { ASSIST, SIM_HZ, type PhysEvent } from './config';
 import { generateWorld, type World } from './world';
-import { createPlayer, stepPlayer } from './physics';
+import { createPlayer, setExternalForces, stepPlayer } from './physics';
 import { createCombo, createRecognizer } from './tricks';
 import { createInput } from './input';
 import { createChaseCam } from './camera';
@@ -23,6 +23,12 @@ import { DESCENT, type HillCard, type RunState } from './descent/types';
 import { choosePerk, crash, createRun, finishHill, offerHills, startHill } from './descent/run';
 import { applyPerks } from './descent/perks';
 import { createDescentUi, createModeSwitch } from './descent/ui';
+import { FLOOD_HILL, FLOOD_SEED, newFloodStats } from './flood/types';
+import { createFlood } from './flood/sim';
+import { generateObstacles } from './flood/obstacles';
+import { createFloodForces } from './flood/forces';
+import { createFloodView } from './flood/view';
+import { createFloodHud } from './flood/hud';
 
 // Phones: no pinch zoom, no double-tap zoom, no page scroll (iOS ignores user-scalable=no in the viewport tag).
 // Elements marked data-scroll (the trick book) keep one-finger scrolling.
@@ -64,9 +70,11 @@ resize();
 // ?seed=N picks the world (in Descent: the run); the default free-ride world is one that rides well.
 const params = new URLSearchParams(location.search);
 const descentMode = params.get('mode') === 'descent';
+// ?mode=flood (experimental): meltwater surges race down a snowy mountain; cannons and geysers shove you about.
+const floodMode = params.get('mode') === 'flood';
 const seedParam = Number(params.get('seed'));
 const seedGiven = Number.isFinite(seedParam) && seedParam > 0;
-const world = generateWorld(seedGiven ? seedParam : 3);
+const world = floodMode ? generateWorld(seedGiven ? seedParam : FLOOD_SEED, FLOOD_HILL) : generateWorld(seedGiven ? seedParam : 3);
 const player = createPlayer(world);
 const recognizer = createRecognizer();
 const combo = createCombo();
@@ -86,11 +94,22 @@ volBox.style.cssText = 'position:fixed;top:10px;right:10px;pointer-events:auto;z
 ui.appendChild(volBox);
 createVolumeButton(volBox, volume);
 
-let state: GameState = 'title';
+// ?autostart=1 rides straight away without the pointer lock (smoke tests and demos).
+let state: GameState = params.get('autostart') === '1' ? 'playing' : 'title';
+
+// ---------------------------------------------------------------- Flood Run (experimental)
+const floodSeed = seedGiven ? seedParam : FLOOD_SEED;
+const flood = floodMode ? createFlood(world, floodSeed) : null;
+const obstacles = floodMode ? generateObstacles(world, floodSeed) : null;
+const floodStats = newFloodStats();
+const floodView = flood && obstacles ? createFloodView(scene, world, flood, obstacles) : null;
+const floodHud = floodMode ? createFloodHud(ui) : null;
+let floodClock = 0;
+if (flood && obstacles) setExternalForces(createFloodForces(flood, obstacles, floodStats, () => flood.time));
 
 // ---------------------------------------------------------------- Descent
 const dui = createDescentUi(ui);
-const modeSwitch = createModeSwitch(ui, descentMode);
+const modeSwitch = createModeSwitch(ui, floodMode ? 'flood' : descentMode ? 'descent' : 'free');
 const BEST_KEY = 'ab-descent-best';
 const readBest = (): number => {
   try {
@@ -223,7 +242,7 @@ const frameEvents: PhysEvent[] = [];
 let acc = 0;
 let last = performance.now();
 let t = 0;
-(window as unknown as { ab: unknown }).ab = { player, world, combo, input };
+(window as unknown as { ab: unknown }).ab = { player, world, combo, input, flood, obstacles, floodStats };
 
 function frame(): void {
   const now = performance.now();
@@ -277,6 +296,14 @@ function frame(): void {
   }
   renderPos.copy(prevPos).lerp(player.pos, acc / DT);
   if (descentMode) descentEvents(snapped ? frameEvents.slice(1) : frameEvents);
+
+  if (flood && floodView && floodHud) {
+    flood.focus(player.island);
+    flood.step(dt);
+    if (state === 'playing' && !bookOpen) floodClock += dt;
+    floodView.update(dt, flood.time, camera.position);
+    floodHud.update(floodStats, state === 'playing', floodClock);
+  }
 
   rider.update(player, renderPos, dt, inp.steer);
   crowd.update(player, dt, t, frameEvents);

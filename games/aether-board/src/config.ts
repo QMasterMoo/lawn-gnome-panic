@@ -332,6 +332,8 @@ export type PhysEvent =
   | { e: 'manualStart'; kind: 'nose' | 'tail' }
   | { e: 'manualEnd'; kind: 'nose' | 'tail'; t: number; fell: boolean } // fell: lost the balance (no bail, the combo goes on)
   | { e: 'boostStart' }
+  | { e: 'surf'; on: boolean }                      // Flood Run: started / stopped riding a surge
+  | { e: 'blast'; by: 'cannon' | 'geyser' }         // Flood Run: knocked about by a water cannon or a geyser
   | { e: 'island'; id: number }
   | { e: 'warp' }                                   // through the aether gate, back to the first island
   | { e: 'respawn' };
