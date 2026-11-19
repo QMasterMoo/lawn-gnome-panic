@@ -149,7 +149,7 @@ function command(line: string): void {
     }
     case 'trade': {
       if (!arg) {
-        say('Type /trade <player name> or click a nearby gnome to trade.', UI.textDim);
+        say('Type /trade <player name> or right-click a nearby gnome to trade.', UI.textDim);
         return;
       }
       const q = arg.toLowerCase();

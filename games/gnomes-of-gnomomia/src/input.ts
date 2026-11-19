@@ -127,8 +127,8 @@ function pickAt(clientX: number, clientY: number): Pick {
       }
     }
   }
-  // Without an entity or player, the first hit that belongs to a world object.
-  if (!out.entity && !out.remotePlayer) {
+  // Without an entity, the first hit that belongs to a world object.
+  if (!out.entity) {
     for (const h of hits) {
       const id = objectFromMesh(h.object);
       if (id) {
@@ -138,8 +138,8 @@ function pickAt(clientX: number, clientY: number): Pick {
       }
     }
   }
-  // Without any of those, the first hit on a piece of furniture or a prop (examinable / interactable).
-  if (!out.entity && !out.remotePlayer && !out.object) {
+  // Without either, the first hit on a piece of furniture or a prop (examinable / interactable).
+  if (!out.entity && !out.object) {
     for (const h of hits) {
       const prefab = examinablePrefabFromMesh(h.object);
       if (prefab) {
@@ -231,9 +231,6 @@ function leftClick(x: number, y: number): void {
   if (hit.entity && hit.entityPoint) {
     defaultAction(hit.entity).run();
     showMarker(hit.entityPoint, 0xff3030);
-  } else if (hit.remotePlayer && hit.remotePlayerPoint) {
-    requestTrade(hit.remotePlayer.id);
-    showMarker(hit.remotePlayerPoint, 0x00e5ff);
   } else if (hit.object && hit.objectPoint) {
     useWorldObject(hit.object);
     showMarker(hit.objectPoint, 0xffe14f);
@@ -414,9 +411,6 @@ export function updateInput(dt: number): void {
     const hit = pickAt(pointer.x, pointer.y);
     if (hit.entity) {
       hover = defaultAction(hit.entity).label;
-      cursor = 'pointer';
-    } else if (hit.remotePlayer) {
-      hover = `Trade with ${hit.remotePlayer.name}`;
       cursor = 'pointer';
     } else if (hit.object) {
       hover = OBJECTS[hit.object]?.name ?? hit.object;

@@ -8,9 +8,9 @@ import { steadyInterval } from '@lawn/mp/background';
 import { Interp } from '@lawn/mp/interp';
 import type { PlayerInfo, ServerMsg } from '@lawn/mp/protocol';
 import { checkName } from '@lawn/mp/textFilter';
-import { PLAYER_LOOK, UI, WORLD, look, type ZoneId } from '../config';
+import { PLAYER_ID, PLAYER_LOOK, UI, WORLD, look, type ZoneId } from '../config';
 import { ENEMIES } from '../content';
-import { applyStatus } from '../combat';
+import { applyStatus, hasStatus } from '../combat';
 import { companionPoses } from '../companions';
 import {
   applyRemoteEnemyAttack, applyRemoteEnemyHit, applyRemoteEnemyKill, applyRemoteLootDrop, applyRemoteLootTake,
@@ -20,11 +20,16 @@ import {
 } from '../entities';
 import { bus, say } from '../events';
 import { player } from '../player';
+import {
+  applyAttackAndBlockPose, attachGnomeCosmetics, BLOCK_SECONDS, SWING_SECONDS,
+  type AttackKind, type GnomeCosmetics,
+} from '../playerVisuals';
 import { state } from '../state';
 import { zoneRectDistance } from '../terrain';
 import { activeZones } from '../zones';
 import {
-  CARD_CHECK_S, GAME_ID, POS_HZ_IDLE, POS_HZ_MOVING, characterCard, isZoneId, readCard, readCompanionList,
+  ANIM_SITTING, ANIM_SMOKING, ANIM_TIPSY, CARD_CHECK_S, GAME_ID, POS_HZ_IDLE, POS_HZ_MOVING,
+  characterCard, isZoneId, readAnimFlags, readAttackKind, readBlockCount, readCard, readCompanionList,
   readDamageType, readEnemySyncList, readLootItems, readLootSync, readPose, readStatusId,
   type CharacterCard, type GnoMsg, type Pose,
 } from './protocol';
@@ -39,7 +44,6 @@ const CID_KEY = 'gnomomia.cid';
 const RETRY_S = [3, 6, 12, 30, 60];
 /** A remote that moves farther than this between samples teleported (hatch, respawn): snap, don't slide. */
 const SNAP_DIST = 6;
-const SWING_SECONDS = 0.35;
 const scratchVelocity = new THREE.Vector3();
 /** How long a speech bubble stays over a speaker's head: a base plus a little per character, capped. */
 const BUBBLE_BASE_S = 4;
@@ -95,12 +99,19 @@ export interface RemotePlayer {
   /** Feet position as shown now (only meaningful while `model` exists). */
   position: THREE.Vector3;
   model: GnomeModel | null;
+  cosmetics: GnomeCosmetics | null;
   character: string;
   interp: Interp;
   /** Pose being shown: x, z, facing, dead, swings, y. */
   shown: number[];
   lastSwings: number;
   swing: number;
+  attackKind: AttackKind;
+  blocks: number;
+  lastBlocks: number;
+  blockTimer: number;
+  /** Bitmask of ANIM_SITTING / ANIM_SMOKING / ANIM_TIPSY from the latest pos packet. */
+  animFlags: number;
   companions: Map<number, RemoteCompanion>;
 }
 
@@ -118,12 +129,17 @@ let retryIndex = 0;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 /** Stops the heartbeat timer. Uses steadyInterval so the relay keeps hearing us while the tab is hidden. */
 let stopSendTimer: (() => void) | null = null;
-/** Swings counted from player.swing jumping up (combat.ts sets it on each swing or cast). */
+/** Swings and blocks counted from player.swing / player.block jumping up. */
 let mySwings = 0;
 let lastSwingValue = 0;
+let myBlocks = 0;
+let lastBlockValue = 0;
 let lastSent: Pose | null = null;
 let lastSentAt = 0;
 let lastSentZone: ZoneId | null = null;
+let lastSentFlags = -1;
+let lastSentAttackKind: AttackKind = 'chop';
+let lastSentBlocks = -1;
 let lastCardJson = '';
 let cardTimer = 0;
 const lastZoneAuth = new Map<ZoneId, number>();
@@ -189,9 +205,10 @@ function addRemote(p: PlayerInfo): void {
   if (old) dropModel(old);
   remotes.set(p.id, {
     id: p.id, name: p.name, color: p.color, character: p.character, card: null, zone: null,
-    position: new THREE.Vector3(), model: null,
+    position: new THREE.Vector3(), model: null, cosmetics: null,
     interp: new Interp({ angles: [2], steps: [3, 4], pos: [0, 1, 5], snapDist: SNAP_DIST }),
     shown: [0, 0, 0, 0, 0, 0], lastSwings: -1, swing: 0,
+    attackKind: 'chop', blocks: 0, lastBlocks: -1, blockTimer: 0, animFlags: 0,
     companions: new Map(),
   });
 }
@@ -216,6 +233,10 @@ function dropCompanionModel(c: RemoteCompanion): void {
 }
 
 function dropModel(r: RemotePlayer): void {
+  if (r.cosmetics) {
+    r.cosmetics.dispose();
+    r.cosmetics = null;
+  }
   if (!r.model) return;
   disposeGnomeModel(r.model);
   r.model = null;
@@ -242,7 +263,10 @@ function ensureModel(r: RemotePlayer): GnomeModel {
     o.userData.remotePlayerId = r.id;
     if ((o as THREE.Mesh).isMesh) o.castShadow = true;
   });
-  sceneRef?.add(model.object);
+  if (sceneRef) {
+    sceneRef.add(model.object);
+    r.cosmetics = attachGnomeCosmetics(model, sceneRef);
+  }
   r.model = model;
   return model;
 }
@@ -276,18 +300,38 @@ function sendCard(to: number | null): void {
   c.send(to, { k: 'card', c: card });
 }
 
+function myAnimFlags(): number {
+  let f = 0;
+  if (player.sitting) f |= ANIM_SITTING;
+  if (!player.dead && hasStatus(PLAYER_ID, 'smoking')) f |= ANIM_SMOKING;
+  if (!player.dead && hasStatus(PLAYER_ID, 'tipsy')) f |= ANIM_TIPSY;
+  return f;
+}
+
 function sendPose(force: boolean): void {
   const c = link;
   if (!c || status !== 'online') return;
   const now = performance.now();
   const pose = myPose();
-  const moved = lastSent === null || lastSentZone !== state.zone || pose.some((v, i) => v !== lastSent![i]);
+  const flags = myAnimFlags();
+  const ak = player.attackKind;
+  const blk = myBlocks;
+  const moved =
+    lastSent === null ||
+    lastSentZone !== state.zone ||
+    flags !== lastSentFlags ||
+    ak !== lastSentAttackKind ||
+    blk !== lastSentBlocks ||
+    pose.some((v, i) => v !== lastSent![i]);
   const gap = 1000 / (moved ? POS_HZ_MOVING : POS_HZ_IDLE);
   if (!force && now - lastSentAt < gap - 5) return;
   lastSent = pose;
   lastSentAt = now;
   lastSentZone = state.zone;
-  c.send(null, { k: 'pos', z: state.zone, p: pose, t: Math.round(now) });
+  lastSentFlags = flags;
+  lastSentAttackKind = ak;
+  lastSentBlocks = blk;
+  c.send(null, { k: 'pos', z: state.zone, p: pose, t: Math.round(now), f: flags, ak, blk });
   c.send(null, { k: 'comp', z: state.zone, l: companionPoses(), t: Math.round(now) });
 }
 
@@ -451,6 +495,13 @@ function onServer(c: NetClient<GnoMsg>, m: ServerMsg<GnoMsg>): void {
           if (teleported) r.interp.clear();
           changed();
         }
+        const prevFlags = r.animFlags;
+        const nextFlags = readAnimFlags(d.f);
+        r.animFlags = nextFlags;
+        if ((nextFlags & ANIM_SMOKING) !== 0 && (prevFlags & ANIM_SMOKING) === 0) r.cosmetics?.triggerPuff();
+        if ((nextFlags & ANIM_TIPSY) !== 0 && (prevFlags & ANIM_TIPSY) === 0) r.cosmetics?.triggerSip();
+        r.attackKind = readAttackKind(d.ak);
+        r.blocks = readBlockCount(d.blk);
         r.interp.push(pose, typeof d.t === 'number' && Number.isFinite(d.t) ? d.t : undefined);
         checkAuthorityHandoffs();
         if (wasNull && isZoneAuthority(d.z)) sendZoneEnemies(d.z, r.id, performance.now());
@@ -676,6 +727,10 @@ export function initMmo(scene: THREE.Scene): void {
     checkAuthorityHandoffs();
     changed();
   });
+  // Immediately sync smoking/tipsy status changes so other players see the puff/sip right away.
+  bus.on('status', (e) => {
+    if (e.target === PLAYER_ID && (e.status === 'smoking' || e.status === 'tipsy')) sendPose(true);
+  });
   window.addEventListener('pagehide', () => {
     try {
       link?.leave();
@@ -780,10 +835,12 @@ export function onMmoChange(fn: () => void): void {
   listeners.push(fn);
 }
 
-/** Per frame: count my swings, and move and animate the remote gnomes within WORLD.remoteViewRadius of me. */
+/** Per frame: count my swings/blocks, and move and animate the remote gnomes within WORLD.remoteViewRadius of me. */
 export function updateMmo(dt: number): void {
   if (player.swing > lastSwingValue + 0.05) mySwings++;
   lastSwingValue = player.swing;
+  if (player.block > lastBlockValue + 0.05) myBlocks++;
+  lastBlockValue = player.block;
   updateTrade();
 
   for (const r of remotes.values()) {
@@ -802,15 +859,29 @@ export function updateMmo(dt: number): void {
     const model = ensureModel(r);
     const vx = hadModel && dt > 0 ? (x - prevX) / dt : 0;
     const vz = hadModel && dt > 0 ? (z - prevZ) / dt : 0;
+    const isDead = dead >= 0.5;
+    const isSitting = !isDead && (r.animFlags & ANIM_SITTING) !== 0;
     r.position.set(x, y, z);
     if (r.lastSwings >= 0 && swings !== r.lastSwings) r.swing = SWING_SECONDS;
     r.lastSwings = swings;
-    model.setDead(dead >= 0.5);
-    model.update({ position: r.position, velocity: scratchVelocity.set(vx, 0, vz), facing, grounded: true, jumpsUsed: 0 }, dt);
-    if (r.swing > 0) {
-      r.swing -= dt;
-      model.arms.right.rotation.x = -2.4 * Math.sin(Math.PI * (1 - Math.max(0, r.swing) / SWING_SECONDS));
+    if (r.lastBlocks >= 0 && r.blocks !== r.lastBlocks) r.blockTimer = BLOCK_SECONDS;
+    r.lastBlocks = r.blocks;
+    model.setDead(isDead);
+    model.update(
+      { position: r.position, velocity: scratchVelocity.set(vx, 0, vz), facing, grounded: true, jumpsUsed: 0, sitting: isSitting },
+      dt,
+    );
+    if (r.swing > 0) r.swing = Math.max(0, r.swing - dt);
+    if (r.blockTimer > 0) r.blockTimer = Math.max(0, r.blockTimer - dt);
+    if (!isDead && !isSitting) {
+      applyAttackAndBlockPose(model, r.swing, r.attackKind, r.blockTimer);
     }
+    r.cosmetics?.update(dt, {
+      dead: isDead,
+      smoking: (r.animFlags & ANIM_SMOKING) !== 0,
+      tipsy: (r.animFlags & ANIM_TIPSY) !== 0,
+      swinging: r.swing > 0,
+    });
 
     for (const c of r.companions.values()) {
       if (!c.interp.ready || !c.interp.sample(c.shown)) {
