@@ -481,7 +481,7 @@ function questChip(label: string, active: boolean, onPick: () => void): HTMLButt
   const b = document.createElement('button');
   b.textContent = label;
   Object.assign(b.style, {
-    minHeight: '26px', padding: '2px 7px', fontFamily: UI.font, fontSize: '11px', color: UI.text, cursor: 'pointer',
+    minHeight: '44px', padding: '2px 8px', fontFamily: UI.font, fontSize: '11px', color: UI.text, cursor: 'pointer',
     border: `1px solid ${active ? UI.gold : UI.border}`, background: active ? UI.borderLight : UI.panelBgDark, borderRadius: '3px',
   });
   b.onclick = onPick;
@@ -507,7 +507,7 @@ function questControls(all: QuestDef[]): HTMLElement {
   row.append('Group by');
   const sel = document.createElement('select');
   Object.assign(sel.style, {
-    flex: '1', minHeight: '26px', fontFamily: UI.font, fontSize: '11px', color: UI.text,
+    flex: '1', minHeight: '44px', fontFamily: UI.font, fontSize: '11px', color: UI.text,
     background: UI.panelBgDark, border: `1px solid ${UI.border}`,
   });
   for (const g of QUEST_GROUPS) {
@@ -582,7 +582,7 @@ function questRow(q: QuestDef): HTMLElement {
 
   const wrap = make('div', { borderBottom: `1px solid ${UI.border}` });
   const head = make('div', {
-    display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 4px', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', gap: '6px', minHeight: '40px', padding: '5px 4px', cursor: 'pointer',
     background: open ? UI.panelBgDark : '',
   });
   head.setAttribute('role', 'button');
