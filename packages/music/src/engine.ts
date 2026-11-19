@@ -203,7 +203,7 @@ function armUnlock(): void {
 // Muffle: a master lowpass plus a reverb send, for "the game is paused, the music is far away".
 // The lowpass sits at 20 kHz (inaudible) until muffled; the reverb is only built the first time it is needed.
 const MUFFLE_HZ = 450;
-const MUFFLE_WET = 0.7;
+const MUFFLE_WET = 0.35;
 const MUFFLE_RAMP_S = 0.5;
 const CLEAR_RAMP_S = 0.3;
 
@@ -237,9 +237,10 @@ function applyMuffle(on: boolean, rampS: number): void {
   if (!fx) return;
   try {
     if (on && !fx.send) {
-      const rev = fx.keep(new fx.T.Reverb({ decay: 4, preDelay: 0.03, wet: 1 })).connect(fx.glue);
+      const rev = fx.keep(new fx.T.Reverb({ decay: 3, preDelay: 0.03, wet: 1 })).connect(fx.glue);
       fx.send = fx.keep(new fx.T.Gain(0)).connect(rev);
-      fx.out.connect(fx.send);
+      // Tap after the lowpass, so the reverb tail is muffled too instead of washing over the filtered sound.
+      fx.lp.connect(fx.send);
     }
     fx.lp.frequency.rampTo(on ? MUFFLE_HZ : 20000, rampS);
     if (fx.send) fx.send.gain.rampTo(on ? MUFFLE_WET : 0, rampS);
