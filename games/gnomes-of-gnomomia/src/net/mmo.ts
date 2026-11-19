@@ -13,8 +13,9 @@ import { ENEMIES } from '../content';
 import { applyStatus } from '../combat';
 import { companionPoses } from '../companions';
 import {
-  applyRemoteEnemyAttack, applyRemoteEnemyHit, applyRemoteEnemyKill, applyZoneEnemySync,
-  entityIdBySyncKey, exportZoneEnemies, setEnemyNet, spawnRemoteEnemy, zoneHasActiveEnemies,
+  applyRemoteEnemyAttack, applyRemoteEnemyHit, applyRemoteEnemyKill, applyRemoteLootDrop, applyRemoteLootTake,
+  applyZoneEnemySync, entityIdBySyncKey, exportSyncedLoot, exportZoneEnemies, setEnemyNet, setLootNet,
+  spawnRemoteEnemy, zoneHasActiveEnemies,
   type RemoteTarget,
 } from '../entities';
 import { bus, say } from '../events';
@@ -24,9 +25,13 @@ import { zoneRectDistance } from '../terrain';
 import { activeZones } from '../zones';
 import {
   CARD_CHECK_S, GAME_ID, POS_HZ_IDLE, POS_HZ_MOVING, characterCard, isZoneId, readCard, readCompanionList,
-  readDamageType, readEnemySyncList, readPose, readStatusId,
+  readDamageType, readEnemySyncList, readLootItems, readLootSync, readPose, readStatusId,
   type CharacterCard, type GnoMsg, type Pose,
 } from './protocol';
+import {
+  handleTradeMessage, handleTradeOffline, handleTradePeerLeft, setTradeNet, updateTrade,
+  type TradePeerInfo,
+} from './trade';
 
 const NAME_KEY = 'gnomomia.name';
 const CID_KEY = 'gnomomia.cid';
@@ -234,6 +239,7 @@ function ensureModel(r: RemotePlayer): GnomeModel {
   if (r.model) return r.model;
   const model = createGnomeModel(resolveLook({ id: r.id, character: r.character }) ?? PLAYER_LOOK);
   model.object.traverse((o) => {
+    o.userData.remotePlayerId = r.id;
     if ((o as THREE.Mesh).isMesh) o.castShadow = true;
   });
   sceneRef?.add(model.object);
@@ -364,6 +370,7 @@ function detach(): NetClient<GnoMsg> | null {
   link = null;
   me = -1;
   stopTimers();
+  handleTradeOffline();
   clearRemotes();
   lastZoneAuth.clear();
   lastZoneSyncAt.clear();
@@ -407,6 +414,9 @@ function onServer(c: NetClient<GnoMsg>, m: ServerMsg<GnoMsg>): void {
       addRemote(m.player);
       sendCard(m.player.id);
       sendPose(true);
+      // Share our live dropped items (and any orphaned drops in zones where we are authority) with the newcomer.
+      const drops = exportSyncedLoot((ownerId, zone) => ownerId === me || (!remotes.has(ownerId) && isZoneAuthority(zone)));
+      for (const l of drops) c.send(m.player.id, { k: 'ldrop', l });
       say(`${m.player.name} has entered Gnomomia.`, UI.textDim);
       changed();
       break;
@@ -414,6 +424,7 @@ function onServer(c: NetClient<GnoMsg>, m: ServerMsg<GnoMsg>): void {
     case 'left': {
       const r = remotes.get(m.id);
       if (r) say(`${r.name} has left Gnomomia.`, UI.textDim);
+      handleTradePeerLeft(m.id);
       removeRemote(m.id);
       checkAuthorityHandoffs();
       changed();
@@ -477,6 +488,16 @@ function onServer(c: NetClient<GnoMsg>, m: ServerMsg<GnoMsg>): void {
           typeof d.x !== 'number' || !Number.isFinite(d.x) || typeof d.zp !== 'number' || !Number.isFinite(d.zp)
         ) break;
         spawnRemoteEnemy(d.e, d.def, d.x, d.zp, d.z);
+      } else if (d.k === 'ldrop') {
+        const loot = readLootSync(d.l);
+        if (loot) applyRemoteLootDrop(loot);
+      } else if (d.k === 'ltake') {
+        if (typeof d.key !== 'string' || d.key.length === 0 || d.key.length > 32) break;
+        const remaining = readLootItems(d.r);
+        const remainingGold = typeof d.g === 'number' && Number.isFinite(d.g) && d.g >= 0 && d.g <= 1e9 ? Math.floor(d.g) : null;
+        if (remaining !== null && remainingGold !== null) applyRemoteLootTake(d.key, remaining, remainingGold);
+      } else if (d.k === 'treq' || d.k === 'tacc' || d.k === 'tdec' || d.k === 'toff' || d.k === 'tok' || d.k === 'tdone') {
+        handleTradeMessage(m.from, d);
       } else if (d.k === 'comp') {
         const list = readCompanionList(d.l);
         if (!list || !isZoneId(d.z)) break;
@@ -621,6 +642,34 @@ export function initMmo(scene: THREE.Scene): void {
       link.send(null, { k: 'espawn', z: zone, e: syncKey, def: defId, x, zp: z });
     },
   });
+  setLootNet({
+    isOnline: () => status === 'online' && link !== null && me >= 0,
+    myId: () => me,
+    sendLootDrop(loot) {
+      if (!link || status !== 'online') return;
+      link.send(null, { k: 'ldrop', l: loot });
+    },
+    sendLootTake(key, remaining, remainingGold) {
+      if (!link || status !== 'online') return;
+      link.send(null, { k: 'ltake', key, r: remaining, g: remainingGold });
+    },
+  });
+  setTradeNet({
+    isOnline: () => status === 'online' && link !== null && me >= 0,
+    myId: () => me,
+    getPeer(id): TradePeerInfo | null {
+      const r = remotes.get(id);
+      if (!r) return null;
+      const x = r.interp.ready ? r.shown[0] : r.position.x;
+      const z = r.interp.ready ? r.shown[1] : r.position.z;
+      const dead = r.interp.ready ? r.shown[3] >= 0.5 : false;
+      return { id: r.id, name: r.name, color: r.color, zone: r.zone, x, z, dead };
+    },
+    send(to, msg) {
+      if (!link || status !== 'online') return;
+      link.send(to, msg);
+    },
+  });
   // My zone changed: gnomes left behind disappear, gnomes already in the new zone appear on the next frame.
   bus.on('zone-changed', () => {
     sendPose(true);
@@ -705,6 +754,21 @@ export function remotePlayers(): Iterable<RemotePlayer> {
   return remotes.values();
 }
 
+export function remotePlayerById(id: number): RemotePlayer | undefined {
+  return remotes.get(id);
+}
+
+/** The remote player a raycast hit belongs to (walks up parents for userData.remotePlayerId). */
+export function remotePlayerFromObject(obj: THREE.Object3D): RemotePlayer | undefined {
+  let o: THREE.Object3D | null = obj;
+  while (o) {
+    const id = o.userData.remotePlayerId;
+    if (typeof id === 'number') return remotes.get(id);
+    o = o.parent;
+  }
+  return undefined;
+}
+
 export function* remoteCompanions(): Iterable<RemoteCompanion> {
   for (const r of remotes.values()) {
     for (const c of r.companions.values()) yield c;
@@ -720,6 +784,7 @@ export function onMmoChange(fn: () => void): void {
 export function updateMmo(dt: number): void {
   if (player.swing > lastSwingValue + 0.05) mySwings++;
   lastSwingValue = player.swing;
+  updateTrade();
 
   for (const r of remotes.values()) {
     if (!r.interp.ready || !r.interp.sample(r.shown)) {
