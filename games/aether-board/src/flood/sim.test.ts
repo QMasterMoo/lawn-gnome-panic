@@ -51,7 +51,7 @@ describe('flood sim', () => {
     f.focus(4);
     f.step(1);
     const active = f.runs.filter((r) => r.active).map((r) => r.island);
-    expect(active).toEqual([3, 4, 5, 6]);
+    expect(active).toEqual([4, 5, 6]);
     f.focus(0);
     f.step(0.1);
     expect(f.runs[6].active).toBe(false);

@@ -9,7 +9,7 @@ export const FLOOD_SEED = 11;
 
 export const FLOOD = {
   // ---- shallow-water sim (flood/sim.ts, virtual pipes after Mei et al. 2007)
-  cell: 3,             // m, grid cell size
+  cell: 2,             // m, grid cell size
   simHz: 30,           // fixed sim rate of the water
   gravity: 9.81,
   /** Flow friction: a baseline (1/s) plus Manning's n squared (n = 0.03, wet snow). */
@@ -18,18 +18,21 @@ export const FLOOD = {
   /** Sampled flow speed is clamped to this (m/s): thin edges make the raw estimate spiky. */
   maxFlowSpeed: 12,
   /** Runs simulated ahead of / behind the rider's run. Others are reset dry. */
-  windowBehind: 1,
+  windowBehind: 0,
   windowAhead: 2,
   /** Per-run source at the top of every run: a steady stream plus a surge every `period` s (m³/s). */
   /** The source spreads over this share of the run's width on each side of the middle. */
   sourceHalfWidth: 0.32,
   /** The rider's run has a spring that travels with them: this many cells uphill of the rider, this share of the width each side. */
-  anchorBehind: 4,
+  anchorBehind: 8,
+  anchorAhead: 8,
+  /** The long spring spreads over many rows, so it gets more water. */
+  anchorFlowScale: 0.9,
   anchorHalf: 0.16,
   /** Depth (m) of the wet film a run starts with everywhere. */
   film: 0.15,
   baseFlow: 160,
-  surgePeak: 900,
+  surgePeak: 600,
   periodMin: 24,
   periodMax: 38,
   /** Seconds water takes to cross from one run to the next: joined, a jump, a halfpipe. */

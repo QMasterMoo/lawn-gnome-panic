@@ -252,17 +252,17 @@ export function createFlood(world: World, seed = 1): Flood {
     }
   }
 
-  function addToRun(r: RunSim, frac: number, vol: number, half = 2, k0 = 0): void {
+  function addToRun(r: RunSim, frac: number, vol: number, half = 2, k0 = 0, rows = 3): void {
     // spread over the three top rows, around column frac
     const jc = Math.min(r.nv - 1, Math.max(0, Math.round(frac * (r.nv - 1))));
     let n = 0;
-    for (let jj = -half; jj <= half; jj++) for (let k = k0; k < k0 + 3; k++) {
+    for (let jj = -half; jj <= half; jj++) for (let k = k0; k < k0 + rows; k++) {
       const j = jc + jj;
       if (j >= 0 && j < r.nv && !r.hole[j * r.nu + k]) n++;
     }
     if (n === 0) return;
     const dd = vol / (n * C * C);
-    for (let jj = -half; jj <= half; jj++) for (let k = k0; k < k0 + 3; k++) {
+    for (let jj = -half; jj <= half; jj++) for (let k = k0; k < k0 + rows; k++) {
       const j = jc + jj;
       if (j >= 0 && j < r.nv && !r.hole[j * r.nu + k]) r.depth[j * r.nu + k] += dd;
     }
@@ -292,7 +292,11 @@ export function createFlood(world: World, seed = 1): Flood {
         // the rider's run: the spring travels with the rider, a little uphill of them, so the water flows down with them
         const loc = locate(r, anchorPos.x, anchorPos.z);
         if (loc) {
-          addToRun(r, loc.j / Math.max(1, r.nv - 1), q, Math.floor(r.nv * FLOOD.anchorHalf), Math.max(0, Math.min(r.nu - 3, Math.round(loc.k) - FLOOD.anchorBehind)));
+          // a long spring: from anchorBehind cells uphill of the rider to anchorAhead cells downhill, so the rider is
+          // always on the tail of a wave whose front is ahead of them
+          const k0 = Math.max(0, Math.min(r.nu - 3, Math.round(loc.k) - FLOOD.anchorBehind));
+          const rows = Math.min(r.nu - k0, FLOOD.anchorBehind + FLOOD.anchorAhead + 3);
+          addToRun(r, loc.j / Math.max(1, r.nv - 1), q * FLOOD.anchorFlowScale, Math.floor(r.nv * FLOOD.anchorHalf), k0, rows);
           continue;
         }
       }
