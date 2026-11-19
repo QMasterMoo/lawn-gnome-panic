@@ -1,4 +1,5 @@
 import { accountsEnabled, hasStoredSession } from '@lawn/platform/session';
+import { showSyncNotice, watchKey } from '@lawn/sync';
 import { getAchievement } from './catalog';
 import { SyncedAchievementStore } from './sync';
 import type { AchievementRecord, AchievementState, AchievementStore, UnlockResult } from './types';
@@ -16,6 +17,25 @@ function emptyState(): AchievementState {
 
 function copyState(s: AchievementState): AchievementState {
   return JSON.parse(JSON.stringify(s)) as AchievementState;
+}
+
+/** Merges two saves of the same player: nothing earned in either tab is lost. Progress takes the larger value and an
+ *  unlock keeps its earliest time. (Only `reset` can lower progress, and it replaces the save outright.) */
+export function mergeStates(a: AchievementState, b: AchievementState): AchievementState {
+  const records: Record<string, AchievementRecord> = {};
+  for (const id of new Set([...Object.keys(a.records), ...Object.keys(b.records)])) {
+    const x = a.records[id];
+    const y = b.records[id];
+    if (!x || !y) {
+      records[id] = { ...(x ?? y!) };
+      continue;
+    }
+    const next: AchievementRecord = { progress: Math.max(x.progress, y.progress) };
+    const at = [x.unlockedAt, y.unlockedAt].filter((t): t is string => !!t).sort()[0];
+    if (at) next.unlockedAt = at;
+    records[id] = next;
+  }
+  return { version: 1, records };
 }
 
 export function parseState(raw: unknown): AchievementState {
@@ -44,13 +64,30 @@ export class LocalAchievementStore implements AchievementStore {
   constructor(
     storage: StorageLike | null = typeof localStorage === 'undefined' ? null : localStorage,
     now: () => Date = () => new Date(),
+    watch = false,
   ) {
     this.storage = storage;
     this.now = now;
+    if (watch) watchKey(ACHIEVEMENTS_STORAGE_KEY, () => this.onOtherTab());
+  }
+
+  /** Another tab changed the save: merge it in, and tell the player when it brought something new. */
+  private onOtherTab(): void {
+    const before = this.cache;
+    const merged = this.merged();
+    const gained = Object.entries(merged.records).some(([id, r]) => r.unlockedAt && !before?.records[id]?.unlockedAt);
+    this.cache = merged;
+    if (gained) showSyncNotice('Achievements from another tab were merged into this one.');
+  }
+
+  /** What is stored now merged with this tab's memory (which also holds a save that storage refused). */
+  private merged(): AchievementState {
+    const stored = this.readStored();
+    return this.cache ? mergeStates(this.cache, stored) : stored;
   }
 
   async getState(): Promise<AchievementState> {
-    if (!this.cache) this.cache = this.readStored();
+    this.cache = this.merged();
     return copyState(this.cache);
   }
 
@@ -123,5 +160,6 @@ function signedInWithAccount(): boolean {
 }
 
 export function createAchievementStore(): AchievementStore {
-  return signedInWithAccount() ? new SyncedAchievementStore() : new LocalAchievementStore();
+  // Signed in: the account's save (synced across devices). Otherwise the local save, watched across tabs.
+  return signedInWithAccount() ? new SyncedAchievementStore() : new LocalAchievementStore(undefined, undefined, true);
 }
