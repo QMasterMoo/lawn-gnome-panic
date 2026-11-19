@@ -3,7 +3,8 @@
 // what is left here is the party glue: the shots counter, the CPU's timing, the drag-to-line-up input and the camera.
 // Rules and design: docs/roadmaps/gnome-party/2I-bowling-slice.md. Party rules: packages/party/README.md.
 import * as THREE from 'three';
-import { createGnomeModel, type GnomeModel, type PlayerState } from '@lawn/gnome';
+import { type GnomeModel, type PlayerState } from '@lawn/gnome';
+import { createGnomeModel } from '../models/gnome';
 import { buildPrefab } from '@lawn/prefabs';
 import type { MinigameDef, MinigameView, PadState, ViewCtx } from '@lawn/party';
 import { soleWinner } from '@lawn/party';
