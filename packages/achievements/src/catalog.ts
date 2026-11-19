@@ -290,6 +290,22 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     description: 'Tame Old Saturday and ride him across the lawn.',
     reward: { slot: 'hand', prefabId: 'hand-rake', label: 'Hand Rake' },
   },
+  {
+    id: 'prix-trial-first',
+    game: 'lawn-prix',
+    gameTitle: 'Lawn Prix',
+    title: 'Against the Clock',
+    description: 'Finish a Time Trial and leave a ghost on the course.',
+    reward: { slot: 'head', prefabId: 'keep-helm', label: 'Keep Helm' },
+  },
+  {
+    id: 'prix-ghost-buster',
+    game: 'lawn-prix',
+    gameTitle: 'Lawn Prix',
+    title: 'Ghost Buster',
+    description: 'Beat your own ghost in a Time Trial.',
+    reward: { slot: 'neck', prefabId: 'reed-charm', label: 'Reed Charm' },
+  },
 ];
 
 const BY_ID = new Map(ACHIEVEMENTS.map((a) => [a.id, a]));
