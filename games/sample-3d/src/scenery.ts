@@ -1,6 +1,7 @@
 import type { DayNightState } from './config';
 import * as THREE from 'three';
-import type { Scenery } from './config';
+import { buildPrefab, buildPrefabInstances } from '@lawn/prefabs';
+import type { Scenery, WorldTheme } from './config';
 import { ARENA_HALF } from './config';
 
 /** Sky dome, clouds, trees and neighbouring yards outside the lawn. */
@@ -282,6 +283,67 @@ export function buildScenery(scene: THREE.Scene): Scenery {
   neighbourFence.frustumCulled = false;
   scene.add(neighbourFence);
 
+  // ---- Desert backdrop: mesas and saguaros in the tree bands (hidden until setTheme('desert')) ----
+  // Own PRNG, so the lawn scenery's random sequence is unchanged.
+  const desertRng = makeRng(777);
+  const dRand = (lo: number, hi: number) => lo + (hi - lo) * desertRng();
+  // Same side layout as the trees: 0 west, 1 east, 2 south.
+  const bandPoint = (dMin: number, dMax: number, alongHalf: number): [number, number] => {
+    const side = Math.floor(desertRng() * 3);
+    const dist = dRand(dMin, dMax);
+    const along = dRand(-alongHalf, alongHalf);
+    return side === 0 ? [-dist, along] : side === 1 ? [dist, along] : [along, dist];
+  };
+  const desert = new THREE.Group();
+  desert.visible = false;
+  scene.add(desert);
+
+  const MESA_COUNT = 12 + Math.floor(desertRng() * 7);     // 12..18
+  const mesaBody = new THREE.InstancedMesh(
+    new THREE.CylinderGeometry(1, 1, 1, 7),
+    new THREE.MeshStandardMaterial({ color: 0xc8703f }),
+    MESA_COUNT,
+  );
+  const mesaCap = new THREE.InstancedMesh(
+    new THREE.CylinderGeometry(1, 1, 1, 7),
+    new THREE.MeshStandardMaterial({ color: 0xd99a62 }),
+    MESA_COUNT,
+  );
+  for (let i = 0; i < MESA_COUNT; i++) {
+    const [x, z] = bandPoint(TREE_BAND_MIN + 40, TREE_BAND_MAX + 250, ARENA_HALF + 200);
+    const r = dRand(30, 80);
+    const h = dRand(25, 70);
+    const capH = Math.max(3, h * 0.12);
+    const rot = dRand(0, Math.PI * 2);
+    place(mesaBody, i, x, h / 2, z, r, h, r, rot);
+    place(mesaCap, i, x, h - capH / 2, z, r * 1.04, capH, r * 1.04, rot);
+  }
+
+  // Saguaros: prefab 'saguaro' (natural trunk radius 0.1, height measured once), one copy per cactus.
+  // Width and height come from the same draws as before; the two arms are the prefab's own.
+  const CACTUS_COUNT = 60 + Math.floor(desertRng() * 21);  // 60..80
+  const saguaroSize = new THREE.Box3().setFromObject(buildPrefab('saguaro', { lights: false })).getSize(new THREE.Vector3());
+  const SAGUARO_TRUNK_R = 0.1;
+  const cactusMatrices: THREE.Matrix4[] = [];
+  for (let i = 0; i < CACTUS_COUNT; i++) {
+    const [x, z] = bandPoint(TREE_BAND_MIN, TREE_BAND_MAX, ARENA_HALF + 110);
+    const r = dRand(1.5, 2.5);
+    const h = dRand(20, 35);
+    cactusMatrices.push(new THREE.Matrix4().compose(
+      new THREE.Vector3(x, 0, z),
+      new THREE.Quaternion(),
+      new THREE.Vector3(r / SAGUARO_TRUNK_R, h / saguaroSize.y, r / SAGUARO_TRUNK_R),
+    ));
+  }
+  const cactus = buildPrefabInstances('saguaro', cactusMatrices);
+  desert.add(cactus);
+
+  for (const m of [mesaBody, mesaCap]) {
+    m.instanceMatrix.needsUpdate = true;
+    m.frustumCulled = false;
+    desert.add(m);
+  }
+
   // ---- Dandelion fluff ---------------------------------------------------
   const moteTexCanvas = document.createElement('canvas');
   moteTexCanvas.width = 64;
@@ -330,6 +392,14 @@ export function buildScenery(scene: THREE.Scene): Scenery {
   let time = 0;
 
   return {
+    setTheme(theme: WorldTheme) {
+      const desertOn = theme === 'desert';
+      desert.visible = desertOn;
+      trunks.visible = !desertOn;
+      canopySpheres.visible = !desertOn;
+      hedgeBodies.visible = !desertOn;
+      hedgeTops.visible = !desertOn;
+    },
     setSky(s: DayNightState) {
       skyMat.uniforms.uHorizon.value.copy(s.skyHorizon);
       skyMat.uniforms.uZenith.value.copy(s.skyZenith);

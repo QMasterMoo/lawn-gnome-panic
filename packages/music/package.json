@@ -1,0 +1,21 @@
+{
+  "name": "@lawn/music",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "analyze": "node tools/analyze.mjs"
+  },
+  "dependencies": {
+    "standardized-audio-context": "25.3.77",
+    "tone": "15.1.22"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  }
+}
