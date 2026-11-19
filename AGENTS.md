@@ -14,6 +14,7 @@ Read [SOUL.md](SOUL.md) first. It sets the priorities: playable over polished, c
 - `docs/stack.md`: which engine or library to reach for. `docs/assets.md`: where free assets come from and the license rules.
 - `docs/roadmaps/`: plans written by the decompose skill.
 - `docs/demos.md`: recording scripted MP4/GIF demos of a game, and embedding them in a PR description (`npm run demo -- <demo.json> --pr <n>`).
+- `docs/lore/`: the gnome lore knowledge base for every game: core canon, settings (Fescue, the Yard, ...), rulings, one fact-sheet per named thing. `npm run lore -- find <word>` searches it.
 - `unity/`: Unity projects, if any. Driven from code and the command line, never by hand in the editor (see docs/stack.md).
 
 ## Toolchain (Windows)
@@ -34,6 +35,7 @@ Read [SOUL.md](SOUL.md) first. It sets the priorities: playable over polished, c
   - Working on a game with no slice: if your change makes a slice easy and the backlog row says it fits, add it in the same plan. Do not go back and retrofit games you were not asked to touch.
   - A slice is built from the game's own modules. Where they are tangled in the game's `Ctx` or `main.ts`, refactor that once so the game and the slice call the same function. Never copy game code into a slice.
   - A game with `src/minigames/` must keep it working: `npm test -w games/<name>` (the slice contract test) passes along with the build, and `#minigame` still plays.
+- Lore: before writing names, dialogue, item text or story for any gnome game, search `docs/lore/` (`npm run lore -- find <word>`) and follow `docs/lore/canon.md` plus the game's setting. If it doesn't answer the question, decide and record it (an entry, or a ruling in `docs/lore/rulings.md`). A new game gets a row in `docs/lore/settings.md`. After any change under `docs/lore/`, `npm run lore` must pass.
 - Assets: CC0 or self-generated only. Every external file gets a line in that game's `CREDITS.md` (source URL, author, license).
 - New objects go through the prefab library (`@lawn/prefabs`, see `packages/prefabs/README.md`). Whenever a change introduces a new thing to see, hold, pick up or examine (item, weapon, prop, furniture, container, pickup, scenery piece):
   - Use an existing prefab if one fits (browse with `npm run dev -w games/prefab-gallery`, or `resolvePrefab()` for emoji items). Build it with `buildPrefab` / `buildHeld` / `createDrop`, and use `prefabIcon` / `prefabIconElement` for its UI icon, including in 2D games.
