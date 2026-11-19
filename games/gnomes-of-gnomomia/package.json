@@ -1,0 +1,32 @@
+{
+  "name": "gnomes-of-gnomomia",
+  "private": true,
+  "description": "An old-school click-to-move 3D gnome RPG: quests, loot, d20 combat and skills that grow by use.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint:content": "node scripts/lint-content.mjs",
+    "test": "vitest run",
+    "sim": "node scripts/sim-balance.mjs",
+    "sim:demo": "node scripts/sim-demo.mjs"
+  },
+  "dependencies": {
+    "@arcade/volume": "*",
+    "@lawn/cloudsave": "*",
+    "@lawn/gnome": "*",
+    "@lawn/mp": "*",
+    "@lawn/platform": "*",
+    "@lawn/music": "*",
+    "@lawn/prefabs": "*",
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.187.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vitest": "5.1.0"
+  }
+}
