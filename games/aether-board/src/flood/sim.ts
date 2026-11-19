@@ -156,6 +156,7 @@ export function createFlood(world: World, seed = 1): Flood {
 
   const queue: Handover[] = [];
   let focusRun = 0;
+  let anchorPos: { x: number; z: number; island: number } | null = null;
   let acc = 0;
   let time = 0;
   const STEP = 1 / FLOOD.simHz;
@@ -287,8 +288,15 @@ export function createFlood(world: World, seed = 1): Flood {
       }
       // source: the middle of the run across (FLOOD.sourceHalfWidth each side), top three rows
       const q = sourceFlow(r.period, r.phase, r.peak, time) * dt;
-      // the first run's spring is where the rider starts, so the first surge is born under them
-      addToRun(r, 0.5, q, Math.floor(r.nv * FLOOD.sourceHalfWidth), r.island === 0 ? FLOOD.startSourceK : 0);
+      if (anchorPos && r.island === anchorPos.island) {
+        // the rider's run: the spring travels with the rider, a little uphill of them, so the water flows down with them
+        const loc = locate(r, anchorPos.x, anchorPos.z);
+        if (loc) {
+          addToRun(r, loc.j / Math.max(1, r.nv - 1), q, Math.floor(r.nv * FLOOD.anchorHalf), Math.max(0, Math.min(r.nu - 3, Math.round(loc.k) - FLOOD.anchorBehind)));
+          continue;
+        }
+      }
+      addToRun(r, 0.5, q, Math.floor(r.nv * FLOOD.sourceHalfWidth));
     }
     for (let i = queue.length - 1; i >= 0; i--) {
       const h = queue[i];
@@ -402,12 +410,16 @@ export function createFlood(world: World, seed = 1): Flood {
       acc = 0;
       stepCount = 0;
       queue.length = 0;
+      anchorPos = null;
       for (const r of runs) {
         clearRun(r);
         r.active = false;
       }
       // run 0's surge front is born firstSurgeIn seconds from now
       runs[0].phase = runs[0].period - firstSurgeIn;
+    },
+    anchor(x: number, z: number, island: number): void {
+      anchorPos = { x, z, island };
     },
     focus(island: number): void {
       focusRun = Math.max(0, Math.min(runs.length - 1, island));

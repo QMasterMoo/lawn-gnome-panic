@@ -313,6 +313,7 @@ function frame(): void {
       floodClock = 0;
     }
     if (frameEvents.some((e) => e.e === 'warp')) flood.restart(2);
+    flood.anchor(player.pos.x, player.pos.z, player.island);
     flood.focus(player.island);
     flood.step(dt);
     if (state === 'playing' && !bookOpen) floodClock += dt;

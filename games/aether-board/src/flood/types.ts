@@ -12,19 +12,20 @@ export const FLOOD = {
   cell: 3,             // m, grid cell size
   simHz: 30,           // fixed sim rate of the water
   gravity: 9.81,
-  /** Flow friction: a baseline (1/s) plus Manning's n squared (n = 0.02, smooth wet snow). */
-  friction: 0.05,
-  manning2: 0.0004,
+  /** Flow friction: a baseline (1/s) plus Manning's n squared (n = 0.03, wet snow). */
+  friction: 0.1,
+  manning2: 0.001,
   /** Sampled flow speed is clamped to this (m/s): thin edges make the raw estimate spiky. */
-  maxFlowSpeed: 22,
+  maxFlowSpeed: 12,
   /** Runs simulated ahead of / behind the rider's run. Others are reset dry. */
   windowBehind: 1,
   windowAhead: 2,
   /** Per-run source at the top of every run: a steady stream plus a surge every `period` s (m³/s). */
   /** The source spreads over this share of the run's width on each side of the middle. */
   sourceHalfWidth: 0.32,
-  /** Grid row (cells from the top) of the first run's spring: just uphill of where the rider starts. */
-  startSourceK: 8,
+  /** The rider's run has a spring that travels with them: this many cells uphill of the rider, this share of the width each side. */
+  anchorBehind: 4,
+  anchorHalf: 0.16,
   /** Depth (m) of the wet film a run starts with everywhere. */
   film: 0.15,
   baseFlow: 160,
@@ -129,6 +130,8 @@ export interface Flood {
   step(dt: number): void;
   /** Restart the clock and the water: run 0's first surge starts in `firstSurgeIn` seconds (from the rider's start). */
   restart(firstSurgeIn: number): void;
+  /** Where the rider is (call every frame): their run's spring moves with them instead of sitting at the top. */
+  anchor(x: number, z: number, island: number): void;
   /** The rider's run: only runs inside the window around it are simulated. */
   focus(island: number): void;
   /** Sample water at (x, z), trying run `hint` first then its neighbours. False (out filled with zeros) if there is no water. */
