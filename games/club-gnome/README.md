@@ -18,25 +18,44 @@ table to play Gnome Blackjack.
 
 | Map | What is there |
 |---|---|
-| Town Square | Fountain plaza; Gnomecino and Arcade (doors), Bowling alley (Gnome Bowling), Music Hall (Music Room), Party pavilion (Gnome Party), Gnome Creator statue; path east to Links Park |
-| The Gnomecino | Two blackjack tables (public, and High Rollers with room code `HIGHROLL`), slot machines (open Gnome Blackjack, which has the slots), bar |
+| Town Square | Fountain plaza; Gnomecino and Arcade (doors), Bowling alley (Gnome Bowling), Music Hall (Music Room), Party pavilion (Gnome Party), Gnome Creator statue; four benches to sit on; path east to Links Park |
+| The Gnomecino | Two blackjack tables (public, and High Rollers with room code `HIGHROLL`), slot machines (open Gnome Blackjack, which has the slots), bar (bar stools to sit on), cocktail tables with stools |
 | The Arcade | Cabinets: Lawn Prix, Mower Chain, Lawn Gnome Panic, Gnome Sweet Gnome, Faster Than Lawn, Aether Board |
-| Links Park | Golf tee (Gnome Golf), dock (Gnaft), the Front's camp (Gnome Front), kennel (Giant Pup), the Fence (Gnomes of Gnomomia) |
+| Links Park | Golf tee (Gnome Golf), dock (Gnaft), the Front's camp (Gnome Front), kennel (Giant Pup), the Fence (Gnomes of Gnomomia), two picnic tables to sit at |
 
 A game opens full screen over the town in a frame with a "← Back" bar; your gnome stays put and shows 🎮 to the others.
 🗺️ Map jumps to any place.
+
+## Music
+
+Each place has its own generated music (`@lawn/music`, `packages/music/src/themes/clubGnome.ts`; no assets). Walking
+into another place switches the song, and coming back to a place plays its other track.
+
+| Place | Tracks |
+|---|---|
+| Town Square | "Meet You at the Fountain" (ukulele folk), "Lamplight Waltz" (evening waltz) |
+| The Gnomecino | "Cards and Candlelight" (the Gnome Blackjack lounge jazz), "High Rollers" (slow smoky swing) |
+| The Arcade | "Insert Coin" (bright chiptune), "High Score Rush" (fast minor chiptune) |
+| Links Park | "Fairway Breeze" (fingerpicked guitar and flute), "Dockside Shanty" (6/8 squeezebox) |
+
+Music starts on your first tap or key press, stops while a game is open over the town, and resumes after. The Volume
+button (under the map name) has sliders; N mutes music, M mutes everything. `#mute` in the URL keeps it silent.
+`npm run analyze -w packages/music -- --tracks clubGnome:high-rollers,... --wav samples/club` renders them to WAV.
 
 ## Controls
 
 - Walk: tap/click the ground, or WASD / arrow keys. Tap a building, cabinet or table to walk there and use it.
 - Action button (or E / Space) when you stand at something. Enter to chat (or tap the input), 😀 for emotes.
+- Sit down: walk to a bench, stool or picnic-table seat and use the action button ("Sit on the bench"). Any walking,
+  or the action button again ("Stand up"), gets you up. Sitting is only shown on your own screen for now; others see
+  you standing.
 
 ## Code
 
 `config.ts` (types, maps ids, game links, tuning), `maps.ts` (the four maps as data), `walk.ts` (pure walking rules),
 `world.ts` (three.js scene and camera), `avatars.ts` (gnome models, name tags, bubbles), `net.ts` (online),
 `hud.ts` (DOM interface), `account.ts` (sign-in and the guest card), `overlay.ts` (games in a frame),
-`achievements.ts`, `main.ts` (wiring). Plan: `docs/roadmaps/club-gnome.md`.
+`achievements.ts`, `music.ts` (area music), `main.ts` (wiring). Plan: `docs/roadmaps/club-gnome.md`.
 
 Buildings and walls are built in `world.ts` (they are terrain, far bigger than a prefab); everything you can see on
 the ground is a `@lawn/prefabs` prop, including the new `blackjack-table`.

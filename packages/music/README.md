@@ -8,6 +8,7 @@ Synthesized game music on Tone.js, shared by `games/sample-3d` (Lawn Gnome Panic
 - **Garden lullaby** (`buildGardenLullaby`): very light, peaceful, a touch more than ambient (a soft music-box arpeggio pulse, quiet pad, round bass, a small pentatonic bell tune, barely-there shaker; 76-84 bpm, major key, 16-bar loop). `games/gnome-sweet-gnome` uses it.
 - **Tricky big beat** (`buildTrickyTrack`): an original big-beat / breakbeat track in the spirit of early-2000s snowboard games (hard funky break, sliding acid bass, brass stabs, vinyl scratches, a chopped formant "vocal" hook). It reacts to the game: `opts.air()` muffles the mix, `hooks.land()` slams it back with a crash, `hooks.scratch()` cuts a scratch in, `opts.boost()` opens the filter with a riser, `opts.hype()` adds layers. `games/aether-board` uses it.
 - **Trance** (`buildTranceTrack`): classic uplifting trance (136-140 BPM, supersaw leads/stabs/pads, major arpeggios, sidechain pump, stereo chorus, dotted-8th ping-pong delay, build/breakdown/drop structure). `games/gnome-creator` uses it.
+- **Club Gnome area music** (`buildClubGnomeTrack`, `clubGnomeTracks(area)`, `clubGnomeSong(seed, id)`): eight tracks, one or two per place (town folk and waltz, casino lounge and swing, arcade chiptune, park guitar and sea shanty). Each is a small `TrackSpec` (key, mode, chords per bar, voices, drum grid) run by one engine that also composes the melody from the seed. `games/club-gnome` uses it; render them with `npm run analyze -w packages/music -- --tracks clubGnome:<id>`.
 
 Use it from a game:
 

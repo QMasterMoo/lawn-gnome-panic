@@ -15,7 +15,7 @@ export interface InstanceOptions extends Pick<BuildOptions, 'tint' | 'trim' | 's
  * Geometry is the prefab's shared cache: never dispose it. Point lights are skipped.
  */
 export function buildPrefabInstances(id: string, matrices: readonly THREE.Matrix4[], opts: InstanceOptions = {}): THREE.Group {
-  const proto = buildPrefab(id, { tint: opts.tint, trim: opts.trim, shadows: opts.shadows, lights: false });
+  const proto = buildPrefab(id, { tint: opts.tint, trim: opts.trim, shadows: opts.shadows, lights: false, separateTint: !!opts.tints });
   proto.updateMatrixWorld(true);
   const out = new THREE.Group();
   out.name = `${id}:instances`;
