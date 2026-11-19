@@ -6,6 +6,7 @@
 // itself (the same characterCard() below), so clients stop sending 'card' and the rest stays as it is.
 import type { ClassId, DamageType, StatusId, ZoneId } from '../config';
 import { ITEMS, ZONES } from '../content';
+import type { AttackKind } from '../playerVisuals';
 import { maxHp, type GameState } from '../state';
 
 export const GAME_ID = 'gnomomia' as const;
@@ -49,11 +50,18 @@ export type LootSync = [string, ZoneId, number, number, LootItem[], number, numb
 /** [itemId, count] offered in a player-to-player trade (never quest items). */
 export type TradeItem = [string, number];
 
+/** Bitmask flags carried on `pos` messages for synced player animations & cosmetics. */
+export const ANIM_SITTING = 1 << 0;
+export const ANIM_SMOKING = 1 << 1;
+export const ANIM_TIPSY = 1 << 2;
+const ANIM_FLAGS_MASK = ANIM_SITTING | ANIM_SMOKING | ANIM_TIPSY;
+const ATTACK_KINDS: readonly AttackKind[] = ['chop', 'thrust', 'ranged', 'cast'];
+
 export type GnoMsg =
   /** My public card: sent to everyone on joining and whenever it changes, and to a newcomer when they join. */
   | { k: 'card'; c: CharacterCard }
-  /** Where I am: zone, pose, and my clock (performance.now()) when it was taken. */
-  | { k: 'pos'; z: ZoneId; p: Pose; t: number }
+  /** Where I am: zone, pose, clock, plus optional animation flags (sitting/smoking/tipsy), attackKind and block counter. */
+  | { k: 'pos'; z: ZoneId; p: Pose; t: number; f?: number; ak?: AttackKind; blk?: number }
   /** Where my AI companions are: zone, companion poses, and clock. */
   | { k: 'comp'; z: ZoneId; l: CompanionPose[]; t: number }
   /** Zone authority's enemy state snapshot for a zone. */
@@ -229,4 +237,18 @@ export function readLootSync(raw: unknown): LootSync | null {
 
 export function readTradeId(raw: unknown): string | null {
   return typeof raw === 'string' && raw.length > 0 && raw.length <= 32 ? raw : null;
+}
+
+export function readAnimFlags(raw: unknown): number {
+  const n = finite(raw, 0, 255);
+  return n === null ? 0 : Math.floor(n) & ANIM_FLAGS_MASK;
+}
+
+export function readAttackKind(raw: unknown): AttackKind {
+  return typeof raw === 'string' && ATTACK_KINDS.includes(raw as AttackKind) ? (raw as AttackKind) : 'chop';
+}
+
+export function readBlockCount(raw: unknown): number {
+  const n = finite(raw, 0, 1e9);
+  return n === null ? 0 : Math.floor(n);
 }
