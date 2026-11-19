@@ -26,6 +26,22 @@ table to play Gnome Blackjack.
 A game opens full screen over the town in a frame with a "← Back" bar; your gnome stays put and shows 🎮 to the others.
 🗺️ Map jumps to any place.
 
+## Music
+
+Each place has its own generated music (`@lawn/music`, `packages/music/src/themes/clubGnome.ts`; no assets). Walking
+into another place switches the song, and coming back to a place plays its other track.
+
+| Place | Tracks |
+|---|---|
+| Town Square | "Meet You at the Fountain" (ukulele folk), "Lamplight Waltz" (evening waltz) |
+| The Gnomecino | "Cards and Candlelight" (the Gnome Blackjack lounge jazz), "High Rollers" (slow smoky swing) |
+| The Arcade | "Insert Coin" (bright chiptune), "High Score Rush" (fast minor chiptune) |
+| Links Park | "Fairway Breeze" (fingerpicked guitar and flute), "Dockside Shanty" (6/8 squeezebox) |
+
+Music starts on your first tap or key press, stops while a game is open over the town, and resumes after. The Volume
+button (under the map name) has sliders; N mutes music, M mutes everything. `#mute` in the URL keeps it silent.
+`npm run analyze -w packages/music -- --tracks clubGnome:high-rollers,... --wav samples/club` renders them to WAV.
+
 ## Controls
 
 - Walk: tap/click the ground, or WASD / arrow keys. Tap a building, cabinet or table to walk there and use it.
@@ -36,7 +52,7 @@ A game opens full screen over the town in a frame with a "← Back" bar; your gn
 `config.ts` (types, maps ids, game links, tuning), `maps.ts` (the four maps as data), `walk.ts` (pure walking rules),
 `world.ts` (three.js scene and camera), `avatars.ts` (gnome models, name tags, bubbles), `net.ts` (online),
 `hud.ts` (DOM interface), `account.ts` (sign-in and the guest card), `overlay.ts` (games in a frame),
-`achievements.ts`, `main.ts` (wiring). Plan: `docs/roadmaps/club-gnome.md`.
+`achievements.ts`, `music.ts` (area music), `main.ts` (wiring). Plan: `docs/roadmaps/club-gnome.md`.
 
 Buildings and walls are built in `world.ts` (they are terrain, far bigger than a prefab); everything you can see on
 the ground is a `@lawn/prefabs` prop, including the new `blackjack-table`.

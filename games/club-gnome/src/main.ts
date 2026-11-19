@@ -15,6 +15,7 @@ import { createAvatars } from './avatars';
 import { createNet } from './net';
 import { createHud } from './hud';
 import { createOverlay } from './overlay';
+import { createMusic } from './music';
 import { accountState, finishSignInIfReturning, goToAccount, showGuestPrompt } from './account';
 import { initAchievements, onChatSent, onCrowd, onEmoteSent, onOpenGame, onVisitMap } from './achievements';
 
@@ -57,6 +58,7 @@ const world = createWorld(canvas);
 const avatars = createAvatars(world, ui);
 const overlay = createOverlay(ui);
 initAchievements(ui);
+const music = createMusic();
 
 let mapId: MapId = 'town';
 const savedMap = store('session')?.getItem(STORAGE.map);
@@ -106,6 +108,7 @@ const hud = createHud(ui, {
     else goToAccount(false);
   },
   onCreator() {
+    music.pause();
     overlay.open(GAME_LINKS.creator, `Back to ${MAP_NAMES[mapId]}`);
   },
   onTravel(to) {
@@ -200,6 +203,10 @@ function refreshAccount(): void {
   hud.setAccount(a.enabled && !a.signedIn ? '👤 Guest' : `👤 ${myName}`);
 }
 
+const volumeBox = document.createElement('div');
+hud.addTopControl(volumeBox);
+music.mountButton(volumeBox);
+
 // ---------------------------------------------------------------- maps, portals, spots
 
 function enterMap(to: MapId, x: number, z: number): void {
@@ -223,6 +230,7 @@ function enterMap(to: MapId, x: number, z: number): void {
   hud.setMapName(MAP_NAMES[to]);
   if (from !== to) hud.system(`You walked into ${MAP_NAMES[to]}.`);
   onVisitMap(to);
+  music.setMap(to);
   refreshStatus();
 }
 
@@ -240,12 +248,14 @@ function useSpot(s: SpotDef): void {
   walker.target = null;
   walker.moving = false;
   hud.setVisible(false);
+  music.pause();
   overlay.open(GAME_LINKS[s.game], `Back to ${MAP_NAMES[mapId]}`);
   onOpenGame(s.game);
 }
 
 overlay.onClose(() => {
   hud.setVisible(true);
+  music.resume();
   last = performance.now();
 });
 
