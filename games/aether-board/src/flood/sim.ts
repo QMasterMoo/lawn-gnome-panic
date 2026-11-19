@@ -392,7 +392,9 @@ export function createFlood(world: World, seed = 1): Flood {
         if (loc) {
           const k0 = Math.round(loc.k) - Math.round(FLOOD.anchorBehind / C);
           const rows = Math.round((FLOOD.anchorBehind + FLOOD.anchorAhead) / C) + 3;
-          addToRun(r, loc.j / Math.max(1, r.nv - 1), q * FLOOD.anchorFlowScale, Math.floor(r.nv * FLOOD.anchorHalf), k0, rows);
+          // a steady carpet deep enough to float on, with the surge on top at a fraction of its usual size
+          const qa = (FLOOD.baseFlow + (q / dt - FLOOD.baseFlow) * FLOOD.anchorSurge) * FLOOD.anchorFlowScale * dt;
+          addToRun(r, loc.j / Math.max(1, r.nv - 1), qa, Math.floor(r.nv * FLOOD.anchorHalf), k0, rows);
           continue;
         }
       }

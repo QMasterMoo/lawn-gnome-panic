@@ -27,7 +27,9 @@ export const FLOOD = {
   anchorBehind: 16,
   anchorAhead: 16,
   /** The long spring spreads over many rows, so it gets more water. */
-  anchorFlowScale: 0.9,
+  anchorFlowScale: 3,
+  /** Share of a surge's extra flow the rider's spring carries. */
+  anchorSurge: 0.3,
   anchorHalf: 0.16,
   /** Depth (m) of the wet film a run starts with everywhere. */
   film: 0.15,
@@ -40,6 +42,12 @@ export const FLOOD = {
   // ---- the rider in water (flood/forces.ts)
   /** Water this deep (m) counts as water under the board. */
   minDepth: 0.08,
+  /** The board rides ON the water surface from this depth (m), blending in over the next floatDepth metres. */
+  floatDepth: 0.35,
+  /** The board sits this far below the surface (m). */
+  sink: 0.1,
+  /** The surface the board rides is tilted by the water's slope, capped at this rise over run. */
+  maxSurfaceSlope: 0.9,
   /** Deeper than this the board floats: carving grip is reduced. */
   deepDepth: 1.1,
   /** Ride with a surge: moving within this cosine of the flow, and the flow at least minFlow m/s, adds rideAccel. */

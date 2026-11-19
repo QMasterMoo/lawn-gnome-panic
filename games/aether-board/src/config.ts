@@ -302,6 +302,8 @@ export interface Player {
    * On the ground, W/S (lean) steer the balance instead of pushing and braking.
    */
   manual: { kind: 'nose' | 'tail'; balance: number; vel: number; t: number } | null;
+  /** 0..1: how much of the board is riding on water (Flood Run; always 0 elsewhere). Water lets go of grip. */
+  wet: number;
   /** Seconds a grab button has been held (any mode): landing with a grab held drops straight into a manual. */
   manualHoldT: number;
   // bail

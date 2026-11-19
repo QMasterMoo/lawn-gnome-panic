@@ -67,6 +67,8 @@ export function createFloodForces(flood: Flood, obstacles: Obstacles, stats: Flo
     const wet = ok && sample.depth >= FLOOD.minDepth && p.pos.y <= sample.surfaceY + 0.6;
     stats.depth = wet ? sample.depth : 0;
     stats.bonus = 0;
+    // how much of the board is on water: the ground modifier lifts it onto the surface over floatDepth..2*floatDepth
+    p.wet = wet ? Math.min(1, Math.max(0, (sample.depth - FLOOD.floatDepth * 0.5) / FLOOD.floatDepth)) : 0;
 
     let riding = false;
     if (wet && p.mode !== 'grind') {

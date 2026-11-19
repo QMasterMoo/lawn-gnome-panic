@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { createVolumeButton } from '@arcade/volume';
 import { ASSIST, SIM_HZ, type PhysEvent } from './config';
 import { generateWorld, type World } from './world';
-import { createPlayer, setExternalForces, stepPlayer } from './physics';
+import { createPlayer, setExternalForces, setGroundModifier, stepPlayer } from './physics';
 import { createCombo, createRecognizer } from './tricks';
 import { createInput } from './input';
 import { createChaseCam } from './camera';
@@ -27,6 +27,7 @@ import { FLOOD_HILL, FLOOD_SEED, newFloodStats } from './flood/types';
 import { createFlood } from './flood/sim';
 import { generateObstacles } from './flood/obstacles';
 import { createFloodForces } from './flood/forces';
+import { createWaterGround } from './flood/surface';
 import { createFloodView } from './flood/view';
 import { createFloodHud } from './flood/hud';
 
@@ -114,6 +115,7 @@ if (flood) {
   flood.focus(0);
   for (let i = 0; i < warm * 30; i++) flood.step(1 / 30);
 }
+if (flood) setGroundModifier(createWaterGround(flood));
 if (flood && obstacles) setExternalForces(createFloodForces(flood, obstacles, floodStats, () => flood.time));
 
 // ---------------------------------------------------------------- Descent
