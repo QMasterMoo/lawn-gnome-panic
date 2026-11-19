@@ -99,6 +99,16 @@ loose thread of the Tall House. The house belongs to the Tall Ones, and they are
 
 ## R-011
 
+**Question:** Club Gnome (a hub where the arcade's games have their doors) puts Gnome Blackjack inside a casino, the
+Gnomecino. Gnome Blackjack says it is a pub table. Which is it?
+**Ruling:** Both. Club Gnome is the Yard's town square, and its buildings are the front doors of the Yard's games. The
+Gnomecino is the town's casino; the Pub (`blackjack-pub`) is its card room, so every Gnomecino table is a pub table of
+gnomes. The High Rollers table is the same room with a room code.
+**Applies to:** the-yard, club-gnome, gnome-blackjack.  **Date:** 2026-11-19.
+**Why:** the town opens the real games; the pub keeps its banter and bar, the casino gets its neon.
+
+## R-012
+
 **Question:** Is Biscuit (Incregnomtal's giant dog) the same dog as Gnome Company's Giant Goofy Fetch Dog?
 **Ruling:** No. The Fetch Dog is apocrypha and never feeds back into canon (R-005). Biscuit is the Yard's own dog. Dogs are pets of the Tall Ones, so seeing one does not break the "nobody sees the Tall Ones" rule.
 **Applies to:** the-yard, incregnomtal.  **Date:** 2026-11-18.
