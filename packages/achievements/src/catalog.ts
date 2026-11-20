@@ -533,6 +533,49 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     target: 5,
     reward: { slot: 'neck', prefabId: 'wool-scarf', label: 'Wool Scarf' },
   },
+
+  // ---- GBA GJAM ----
+  {
+    id: 'jam-first-dunk',
+    game: 'gnome-jam',
+    gameTitle: 'GBA GJAM',
+    title: 'Boomshakalaka!',
+    description: 'Throw down your first slam dunk in the Gnomerena.',
+    reward: { slot: 'head', prefabId: 'gba-headband', label: 'GBA Sweatband' },
+  },
+  {
+    id: 'jam-on-fire',
+    game: 'gnome-jam',
+    gameTitle: 'GBA GJAM',
+    title: "He's On Fire!",
+    description: 'Sink 3 consecutive baskets with one gnome to catch fire.',
+    reward: { slot: 'hand', prefabId: 'gba-foam-finger', label: 'GBA #1 Foam Finger' },
+  },
+  {
+    id: 'jam-downtown',
+    game: 'gnome-jam',
+    gameTitle: 'GBA GJAM',
+    title: 'From Downtown!',
+    description: 'Drain 5 three-pointers across your GBA GJAM career.',
+    target: 5,
+    reward: { slot: 'neck', prefabId: 'gba-whistle', label: 'Referee Whistle' },
+  },
+  {
+    id: 'jam-first-win',
+    game: 'gnome-jam',
+    gameTitle: 'GBA GJAM',
+    title: 'Tip-Off Victor',
+    description: 'Win a 2-on-2 match in the Gnomerena.',
+    reward: { slot: 'back', prefabId: 'gba-gym-bag', label: 'GBA Team Duffel' },
+  },
+  {
+    id: 'jam-champion',
+    game: 'gnome-jam',
+    gameTitle: 'GBA GJAM',
+    title: 'GBA Finals Champion',
+    description: 'Win the Top-6 Knockout Tournament to lift the Golden Acorn Trophy.',
+    reward: { slot: 'hand', prefabId: 'gba-trophy', label: 'Golden Acorn Trophy' },
+  },
 ];
 
 const BY_ID = new Map(ACHIEVEMENTS.map((a) => [a.id, a]));
