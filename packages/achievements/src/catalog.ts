@@ -458,6 +458,11 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     title: 'Crash Test Gnome', description: 'Send 10 gnomes tumbling with a speeding mower.', target: 10,
     emote: { emoteId: 'cheer', label: 'Cheer', icon: '📣' },
   },
+  {
+    id: 'gta-drifter', game: 'gnome-theft-auto', gameTitle: 'Gnome Theft Auto',
+    title: 'Sideways Gnome', description: 'Hold a slide for a full second in any ground vehicle: tail out, nose angled, still going.',
+    reward: { slot: 'neck', prefabId: 'honeycomb-charm', label: 'Honeycomb Charm' },
+  },
   // ---- Cooking Gnoma ----
   {
     id: 'kitchen-first-cake',
