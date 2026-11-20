@@ -179,7 +179,16 @@ export interface SeasonState {
   bracket: PlayoffBracket | null;
 }
 
-export type DunkStyle = 'tomahawk' | 'helicopter360' | 'frontflip' | 'windmill' | 'meteor';
+export type DunkStyle =
+  | 'tomahawk'
+  | 'helicopter360'
+  | 'frontflip'
+  | 'windmill'
+  | 'meteor'
+  | 'spin720'
+  | 'alleyOop'
+  | 'backboard'
+  | 'partnerLaunch';
 
 export interface AnnouncerEvent {
   text: string;

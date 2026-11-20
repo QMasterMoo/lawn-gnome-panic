@@ -547,7 +547,7 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   // ---- GBA GJAM ----
   {
     id: 'jam-first-dunk',
-    game: 'gnome-jam',
+    game: 'gba-gjam',
     gameTitle: 'GBA GJAM',
     title: 'Boomshakalaka!',
     description: 'Throw down your first slam dunk in the Gnomerena.',
@@ -555,7 +555,7 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   },
   {
     id: 'jam-on-fire',
-    game: 'gnome-jam',
+    game: 'gba-gjam',
     gameTitle: 'GBA GJAM',
     title: "He's On Fire!",
     description: 'Sink 3 consecutive baskets with one gnome to catch fire.',
@@ -563,7 +563,7 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   },
   {
     id: 'jam-downtown',
-    game: 'gnome-jam',
+    game: 'gba-gjam',
     gameTitle: 'GBA GJAM',
     title: 'From Downtown!',
     description: 'Drain 5 three-pointers across your GBA GJAM career.',
@@ -572,7 +572,7 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   },
   {
     id: 'jam-first-win',
-    game: 'gnome-jam',
+    game: 'gba-gjam',
     gameTitle: 'GBA GJAM',
     title: 'Tip-Off Victor',
     description: 'Win a 2-on-2 match in the Gnomerena.',
@@ -580,7 +580,7 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   },
   {
     id: 'jam-champion',
-    game: 'gnome-jam',
+    game: 'gba-gjam',
     gameTitle: 'GBA GJAM',
     title: 'GBA Finals Champion',
     description: 'Win the Top-6 Knockout Tournament to lift the Golden Acorn Trophy.',

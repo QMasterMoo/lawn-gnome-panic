@@ -32,6 +32,7 @@ export interface DunkState {
   duration: number;
   peakY: number;
   scored: boolean;
+  launcherIdx?: number;
 }
 
 export interface SimPlayer {
@@ -63,6 +64,8 @@ export interface SimBall {
   shooter: number | null;
   passTarget: number | null;
   isThreeAttempt: boolean;
+  isAlleyOop: boolean;
+  isBackboardLob: boolean;
   willScore: boolean;
   shotStartX: number;
   shotStartZ: number;
@@ -193,6 +196,8 @@ export class JamSimulation {
       shooter: null,
       passTarget: null,
       isThreeAttempt: false,
+      isAlleyOop: false,
+      isBackboardLob: false,
       willScore: false,
       shotStartX: 0,
       shotStartZ: 0,
@@ -227,6 +232,8 @@ export class JamSimulation {
     this.ball.vel.set(0, 0, 0);
     this.ball.carrier = null;
     this.ball.mode = 'loose';
+    this.ball.isAlleyOop = false;
+    this.ball.isBackboardLob = false;
     this.ball.onFire = false;
     this.shotClock = SHOT_CLOCK_MAX;
     this.phase = 'tipoff';
@@ -277,6 +284,8 @@ export class JamSimulation {
     this.ball.mode = 'held';
     this.ball.shooter = null;
     this.ball.passTarget = null;
+    this.ball.isAlleyOop = false;
+    this.ball.isBackboardLob = false;
     this.ball.pickupLock = 0.25;
     const p = this.players[playerIdx];
     this.ball.lastTouchTeam = p.team;
@@ -552,6 +561,19 @@ export class JamSimulation {
           (p.profile.stats.dunk / 10) * 0.24 +
           (usingTurbo ? this.bal.dunkTurboReachBonus : 0) +
           (p.onFire ? this.bal.dunkFireReachBonus : 0);
+        const mateIdx = p.team === 0 ? (p.index === 0 ? 1 : 0) : p.index === 2 ? 3 : 2;
+        const mate = this.players[mateIdx];
+        const mateClose = mate.grounded && mate.stunTimer <= 0 && p.pos.distanceTo(mate.pos) < 2.3;
+
+        if (
+          usingTurbo &&
+          mateClose &&
+          distToHoop <= 8.2 &&
+          (distToHoop > dunkReach || (p.pos.distanceTo(mate.pos) < 1.8 && Math.random() < 0.55))
+        ) {
+          this.startPartnerLaunchDunk(p, mate);
+          return;
+        }
 
         if (distToHoop <= dunkReach) {
           this.startDunk(p, usingTurbo);
@@ -582,13 +604,38 @@ export class JamSimulation {
       }
 
       if (inp.passPressed && !p.dunk) {
-        this.throwPass(p);
+        this.throwPass(p, usingTurbo);
       }
     } else if (teamHasBall) {
-      // OFF-BALL OFFENSE: Jump for Alley-Oop, or call for pass!
+      // OFF-BALL OFFENSE: Jump for Alley-Oop, or Partner-Launch the ball carrier!
+      const carrier = this.ball.carrier !== null ? this.players[this.ball.carrier] : null;
+      const hx = this.targetHoopX(p.team);
+      if (
+        usingTurbo &&
+        inp.passPressed &&
+        p.grounded &&
+        carrier &&
+        carrier.grounded &&
+        !carrier.dunk &&
+        p.pos.distanceTo(carrier.pos) < 2.3 &&
+        Math.hypot(hx - carrier.pos.x, carrier.pos.z) <= 8.2
+      ) {
+        this.startPartnerLaunchDunk(carrier, p);
+        return;
+      }
+
       if (inp.shootPressed && p.grounded) {
         p.grounded = false;
-        p.vel.y = 8.4 + (usingTurbo ? 1.0 : 0);
+        p.vel.y = 8.8 + (usingTurbo ? 1.0 : 0);
+        const rimX = hx + (p.team === 0 ? -0.36 : 0.36);
+        const distHoop = Math.hypot(rimX - p.pos.x, p.pos.z);
+        if (distHoop < 6.5 && distHoop > 0.4) {
+          // Drift toward the rim for an alley-oop catch!
+          const dx = (rimX - p.pos.x) / distHoop;
+          const dz = -p.pos.z / distHoop;
+          p.vel.x = dx * Math.min(5.2, distHoop * 1.4);
+          p.vel.z = dz * Math.min(5.2, distHoop * 1.4);
+        }
       }
     } else {
       // DEFENSE / LOOSE BALL: Block/Rebound or Steal/Shove!
@@ -604,27 +651,61 @@ export class JamSimulation {
     }
   }
 
-  private startDunk(p: SimPlayer, usingTurbo: boolean): void {
+  private startPartnerLaunchDunk(dunker: SimPlayer, launcher: SimPlayer): void {
+    const hx = this.targetHoopX(dunker.team);
+    launcher.shoveTimer = 0.45;
+    launcher.vel.set(0, 0, 0);
+    launcher.facing = Math.atan2(hx - launcher.pos.x, -launcher.pos.z);
+    if (!launcher.onFire) launcher.turbo = Math.max(0, launcher.turbo - 20);
+    this.cb.onSound('shove');
+    this.cb.onBurst(dunker.pos.clone().add(new THREE.Vector3(0, 0.4, 0)), 'dust');
+    this.cb.onBurst(dunker.pos.clone().add(new THREE.Vector3(0, 0.7, 0)), 'confetti');
+    this.cb.onCameraPunch(0.35);
+    this.startDunk(dunker, true, 'partnerLaunch', launcher.index);
+  }
+
+  private startDunk(
+    p: SimPlayer,
+    usingTurbo: boolean,
+    forcedStyle?: DunkStyle,
+    launcherIdx?: number,
+  ): void {
     const hx = this.targetHoopX(p.team);
     const rimX = hx + (p.team === 0 ? -0.36 : 0.36);
     const dist = Math.hypot(rimX - p.pos.x, p.pos.z);
 
     // Choose a fun NBA Jam dunk style!
-    let style: DunkStyle = 'tomahawk';
-    if (p.onFire) {
-      style = 'meteor';
-    } else if (dist > 3.6 || (usingTurbo && Math.random() < 0.45)) {
-      const flashy: DunkStyle[] = ['frontflip', 'helicopter360', 'windmill'];
-      style = flashy[Math.floor(Math.random() * flashy.length)];
-    } else {
-      const standard: DunkStyle[] = ['tomahawk', 'windmill', 'helicopter360'];
-      style = standard[Math.floor(Math.random() * standard.length)];
+    let style: DunkStyle = forcedStyle ?? 'tomahawk';
+    if (!forcedStyle) {
+      if (p.onFire) {
+        style = 'meteor';
+      } else if (dist > 3.6 || (usingTurbo && Math.random() < 0.55)) {
+        const flashy: DunkStyle[] = ['frontflip', 'helicopter360', 'windmill', 'spin720'];
+        style = flashy[Math.floor(Math.random() * flashy.length)];
+      } else {
+        const standard: DunkStyle[] = ['tomahawk', 'windmill', 'helicopter360', 'spin720'];
+        style = standard[Math.floor(Math.random() * standard.length)];
+      }
     }
 
-    const dur = Math.max(0.46, Math.min(0.78, 0.36 + dist * 0.075));
-    const peakY = style === 'meteor' ? 4.4 : style === 'frontflip' ? 4.0 : 3.55;
+    const dur =
+      style === 'partnerLaunch'
+        ? Math.max(0.62, Math.min(0.95, 0.48 + dist * 0.065))
+        : Math.max(0.46, Math.min(0.78, 0.36 + dist * 0.075));
+    const peakY =
+      style === 'partnerLaunch'
+        ? 5.4
+        : style === 'meteor'
+          ? 4.4
+          : style === 'frontflip' || style === 'spin720'
+            ? 4.1
+            : style === 'backboard' || style === 'alleyOop'
+              ? 3.85
+              : 3.55;
 
     p.grounded = false;
+    p.isShooting = false;
+    p.shootHold = 0;
     p.facing = Math.atan2(rimX - p.pos.x, -p.pos.z);
     p.dunk = {
       style,
@@ -636,6 +717,7 @@ export class JamSimulation {
       duration: dur,
       peakY,
       scored: false,
+      launcherIdx,
     };
 
     if (!p.onFire && usingTurbo) p.turbo = Math.max(0, p.turbo - 18);
@@ -646,14 +728,29 @@ export class JamSimulation {
       frontflip: 'CANNONBALL FLIP!',
       windmill: 'WINDMILL SLAM!',
       meteor: 'METEOR FLAME DUNK!',
+      spin720: 'TORNADO 720° SLAM!',
+      alleyOop: 'ALLEY-OOP SLAM!',
+      backboard: 'OFF THE GLASS SLAM!',
+      partnerLaunch: 'PARTNER LAUNCH DUNK!!',
     };
+    const subtext =
+      style === 'partnerLaunch' && launcherIdx !== undefined
+        ? `${this.players[launcherIdx].profile.name} CATAPULTS ${p.profile.name}!`
+        : p.profile.name.toUpperCase();
     this.cb.onAnnounce({
       text: callouts[style],
-      subtext: p.profile.name.toUpperCase(),
-      color: style === 'meteor' ? '#ff6a00' : '#ffd21f',
+      subtext,
+      color:
+        style === 'meteor'
+          ? '#ff6a00'
+          : style === 'partnerLaunch'
+            ? '#ff44ff'
+            : style === 'backboard' || style === 'alleyOop'
+              ? '#44ffcc'
+              : '#ffd21f',
       big: true,
     });
-    this.excitement = Math.min(1, this.excitement + 0.45);
+    this.excitement = Math.min(1, this.excitement + (style === 'partnerLaunch' ? 0.65 : 0.45));
   }
 
   private stepDunk(p: SimPlayer, dt: number): void {
@@ -756,31 +853,94 @@ export class JamSimulation {
     this.cb.onSound('pass');
   }
 
-  private throwPass(p: SimPlayer): void {
+  private throwPass(p: SimPlayer, usingTurbo = false): void {
     const mateIdx = p.team === 0 ? (p.index === 0 ? 1 : 0) : p.index === 2 ? 3 : 2;
     const mate = this.players[mateIdx];
 
-    // Check if teammate is airborne near the hoop -> ALLEY-OOP!
     const hx = this.targetHoopX(p.team);
-    const mateDistHoop = Math.hypot(hx - mate.pos.x, mate.pos.z);
-    const isAlleyOop = !mate.grounded && mateDistHoop < 4.5;
+    const rimX = hx + (p.team === 0 ? -0.36 : 0.36);
+    const myDistHoop = Math.hypot(rimX - p.pos.x, p.pos.z);
+    const mateDistHoop = Math.hypot(rimX - mate.pos.x, mate.pos.z);
+
+    // Self-lob off the backboard when driving/airborne near the hoop with Turbo+Pass (or airborne Pass)
+    if (
+      (usingTurbo || !p.grounded) &&
+      myDistHoop < 6.8 &&
+      (mateDistHoop > myDistHoop + 0.6 || mateDistHoop > 6.5)
+    ) {
+      this.throwBackboardLob(p);
+      return;
+    }
+
+    // Alley-oop lob to teammate if they're airborne near hoop OR we hold Turbo+Pass while they're in range!
+    const isAlleyOop = (!mate.grounded && mateDistHoop < 5.8) || (usingTurbo && mateDistHoop < 7.2);
+
+    if (isAlleyOop && mate.grounded) {
+      // Launch teammate toward the rim to meet the alley-oop!
+      mate.grounded = false;
+      mate.vel.y = 8.6;
+      const dx = rimX - mate.pos.x;
+      const dz = -mate.pos.z;
+      const d = Math.max(0.1, Math.hypot(dx, dz));
+      mate.vel.x = (dx / d) * Math.min(6.4, d * 1.8);
+      mate.vel.z = (dz / d) * Math.min(6.4, d * 1.8);
+    }
 
     this.ball.carrier = null;
     this.ball.mode = 'pass';
     this.ball.passTarget = mateIdx;
     this.ball.shooter = p.index;
+    this.ball.isAlleyOop = isAlleyOop;
+    this.ball.isBackboardLob = false;
     this.ball.startPos.copy(this.ball.pos);
     this.ball.endPos.set(mate.pos.x, mate.pos.y + (isAlleyOop ? 1.5 : 0.9), mate.pos.z);
     const dist = this.ball.startPos.distanceTo(this.ball.endPos);
     this.ball.flightT = 0;
-    this.ball.flightDur = Math.max(0.2, Math.min(0.55, dist / 18));
-    this.ball.arcPeak = Math.max(this.ball.startPos.y, this.ball.endPos.y) + (isAlleyOop ? 1.8 : 0.45);
+    this.ball.flightDur = isAlleyOop
+      ? Math.max(0.28, Math.min(0.6, dist / 15))
+      : Math.max(0.2, Math.min(0.55, dist / 18));
+    this.ball.arcPeak = Math.max(this.ball.startPos.y, this.ball.endPos.y) + (isAlleyOop ? 1.9 : 0.45);
     this.ball.lastTouchTeam = p.team;
     this.cb.onSound('pass');
 
     if (isAlleyOop) {
       this.cb.onAnnounce({ text: 'ALLEY-OOP!', color: '#44ffcc', big: true });
     }
+  }
+
+  private throwBackboardLob(p: SimPlayer): void {
+    const side = p.team === 0 ? 1 : -1;
+    const hx = this.targetHoopX(p.team);
+    const boardX = side * (HOOP_X + 0.22);
+
+    this.ball.carrier = null;
+    this.ball.mode = 'pass';
+    this.ball.passTarget = p.index;
+    this.ball.shooter = p.index;
+    this.ball.isAlleyOop = false;
+    this.ball.isBackboardLob = true;
+    this.ball.startPos.copy(this.ball.pos);
+    this.ball.endPos.set(boardX, HOOP_Y + 0.35, 0);
+    const dist = this.ball.startPos.distanceTo(this.ball.endPos);
+    this.ball.flightT = 0;
+    this.ball.flightDur = Math.max(0.24, Math.min(0.45, dist / 16));
+    this.ball.arcPeak = Math.max(this.ball.startPos.y, HOOP_Y + 0.65) + 0.3;
+    this.ball.lastTouchTeam = p.team;
+
+    if (p.grounded) {
+      p.grounded = false;
+      p.vel.y = 10.2;
+    }
+    const targetX = hx - side * 1.15;
+    const dx = targetX - p.pos.x;
+    const dz = -p.pos.z;
+    const d = Math.max(0.1, Math.hypot(dx, dz));
+    p.vel.x = (dx / d) * Math.min(7.2, d * 2.3);
+    p.vel.z = (dz / d) * Math.min(7.2, d * 2.3);
+    p.facing = Math.atan2(hx - p.pos.x, -p.pos.z);
+
+    this.cb.onSound('pass');
+    this.cb.onAnnounce({ text: 'OFF THE GLASS!', color: '#ffdd44', big: true });
   }
 
   private tryBlockShot(p: SimPlayer): void {
@@ -903,18 +1063,33 @@ export class JamSimulation {
 
     if (b.mode === 'pass' && b.passTarget !== null) {
       const target = this.players[b.passTarget];
-      b.endPos.set(target.pos.x, target.pos.y + 0.95, target.pos.z);
+      if (!b.isBackboardLob) {
+        b.endPos.set(target.pos.x, target.pos.y + (b.isAlleyOop ? 1.3 : 0.95), target.pos.z);
+      }
       b.flightT += dt;
       const u = Math.min(1, b.flightT / b.flightDur);
       b.pos.lerpVectors(b.startPos, b.endPos, u);
       b.pos.y += Math.sin(u * Math.PI) * (b.arcPeak - Math.max(b.startPos.y, b.endPos.y));
 
       if (u >= 1) {
+        if (b.isBackboardLob) {
+          // Ball smacks the backboard and rebounds into the air for a spike dunk!
+          const side: -1 | 1 = b.endPos.x >= 0 ? 1 : -1;
+          b.mode = 'loose';
+          b.isBackboardLob = false;
+          b.pickupLock = 0.02;
+          b.vel.set(-side * 4.2, 0.8, 0);
+          this.cb.onSound('clang');
+          this.cb.onRimShake(side === 1 ? 'right' : 'left', 0.45);
+          this.cb.onBurst(b.pos.clone(), 'dust');
+          return;
+        }
+        const wasAlleyOop = b.isAlleyOop;
         this.giveBallTo(b.passTarget);
-        // If teammate caught it airborne near the hoop, auto-trigger Alley-Oop Dunk!
+        // If teammate caught it airborne near the hoop (or on an alley-oop lob), auto-trigger Alley-Oop Dunk!
         const hx = this.targetHoopX(target.team);
-        if (!target.grounded && Math.hypot(hx - target.pos.x, target.pos.z) < 4.8) {
-          this.startDunk(target, true);
+        if ((!target.grounded || wasAlleyOop) && Math.hypot(hx - target.pos.x, target.pos.z) < 5.8) {
+          this.startDunk(target, true, 'alleyOop');
         }
       }
       return;
@@ -942,13 +1117,19 @@ export class JamSimulation {
           }
           this.scoreBasket(shooter, pts, false);
         } else {
-          // Rim clang -> loose rebound!
+          // Rim clang or backboard rebound -> loose ball!
+          const side: -1 | 1 = shooter.team === 0 ? 1 : -1;
           this.cb.onSound('clang');
-          this.cb.onRimShake(shooter.team === 0 ? 'right' : 'left', 0.5);
+          this.cb.onRimShake(side === 1 ? 'right' : 'left', 0.5);
           b.mode = 'loose';
-          b.pickupLock = 0.2;
-          const kickDir = shooter.team === 0 ? -1 : 1;
-          b.vel.set(kickDir * (2.5 + Math.random() * 3.5), 4.2 + Math.random() * 2.2, (Math.random() - 0.5) * 4.5);
+          b.pickupLock = 0.16;
+          if (Math.random() < 0.45) {
+            // Bank hard off the backboard for a high rebound!
+            b.pos.set(side * (HOOP_X + 0.15), HOOP_Y + 0.45, (Math.random() - 0.5) * 0.4);
+            b.vel.set(-side * (3.0 + Math.random() * 2.6), 3.6 + Math.random() * 1.8, (Math.random() - 0.5) * 3.2);
+          } else {
+            b.vel.set(-side * (2.5 + Math.random() * 3.5), 4.2 + Math.random() * 2.2, (Math.random() - 0.5) * 4.5);
+          }
         }
       }
       return;
@@ -958,6 +1139,7 @@ export class JamSimulation {
     if (b.mode === 'loose') {
       b.vel.y -= GRAVITY * 0.8 * dt;
       b.pos.addScaledVector(b.vel, dt);
+      this.collideBackboards(b);
       if (b.pos.y < 0.16) {
         b.pos.y = 0.16;
         if (Math.abs(b.vel.y) > 1.2) {
@@ -985,13 +1167,20 @@ export class JamSimulation {
         for (const p of this.players) {
           if (p.stunTimer > 0) continue;
           const d = Math.hypot(p.pos.x - b.pos.x, p.pos.z - b.pos.z);
-          const dy = Math.abs(p.pos.y + 0.7 - b.pos.y);
-          if (d < 0.95 && dy < 1.2) {
+          const dy = Math.abs(p.pos.y + 0.85 - b.pos.y);
+          const catchR = !p.grounded ? 1.65 : 0.95;
+          const catchY = !p.grounded ? 1.8 : 1.2;
+          if (d < catchR && dy < catchY) {
             if (b.lastTouchTeam !== p.team || b.shooter !== null) {
               p.box.rebounds++;
             }
             this.giveBallTo(p.index);
             this.shotClock = SHOT_CLOCK_MAX;
+            // Airborne catch of a high rebound near offensive hoop -> Putback / Backboard Spike Dunk!
+            const hx = this.targetHoopX(p.team);
+            if (!p.grounded && p.pos.y > 0.6 && b.pos.y > 1.5 && Math.hypot(hx - p.pos.x, p.pos.z) < 4.5) {
+              this.startDunk(p, true, 'backboard');
+            }
             break;
           }
         }
@@ -1123,6 +1312,33 @@ export class JamSimulation {
   private emitAchievement(kind: 'dunk' | 'three' | 'fire' | 'win'): void {
     if (this.config.opponentMode === 'botvsbot') return;
     this.cb.onAchievement(kind);
+  }
+
+  private collideBackboards(b: SimBall): void {
+    for (const side of [-1, 1] as const) {
+      const boardX = side * (HOOP_X + 0.36);
+      if (
+        Math.abs(b.pos.x - boardX) < 0.24 &&
+        b.pos.y >= 2.55 &&
+        b.pos.y <= 4.15 &&
+        Math.abs(b.pos.z) <= 1.0
+      ) {
+        const approachingFront = Math.sign(b.vel.x) === side || Math.abs(b.vel.x) < 0.8;
+        if (approachingFront) {
+          b.pos.x = boardX - side * 0.25;
+          b.vel.x = -side * Math.max(2.2, Math.abs(b.vel.x) * 0.72);
+        } else {
+          b.pos.x = boardX + side * 0.25;
+          b.vel.x = side * Math.max(1.8, Math.abs(b.vel.x) * 0.65);
+        }
+        b.vel.y *= 0.82;
+        b.vel.z *= 0.85;
+        this.cb.onSound('clang');
+        this.cb.onRimShake(side === 1 ? 'right' : 'left', 0.35);
+        this.cb.onBurst(b.pos.clone(), 'dust');
+        break;
+      }
+    }
   }
 
   private clampToCourt(pos: THREE.Vector3): void {

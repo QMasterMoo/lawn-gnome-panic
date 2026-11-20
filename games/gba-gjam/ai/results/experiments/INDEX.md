@@ -1,6 +1,6 @@
 # GBA GJAM — Bot Strategy Experiments Index
 
-Executed **15 experiments** across **Unrestricted (60Hz)** and **Human-Fair (150ms)** leagues using the deterministic evaluation harness (`npm run eval:experiments -w games/gnome-jam`).
+Executed **15 experiments** across **Unrestricted (60Hz)** and **Human-Fair (150ms)** leagues using the deterministic evaluation harness (`npm run eval:experiments -w games/gba-gjam`).
 
 | # | Experiment | Matches | Summary | Report |
 |---|---|---:|---|---|
