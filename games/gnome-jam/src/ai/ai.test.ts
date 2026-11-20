@@ -1,13 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   captureGameState,
+  createAlleyOopExpressBot,
+  createArcArchitectBot,
+  createBotFromAssignment,
+  createChampionV1Bot,
   createClassicBot,
+  createFireFeederBot,
+  createHybridAceBot,
+  createLockdownCounterBot,
+  createShoveHoundBot,
   normalizeBotInput,
   RemoteBotController,
   validateBotScriptSyntax,
   type BotController,
+  type BotPresetId,
   type GameStateSnapshot,
 } from './index';
+import { runSeries, simulateMatch, sweepParameters, wrapWithReactionCadence } from './eval';
 import { JamSimulation, type SimCallbacks } from '../sim';
 import { PRO_TEAMS } from '../teams';
 import type { MatchConfig } from '../types';
@@ -166,5 +176,136 @@ describe('GBA GJAM Bot AI framework', () => {
     vi.unstubAllGlobals();
     remote.dispose();
     sim.dispose();
+  });
+
+  it('creates all built-in strategic bot presets and produces valid normalized inputs', () => {
+    const presets: BotPresetId[] = [
+      'classic',
+      'shove-hound',
+      'arc-architect',
+      'fire-feeder',
+      'alley-oop-express',
+      'lockdown-counter',
+      'hybrid-ace',
+      'champion-v1',
+    ];
+    const sim = new JamSimulation(makeConfig(), makeNoopCallbacks());
+    const idle = normalizeBotInput(null);
+    for (let i = 0; i < 25; i++) sim.step(0.05, idle, idle);
+    const snap = sim.getSnapshot();
+
+    for (const preset of presets) {
+      const bot = createBotFromAssignment({ preset });
+      const out = normalizeBotInput(
+        bot.decide(snap, {
+          playerIndex: 0,
+          role: 'solo',
+          difficulty: 'pro',
+          dt: 1 / 60,
+          humanInput: null,
+        }),
+      );
+      expect(Math.hypot(out.moveX, out.moveZ)).toBeLessThanOrEqual(1.0001);
+      bot.dispose?.();
+    }
+    sim.dispose();
+  });
+
+  it('headless evaluation harness is deterministic for a fixed seed and side-swaps in series', () => {
+    const botA = { id: 'shove-hound', name: 'Shove Hound', create: () => createShoveHoundBot() };
+    const botB = { id: 'hybrid-ace', name: 'Hybrid Ace', create: () => createHybridAceBot() };
+
+    const m1 = simulateMatch({ homeBot: botA, awayBot: botB, quarterSeconds: 15, seed: 4242 });
+    const m2 = simulateMatch({ homeBot: botA, awayBot: botB, quarterSeconds: 15, seed: 4242 });
+
+    expect(m1.homeScore).toBe(m2.homeScore);
+    expect(m1.awayScore).toBe(m2.awayScore);
+    expect(m1.ticks).toBe(m2.ticks);
+    expect(m1.home.steals).toBe(m2.home.steals);
+
+    const series = runSeries(botA, botB, { games: 2, quarterSeconds: 15, baseSeed: 777 });
+    expect(series.matches).toHaveLength(2);
+    expect(series.matches[0].homeBotId).toBe('shove-hound');
+    expect(series.matches[1].homeBotId).toBe('hybrid-ace');
+    expect(series.botA.games).toBe(2);
+    expect(series.botB.games).toBe(2);
+  });
+
+  it('all new bot factories instantiate cleanly with distinct ids', () => {
+    const bots = [
+      createShoveHoundBot(),
+      createArcArchitectBot(),
+      createFireFeederBot(),
+      createAlleyOopExpressBot(),
+      createLockdownCounterBot(),
+      createHybridAceBot(),
+      createChampionV1Bot(),
+    ];
+    const ids = new Set(bots.map((b) => b.id));
+    expect(ids.size).toBe(bots.length);
+  });
+
+  it('tracks possession telemetry, median/IQR diff, 150ms human-fair cadence, and parameter sweeps', () => {
+    const botA = { id: 'shove-hound', name: 'Shove Hound', create: () => createShoveHoundBot() };
+    const botB = { id: 'hybrid-ace', name: 'Hybrid Ace', create: () => createHybridAceBot() };
+
+    // 1. Reaction cadence wrapper holds continuous move and clears edge pulses between decision ticks
+    let calls = 0;
+    const pulseBot: BotController = {
+      id: 'pulse',
+      name: 'Pulse',
+      decide() {
+        calls++;
+        return { moveX: 1, turbo: true, passPressed: true };
+      },
+    };
+    const wrapped = wrapWithReactionCadence(pulseBot, 3);
+    const sim = new JamSimulation(makeConfig(), makeNoopCallbacks());
+    const snap = sim.getSnapshot();
+    const ctx = { playerIndex: 0, role: 'solo' as const, difficulty: 'pro' as const, dt: 1 / 60, humanInput: null };
+    const r1 = wrapped.decide(snap, ctx);
+    const r2 = wrapped.decide(snap, ctx);
+    const r3 = wrapped.decide(snap, ctx);
+    const r4 = wrapped.decide(snap, ctx);
+    expect(calls).toBe(2);
+    expect(r1.passPressed).toBe(true);
+    expect(r2.passPressed).toBeUndefined();
+    expect(r2.moveX).toBe(1);
+    expect(r3.moveX).toBe(1);
+    expect(r4.passPressed).toBe(true);
+    sim.dispose();
+
+    // 2. Possession telemetry + median/IQR + Human-Fair 150ms series
+    const fairSeries = runSeries(botA, botB, {
+      games: 2,
+      quarterSeconds: 15,
+      baseSeed: 901,
+      decisionCadenceMs: 150,
+    });
+    expect(fairSeries.matches[0].decisionCadenceMs).toBe(150);
+    expect(fairSeries.botA.avgPossessions).toBeGreaterThan(0);
+    expect(fairSeries.botA.ppp).toBeGreaterThanOrEqual(0);
+    expect(fairSeries.botA.iqrDiff[0]).toBeLessThanOrEqual(fairSeries.botA.iqrDiff[1]);
+    expect(fairSeries.botA.avgShovesSuffered).toBeCloseTo(fairSeries.botB.avgShoveTurnovers, 5);
+
+    // 3. Automated parameter sweep returns ranked candidates
+    const sweep = sweepParameters({
+      candidates: [
+        { label: 'passive', params: 'passive' as const },
+        { label: 'relentless', params: 'relentless-shove' as const },
+      ],
+      createBot: (mode, label) => ({
+        id: `sweep-${label}`,
+        name: label,
+        create: () => {
+          const inner = createHybridAceBot({ defenseMode: mode });
+          return { id: `sweep-${label}`, name: label, decide: (s, c) => inner.decide(s, c) };
+        },
+      }),
+      opponents: [botB],
+      series: { games: 2, quarterSeconds: 15, baseSeed: 950 },
+    });
+    expect(sweep).toHaveLength(2);
+    expect(sweep[0].stats.games).toBe(2);
   });
 });
