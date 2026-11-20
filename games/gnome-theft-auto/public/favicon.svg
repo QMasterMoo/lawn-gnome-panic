@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="gta" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c026d3" />
+      <stop offset="60%" stop-color="#f97316" />
+      <stop offset="100%" stop-color="#facc15" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#gta)" />
+  <!-- Skyline silhouette -->
+  <path d="M0 44h10v-8h8v8h6v-12h10v12h8v-6h10v6h12v6a14 14 0 0 1-14 14H14A14 14 0 0 1 0 50v-6z" fill="#1e1b4b" />
+  <!-- Bold wanted star -->
+  <polygon points="32,9 37.5,21 51,22.5 41,31.5 43.5,45 32,38.5 20.5,45 23,31.5 13,22.5 26.5,21" fill="#fde047" stroke="#1e1b4b" stroke-width="2.5" stroke-linejoin="round" />
+</svg>

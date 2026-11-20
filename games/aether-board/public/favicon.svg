@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#sky)" />
+  <circle cx="16" cy="48" r="7" fill="#e0f2fe" opacity="0.85" />
+  <circle cx="24" cy="50" r="6" fill="#e0f2fe" opacity="0.85" />
+  <circle cx="50" cy="18" r="6" fill="#e0f2fe" opacity="0.7" />
+  <!-- Floating island -->
+  <path d="M14 36h36l-8 14-10 6-10-6z" fill="#8b5a2b" />
+  <path d="M12 36c6-5 34-5 40 0-6 4-34 4-40 0z" fill="#4ade80" />
+  <!-- Snowboard carving across -->
+  <g transform="rotate(-24 32 28)">
+    <rect x="12" y="22" width="40" height="12" rx="6" fill="#f97316" stroke="#fff" stroke-width="2" />
+    <path d="M22 22h8v12h-8z" fill="#fbbf24" />
+    <circle cx="24" cy="28" r="2.2" fill="#1e293b" />
+    <circle cx="40" cy="28" r="2.2" fill="#1e293b" />
+  </g>
+</svg>

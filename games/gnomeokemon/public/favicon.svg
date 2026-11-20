@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#ffffff" />
+  <path d="M14 0h36a14 14 0 0 1 14 14v18H0V14A14 14 0 0 1 14 0z" fill="#dc2626" />
+  <rect x="0" y="29" width="64" height="6" fill="#18181b" />
+  <!-- Camera lens -->
+  <circle cx="32" cy="32" r="15" fill="#18181b" stroke="#f8fafc" stroke-width="3" />
+  <circle cx="32" cy="32" r="9.5" fill="#0ea5e9" />
+  <circle cx="32" cy="32" r="5" fill="#0c4a6e" />
+  <circle cx="28.5" cy="28.5" r="2.6" fill="#ffffff" />
+</svg>

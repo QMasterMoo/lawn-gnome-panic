@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#1c1917" />
+  <!-- Flashlight cone -->
+  <polygon points="10,54 34,8 58,28" fill="#fbbf24" opacity="0.22" />
+  <polygon points="12,52 38,14 54,28" fill="#fde047" opacity="0.28" />
+  <!-- Industrial visor / glowing eyes in the dark -->
+  <path d="M22 38L36 14l14 24c-5 2-9 2.5-14 2.5S27 40 22 38z" fill="#b91c1c" />
+  <circle cx="31" cy="45" r="3" fill="#4ade80" />
+  <circle cx="41" cy="45" r="3" fill="#4ade80" />
+  <!-- Flashlight handle -->
+  <rect x="8" y="46" width="12" height="7" rx="2" transform="rotate(-40 14 49)" fill="#f59e0b" />
+</svg>

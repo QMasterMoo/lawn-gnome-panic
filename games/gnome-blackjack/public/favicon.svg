@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#065f46" />
+  <!-- Back card -->
+  <rect x="10" y="12" width="28" height="38" rx="4" transform="rotate(-10 24 31)" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5" />
+  <!-- Front card -->
+  <rect x="20" y="11" width="30" height="40" rx="4" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
+  <!-- Spade -->
+  <path d="M35 20c-4 6-9 9-9 14a5 5 0 0 0 8 4l-2 5h6l-2-5a5 5 0 0 0 8-4c0-5-5-8-9-14z" fill="#111827" />
+  <!-- Poker chip -->
+  <circle cx="46" cy="46" r="11" fill="#dc2626" stroke="#ffffff" stroke-width="2.5" stroke-dasharray="4 3" />
+  <circle cx="46" cy="46" r="5.5" fill="#ffffff" />
+</svg>

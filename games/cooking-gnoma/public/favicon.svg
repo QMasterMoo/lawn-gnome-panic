@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#fef3c7" />
+  <rect width="64" height="64" rx="14" fill="none" stroke="#d97706" stroke-width="4" />
+  <!-- Plate -->
+  <ellipse cx="32" cy="52" rx="23" ry="6" fill="#e5e7eb" />
+  <!-- Cake body -->
+  <rect x="14" y="28" width="36" height="22" rx="4" fill="#d97706" />
+  <rect x="14" y="38" width="36" height="4" fill="#fef08a" />
+  <!-- Grass frosting -->
+  <path d="M12 29c0-5 4-8 20-8s20 3 20 8c0 3-3 5-6 3s-5 4-8 2-6 4-9 2-6 4-9 2-8 2-8-9z" fill="#4ade80" />
+  <path d="M14 28c6-4 30-4 36 0" fill="none" stroke="#16a34a" stroke-width="2" />
+  <!-- Little red gnome-hat cake topper -->
+  <path d="M25 23l7-14 7 14c-4 1.5-10 1.5-14 0z" fill="#dc2626" />
+</svg>

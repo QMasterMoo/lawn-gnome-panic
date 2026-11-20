@@ -19,6 +19,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const gamesDir = join(root, 'games');
 const siteDir = join(root, 'site');
 const shellSrc = join(root, 'tools', 'shell', 'overlay.js');
+const siteFaviconSrc = join(root, 'tools', 'favicon.svg');
 /** The game root links with a query string belong to (it was served at the root before the landing page). */
 const LEGACY_ROOT_GAME = 'sample-3d';
 /** Short paths that redirect to a game, e.g. /<repo>/gnome/ -> /<repo>/sample-3d/. */
@@ -58,6 +59,7 @@ function redirectHtml(to) {
 <head>
   <meta charset="utf-8">
   <title>Moved</title>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
   <link rel="canonical" href="${to}">
   <script>location.replace(${JSON.stringify(to)} + location.search + location.hash);</script>
   <meta http-equiv="refresh" content="0; url=${to}">
@@ -82,6 +84,7 @@ rmSync(siteDir, { recursive: true, force: true });
 mkdirSync(join(siteDir, 'thumbs'), { recursive: true });
 mkdirSync(join(siteDir, 'shell'), { recursive: true });
 cpSync(shellSrc, join(siteDir, 'shell', 'overlay.js'));
+if (existsSync(siteFaviconSrc)) cpSync(siteFaviconSrc, join(siteDir, 'favicon.svg'));
 
 const games = [];
 for (const name of readdirSync(gamesDir).sort()) {
@@ -139,6 +142,7 @@ const html = `<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gnome Testbed Arcade</title>
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
   <style>
     body { margin: 0; padding: 32px 16px; background: #121417; color: #e8e8e8; font-family: system-ui, sans-serif; }
     h1 { text-align: center; margin: 0 0 6px; }
@@ -175,6 +179,7 @@ writeFileSync(join(siteDir, 'index.html'), `<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Club Gnome</title>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
   <script>
     // Lawn Gnome Panic used to be served here: forward its links (invite codes, ?autostart=...) to it.
     location.replace(location.search ? './${LEGACY_ROOT_GAME}/' + location.search + location.hash : './club-gnome/' + location.hash);
