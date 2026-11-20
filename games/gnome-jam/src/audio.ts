@@ -1,14 +1,15 @@
-// Procedural WebAudio arcade basketball sound effects + optional arena synth music.
+// Procedural WebAudio arcade basketball sound effects + 90s hip-hop chop-sample beat engine.
 import { createVolumeStore, type VolumeStore } from '@arcade/volume';
+import { HipHopBeatEngine, type BeatMode } from './music';
 
 export class JamAudio {
   private ctx: AudioContext | null = null;
-  private musicTimer: number | null = null;
-  private musicStep = 0;
+  private beat: HipHopBeatEngine;
   readonly volume: VolumeStore;
 
   constructor() {
     this.volume = createVolumeStore();
+    this.beat = new HipHopBeatEngine(() => this.musicGain());
   }
 
   private ensure(): AudioContext | null {
@@ -192,29 +193,30 @@ export class JamAudio {
     this.tone(620, 0.04, 0.1 * g, 'triangle', 0, 820);
   }
 
-  /** Upbeat retro arcade bass/organ groove while in a match. */
-  startMusic(): void {
-    if (this.musicTimer !== null) return;
-    const bassLine = [110, 110, 130.81, 146.83, 110, 110, 164.81, 146.83];
-    const organChords = [440, 0, 523.25, 0, 587.33, 523.25, 493.88, 0];
-    this.musicTimer = window.setInterval(() => {
-      const g = this.musicGain();
-      if (g <= 0.001) return;
-      const idx = this.musicStep % bassLine.length;
-      this.musicStep++;
-      this.tone(bassLine[idx], 0.13, 0.085 * g, 'triangle', 0);
-      const lead = organChords[idx];
-      if (lead > 0) {
-        this.tone(lead, 0.11, 0.05 * g, 'square', 0.01);
-      }
-    }, 210);
+  /** Start or switch the 90s hip-hop chop-sample beat engine ('chill' | 'court' | 'fire'). */
+  startMusic(mode: BeatMode = 'court'): void {
+    const ctx = this.ensure();
+    if (!ctx) return;
+    this.beat.start(ctx, mode);
+  }
+
+  setMusicMode(mode: BeatMode): void {
+    this.beat.setMode(mode);
+  }
+
+  nextBeatTrack(): string {
+    const ctx = this.ensure();
+    this.beat.nextTrack();
+    if (ctx) this.beat.start(ctx, 'court');
+    return this.beat.currentTrackName();
+  }
+
+  currentBeatTrack(): string {
+    return this.beat.currentTrackName();
   }
 
   stopMusic(): void {
-    if (this.musicTimer !== null) {
-      window.clearInterval(this.musicTimer);
-      this.musicTimer = null;
-    }
+    this.beat.stop();
   }
 
   private tone(

@@ -43,6 +43,8 @@ import type {
 export interface JamUIHooks {
   volume: VolumeStore;
   onClickSound: () => void;
+  onNextBeat: () => string;
+  currentBeatName: () => string;
   onStartMatch: (config: MatchConfig) => void;
   onPreviewGnome: (look: CustomGnomeData['look'] | null) => void;
   onPauseToggle: () => void;
@@ -352,13 +354,26 @@ export class JamUI {
     this.announceEl.className = 'jam-announce';
     this.hudEl.appendChild(this.announceEl);
 
-    // Mount shared @arcade/volume button in top-left corner
+    // Mount shared @arcade/volume button + 90s Beat Selector pill in top-left corner
     const volWrap = document.createElement('div');
     volWrap.style.cssText = `
       position:fixed;top:max(10px, env(safe-area-inset-top, 10px));left:max(10px, env(safe-area-inset-left, 10px));
-      z-index:40;pointer-events:auto;
+      z-index:40;pointer-events:auto;display:flex;align-items:center;gap:8px;
     `;
     createVolumeButton(volWrap, hooks.volume, { title: 'Gnomerena Audio' });
+
+    const beatBtn = document.createElement('button');
+    beatBtn.type = 'button';
+    beatBtn.id = 'jam-beat-btn';
+    beatBtn.className = 'jam-btn small';
+    beatBtn.style.cssText = 'min-height:44px;padding:6px 12px;font-size:12px;opacity:0.92';
+    beatBtn.textContent = `🎵 ${hooks.currentBeatName()} ⏭`;
+    beatBtn.title = 'Switch 90s Hip-Hop Beat';
+    beatBtn.addEventListener('click', () => {
+      const next = hooks.onNextBeat();
+      beatBtn.textContent = `🎵 ${next} ⏭`;
+    });
+    volWrap.appendChild(beatBtn);
     this.root.appendChild(volWrap);
   }
 

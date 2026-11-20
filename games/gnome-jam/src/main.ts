@@ -31,7 +31,10 @@ async function boot(): Promise<void> {
     onClickSound: () => {
       audio.unlock();
       audio.playClick();
+      if (!sim) audio.startMusic('chill');
     },
+    onNextBeat: () => audio.nextBeatTrack(),
+    currentBeatName: () => audio.currentBeatTrack(),
     onPreviewGnome: (look) => {
       if (look) {
         renderer.showPreviewGnome(look);
@@ -42,7 +45,7 @@ async function boot(): Promise<void> {
     },
     onStartMatch: (config) => {
       audio.unlock();
-      audio.startMusic();
+      audio.startMusic('court');
       activeConfig = config;
       paused = false;
 
@@ -78,7 +81,7 @@ async function boot(): Promise<void> {
           else if (kind === 'win') void achievements.unlock('jam-first-win');
         },
         onMatchEnd: (result) => {
-          audio.stopMusic();
+          audio.setMusicMode('chill');
           input.setTouchVisible(false);
           const cfg = activeConfig!;
           sim = null;
@@ -93,11 +96,12 @@ async function boot(): Promise<void> {
     onPauseToggle: () => {
       if (!sim) return;
       paused = !paused;
+      audio.setMusicMode(paused ? 'chill' : 'court');
       ui.showPauseMenu(paused);
       input.setTouchVisible(!paused);
     },
     onQuitMatch: () => {
-      audio.stopMusic();
+      audio.setMusicMode('chill');
       sim = null;
       paused = false;
       input.setTouchVisible(false);
@@ -149,6 +153,7 @@ async function boot(): Promise<void> {
       if (jumboTick >= 0.2) {
         jumboTick = 0;
         const onFirePlayer = sim.players.find((p) => p.onFire);
+        audio.setMusicMode(onFirePlayer ? 'fire' : 'court');
         renderer.updateJumbotron({
           homeAbbr: home.abbr,
           awayAbbr: away.abbr,
