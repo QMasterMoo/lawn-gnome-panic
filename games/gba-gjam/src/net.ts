@@ -205,7 +205,7 @@ export class JamNet {
   private ensureClient(name: string): NetClient<JamNetMsg> {
     if (!this.client) {
       const code = getMyGnome()?.code ?? 'gnorman';
-      const c = createNetClient<JamNetMsg>(serverUrl(), 'gnome-jam', { name, character: code });
+      const c = createNetClient<JamNetMsg>(serverUrl(), 'gba-gjam', { name, character: code });
       c.onMessage((m) => this.handleMessage(m));
       c.onClose(() => {
         if (!this.opening && this.active) {

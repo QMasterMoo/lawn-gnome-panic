@@ -695,8 +695,8 @@ export class JamUI {
           </div>
           <div class="jam-row" style="justify-content:center;align-items:center;margin:8px 0;gap:8px;flex-wrap:wrap">
             <span id="jam-save-status" style="font-size:11px;font-weight:800;color:${cloudColor};padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14)">${cloudLabel}</span>
-            <button id="jam-export-save" class="jam-btn small" style="min-height:44px">⬇️ Export Backup</button>
-            <button id="jam-import-save" class="jam-btn small" style="min-height:44px">⬆️ Restore Backup</button>
+            <button id="jam-export-save" class="jam-btn small" style="display:none;min-height:44px">⬇️ Export Backup</button>
+            <button id="jam-import-save" class="jam-btn small" style="display:none;min-height:44px">⬆️ Restore Backup</button>
             <input id="jam-import-file" type="file" accept=".json,application/json" style="display:none" />
           </div>
           <div style="font-size:12px;color:#b8c4e0;line-height:1.5;margin-top:8px;background:rgba(0,0,0,0.28);padding:10px;border-radius:8px">
@@ -1956,7 +1956,7 @@ export class JamUI {
               <input id="bot-url-${side}" type="text" value="${assignment.remoteUrl ?? DEFAULT_REMOTE_BOT_URL}"
                 style="width:100%;min-height:44px;padding:8px 10px;border-radius:8px;background:#11162e;color:#fff;border:1px solid #ffd21f;font-family:monospace;font-size:13px" />
               <div style="font-size:11px;color:#b8c4e0;margin-top:4px">
-                Run <code>python games/gnome-jam/ai/poc_bot.py</code> locally to start the POC server.
+                Run <code>python games/gba-gjam/ai/poc_bot.py</code> locally to start the POC server.
               </div>
             </div>
           `
