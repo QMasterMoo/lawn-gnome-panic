@@ -703,7 +703,7 @@ export class JamSimulation {
       this.cb.onRimShake(p.team === 0 ? 'right' : 'left', p.onFire ? 1.5 : 1.0);
       this.cb.onCameraPunch(p.onFire ? 0.9 : 0.55);
       this.cb.onBurst(new THREE.Vector3(d.targetX, HOOP_Y, 0), p.onFire ? 'fire' : 'confetti');
-      if (p.team === 0) this.cb.onAchievement('dunk');
+      if (p.team === 0) this.emitAchievement('dunk');
       this.scoreBasket(p, 2, true);
     }
   }
@@ -938,7 +938,7 @@ export class JamSimulation {
           this.cb.onRimShake(shooter.team === 0 ? 'right' : 'left', 0.35);
           if (b.isThreeAttempt) {
             this.cb.onBurst(b.endPos.clone(), 'confetti');
-            if (shooter.team === 0) this.cb.onAchievement('three');
+            if (shooter.team === 0) this.emitAchievement('three');
           }
           this.scoreBasket(shooter, pts, false);
         } else {
@@ -1023,7 +1023,7 @@ export class JamSimulation {
         color: '#ff5500',
         big: true,
       });
-      if (scorer.team === 0) this.cb.onAchievement('fire');
+      if (scorer.team === 0) this.emitAchievement('fire');
     } else if (scorer.streak === 2) {
       this.cb.onAnnounce({
         text: "HE'S HEATING UP!",
@@ -1088,7 +1088,7 @@ export class JamSimulation {
       if (!this.finishedSent) {
         this.finishedSent = true;
         const winner: 0 | 1 = this.score[0] > this.score[1] ? 0 : 1;
-        if (winner === 0) this.cb.onAchievement('win');
+        if (winner === 0) this.emitAchievement('win');
         this.cb.onSound('cheer');
         this.cb.onMatchEnd({
           homeTeamId: this.config.homeTeamId,
@@ -1118,6 +1118,11 @@ export class JamSimulation {
       humanInput,
     });
     return normalizeBotInput(raw);
+  }
+
+  private emitAchievement(kind: 'dunk' | 'three' | 'fire' | 'win'): void {
+    if (this.config.opponentMode === 'botvsbot') return;
+    this.cb.onAchievement(kind);
   }
 
   private clampToCourt(pos: THREE.Vector3): void {
