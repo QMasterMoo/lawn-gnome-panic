@@ -81,6 +81,8 @@ export interface JamUIHooks {
   onOnlineLeave: () => void;
   isBigHead: () => boolean;
   onToggleBigHead: () => boolean;
+  isAnnouncerEnabled: () => boolean;
+  onToggleAnnouncer: () => boolean;
 }
 
 const STYLE_CSS = `
@@ -411,6 +413,23 @@ export class JamUI {
       beatBtn.textContent = `🎵 ${next} ⏭`;
     });
     volWrap.appendChild(beatBtn);
+
+    const annBtn = document.createElement('button');
+    annBtn.type = 'button';
+    annBtn.id = 'jam-announcer-btn';
+    annBtn.className = 'jam-btn small';
+    annBtn.style.cssText = 'min-height:44px;min-width:44px;padding:6px 12px;font-size:12px;opacity:0.92';
+    const syncAnnBtn = (on: boolean): void => {
+      annBtn.textContent = on ? '🎙️ PA: ON' : '🔇 PA: OFF';
+      annBtn.classList.toggle('active', on);
+    };
+    syncAnnBtn(hooks.isAnnouncerEnabled());
+    annBtn.title = 'Toggle Stadium PA Announcer';
+    annBtn.addEventListener('click', () => {
+      hooks.onClickSound();
+      syncAnnBtn(hooks.onToggleAnnouncer());
+    });
+    volWrap.appendChild(annBtn);
     this.root.appendChild(volWrap);
   }
 
@@ -1596,6 +1615,7 @@ export class JamUI {
           <h2 style="margin:0 0 12px;color:#ffd21f">${isOnline ? '🌐 ONLINE MENU (LIVE)' : '⏸ PAUSED'}</h2>
           <div style="display:flex;flex-direction:column;gap:10px">
             <button id="p-resume" class="jam-btn primary">▶ Resume Game</button>
+            <button id="p-announcer" class="jam-btn ${this.hooks.isAnnouncerEnabled() ? 'active' : ''}">${this.hooks.isAnnouncerEnabled() ? '🎙️ Announcer: ON' : '🔇 Announcer: OFF'}</button>
             <button id="p-quit" class="jam-btn">🏠 ${isOnline ? 'Leave Match' : 'Quit to Menu'}</button>
           </div>
         </div>
@@ -1604,6 +1624,18 @@ export class JamUI {
     this.screenSlot.querySelector('#p-resume')!.addEventListener('click', () => {
       this.hooks.onClickSound();
       this.hooks.onPauseToggle();
+    });
+    const pauseAnnBtn = this.screenSlot.querySelector('#p-announcer') as HTMLButtonElement;
+    pauseAnnBtn.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      const on = this.hooks.onToggleAnnouncer();
+      pauseAnnBtn.textContent = on ? '🎙️ Announcer: ON' : '🔇 Announcer: OFF';
+      pauseAnnBtn.classList.toggle('active', on);
+      const topBtn = this.root.querySelector('#jam-announcer-btn');
+      if (topBtn) {
+        topBtn.textContent = on ? '🎙️ PA: ON' : '🔇 PA: OFF';
+        topBtn.classList.toggle('active', on);
+      }
     });
     this.screenSlot.querySelector('#p-quit')!.addEventListener('click', () => {
       this.hooks.onClickSound();

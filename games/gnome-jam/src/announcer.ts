@@ -254,10 +254,13 @@ export function createStadiumReverbBuffer(ctx: BaseAudioContext): AudioBuffer {
   return buf;
 }
 
+const ANNOUNCER_STORAGE_KEY = 'gnome-jam-announcer-enabled';
+
 export class StadiumAnnouncer {
   private readonly getSfxGain: () => number;
   private readonly onDuckMusic?: (mult: number) => void;
 
+  private enabled = true;
   private lastSpeakMs = 0;
   private activeSources = new Set<AudioBufferSourceNode>();
 
@@ -273,6 +276,29 @@ export class StadiumAnnouncer {
   constructor(getSfxGain: () => number, onDuckMusic?: (mult: number) => void) {
     this.getSfxGain = getSfxGain;
     this.onDuckMusic = onDuckMusic;
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem(ANNOUNCER_STORAGE_KEY) === 'false') {
+        this.enabled = false;
+      }
+    } catch {
+      // ignore storage access errors
+    }
+  }
+
+  isEnabled(): boolean {
+    return this.enabled;
+  }
+
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) this.stop();
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(ANNOUNCER_STORAGE_KEY, enabled ? 'true' : 'false');
+      }
+    } catch {
+      // ignore storage access errors
+    }
   }
 
   /** Kept for lifecycle symmetry with JamAudio.unlock(). */
@@ -415,6 +441,7 @@ export class StadiumAnnouncer {
 
   /** Synthesizes and plays an announcer event through the stadium PA WebAudio graph. */
   announce(ctx: AudioContext | null, ev: AnnouncerEvent): void {
+    if (!this.enabled) return;
     const sfx = this.getSfxGain();
     if (!ctx || sfx <= 0.001) return;
 

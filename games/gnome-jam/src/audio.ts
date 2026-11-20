@@ -70,6 +70,14 @@ export class JamAudio {
     this.announcer.stop();
   }
 
+  isAnnouncerEnabled(): boolean {
+    return this.announcer.isEnabled();
+  }
+
+  setAnnouncerEnabled(enabled: boolean): void {
+    this.announcer.setEnabled(enabled);
+  }
+
   playBounce(): void {
     const g = this.sfxGain();
     if (g <= 0.001) return;

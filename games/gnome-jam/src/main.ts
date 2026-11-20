@@ -248,6 +248,12 @@ async function boot(): Promise<void> {
       }
       return next;
     },
+    isAnnouncerEnabled: () => audio.isAnnouncerEnabled(),
+    onToggleAnnouncer: () => {
+      const next = !audio.isAnnouncerEnabled();
+      audio.setAnnouncerEnabled(next);
+      return next;
+    },
   });
 
   // Classic keyboard cheatcode listener: type BIGHEAD anywhere (outside inputs)
