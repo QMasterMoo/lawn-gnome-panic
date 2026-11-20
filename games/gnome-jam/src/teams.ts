@@ -1,5 +1,5 @@
 import { GNORMAN_LOOK, getMyGnome, type GnomeLook } from '@lawn/gnome';
-import type { CustomGnomeData, GnomePlayerProfile, ProTeam } from './types';
+import type { CareerStats, CustomGnomeData, GnomePlayerProfile, PlayerBoxScore, ProTeam } from './types';
 
 const CUSTOM_KEY = 'gnome-jam.custom.v1';
 
@@ -273,6 +273,10 @@ export function getTeamById(id: string): ProTeam {
   return PRO_TEAMS.find((t) => t.id === id) ?? PRO_TEAMS[0];
 }
 
+export function emptyCareerStats(): CareerStats {
+  return { pts: 0, fgm: 0, fga: 0, tpm: 0, tpa: 0, dunks: 0, steals: 0, blocks: 0, rebounds: 0 };
+}
+
 export function defaultCustomGnome(): CustomGnomeData {
   const mine = getMyGnome();
   const baseLook: GnomeLook = mine?.look
@@ -284,7 +288,13 @@ export function defaultCustomGnome(): CustomGnomeData {
     number: 99,
     look: baseLook,
     stats: { speed: 45, threePt: 45, dunk: 45, defense: 45 },
-    progression: { gamesPlayed: 0, wins: 0, tournamentWins: 0, bonusPoints: 0 },
+    progression: {
+      gamesPlayed: 0,
+      wins: 0,
+      tournamentWins: 0,
+      bonusPoints: 0,
+      career: emptyCareerStats(),
+    },
   };
 }
 
@@ -308,7 +318,7 @@ export function getRemainingStatPoints(data: CustomGnomeData): number {
 
 export function awardMatchProgression(
   data: CustomGnomeData,
-  opts: { won: boolean; tournamentWon?: boolean },
+  opts: { won: boolean; tournamentWon?: boolean; box?: PlayerBoxScore },
 ): { earned: number; gamePoints: number; winPoints: number; tournamentPoints: number } {
   const gamePoints = POINTS_PER_GAME;
   const winPoints = opts.won ? POINTS_PER_WIN_BONUS : 0;
@@ -319,6 +329,18 @@ export function awardMatchProgression(
   if (opts.won) data.progression.wins += 1;
   if (opts.tournamentWon) data.progression.tournamentWins += 1;
   data.progression.bonusPoints += earned;
+  if (opts.box) {
+    const c = data.progression.career;
+    c.pts += opts.box.pts;
+    c.fgm += opts.box.fgm;
+    c.fga += opts.box.fga;
+    c.tpm += opts.box.tpm;
+    c.tpa += opts.box.tpa;
+    c.dunks += opts.box.dunks;
+    c.steals += opts.box.steals;
+    c.blocks += opts.box.blocks;
+    c.rebounds += opts.box.rebounds;
+  }
   saveCustomGnome(data);
 
   return { earned, gamePoints, winPoints, tournamentPoints };
@@ -343,11 +365,24 @@ export function loadCustomGnome(): CustomGnomeData {
     const scale = isLegacyScale ? 10 : 1;
 
     const prog = parsed.progression;
+    const rawCareer = prog?.career;
+    const numOr0 = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.round(v)) : 0);
     const progression = {
-      gamesPlayed: typeof prog?.gamesPlayed === 'number' ? Math.max(0, Math.round(prog.gamesPlayed)) : 0,
-      wins: typeof prog?.wins === 'number' ? Math.max(0, Math.round(prog.wins)) : 0,
-      tournamentWins: typeof prog?.tournamentWins === 'number' ? Math.max(0, Math.round(prog.tournamentWins)) : 0,
-      bonusPoints: typeof prog?.bonusPoints === 'number' ? Math.max(0, Math.round(prog.bonusPoints)) : 0,
+      gamesPlayed: numOr0(prog?.gamesPlayed),
+      wins: numOr0(prog?.wins),
+      tournamentWins: numOr0(prog?.tournamentWins),
+      bonusPoints: numOr0(prog?.bonusPoints),
+      career: {
+        pts: numOr0(rawCareer?.pts),
+        fgm: numOr0(rawCareer?.fgm),
+        fga: numOr0(rawCareer?.fga),
+        tpm: numOr0(rawCareer?.tpm),
+        tpa: numOr0(rawCareer?.tpa),
+        dunks: numOr0(rawCareer?.dunks),
+        steals: numOr0(rawCareer?.steals),
+        blocks: numOr0(rawCareer?.blocks),
+        rebounds: numOr0(rawCareer?.rebounds),
+      },
     };
 
     const stats = {

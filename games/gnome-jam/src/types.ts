@@ -37,12 +37,25 @@ export interface ProTeam {
   roster: [GnomePlayerProfile, GnomePlayerProfile, GnomePlayerProfile];
 }
 
+export interface CareerStats {
+  pts: number;
+  fgm: number;
+  fga: number;
+  tpm: number;
+  tpa: number;
+  dunks: number;
+  steals: number;
+  blocks: number;
+  rebounds: number;
+}
+
 export interface ProgressionData {
   gamesPlayed: number;
   wins: number;
   tournamentWins: number;
   /** Total bonus stat points earned from games played (+3), wins (+2), and tournament wins (+20). */
   bonusPoints: number;
+  career: CareerStats;
 }
 
 export interface CustomGnomeData {

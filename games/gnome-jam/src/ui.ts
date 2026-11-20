@@ -342,6 +342,7 @@ export class JamUI {
   private netStatus: NetStatus = { ...INITIAL_NET_STATUS };
   private roomCodeInput = '';
   private inOnlineLobby = false;
+  private pendingSeasonContext: MatchConfig['seasonContext'] | null = null;
 
   // HUD live nodes
   private hudHomeLbl!: HTMLElement;
@@ -505,8 +506,36 @@ export class JamUI {
   // =========================================================================
   // 1. TITLE SCREEN
   // =========================================================================
+  private renderCareerStatsCard(g: CustomGnomeData): string {
+    const p = g.progression;
+    const c = p.career;
+    const gp = Math.max(1, p.gamesPlayed);
+    const ppg = (c.pts / gp).toFixed(1);
+    const rpg = (c.rebounds / gp).toFixed(1);
+    const spg = (c.steals / gp).toFixed(1);
+    const bpg = (c.blocks / gp).toFixed(1);
+    const fgPct = c.fga > 0 ? Math.round((c.fgm / c.fga) * 100) : 0;
+    const tpPct = c.tpa > 0 ? Math.round((c.tpm / c.tpa) * 100) : 0;
+    return `
+      <div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.16);border-radius:10px;padding:10px;margin:10px 0;font-size:12px">
+        <div style="font-weight:900;color:#8fd3ff;margin-bottom:6px">📊 CAREER STATS (${p.gamesPlayed} GP · ${p.wins}-${Math.max(0, p.gamesPlayed - p.wins)} · ${p.tournamentWins} 🏆)</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center">
+          <div><div style="font-size:15px;font-weight:900;color:#ffd21f">${ppg}</div><div style="font-size:10px;color:#b8c4e0">PPG (${c.pts})</div></div>
+          <div><div style="font-size:15px;font-weight:900">${fgPct}%</div><div style="font-size:10px;color:#b8c4e0">FG (${c.fgm}/${c.fga})</div></div>
+          <div><div style="font-size:15px;font-weight:900">${tpPct}%</div><div style="font-size:10px;color:#b8c4e0">3PT (${c.tpm}/${c.tpa})</div></div>
+          <div><div style="font-size:15px;font-weight:900;color:#ff9944">${c.dunks}</div><div style="font-size:10px;color:#b8c4e0">DUNKS</div></div>
+          <div><div style="font-size:14px;font-weight:800">${rpg}</div><div style="font-size:10px;color:#b8c4e0">RPG (${c.rebounds})</div></div>
+          <div><div style="font-size:14px;font-weight:800">${spg}</div><div style="font-size:10px;color:#b8c4e0">SPG (${c.steals})</div></div>
+          <div><div style="font-size:14px;font-weight:800">${bpg}</div><div style="font-size:10px;color:#b8c4e0">BPG (${c.blocks})</div></div>
+          <div><div style="font-size:14px;font-weight:800;color:#44ff88">+${p.bonusPoints}</div><div style="font-size:10px;color:#b8c4e0">EARNED PTS</div></div>
+        </div>
+      </div>
+    `;
+  }
+
   showTitle(): void {
     this.inOnlineLobby = false;
+    this.pendingSeasonContext = null;
     this.showHUD(false);
     this.hooks.onPreviewGnome(null);
     const saved = loadSeason();
@@ -901,6 +930,7 @@ export class JamUI {
           ${statControl('threePt', '3-POINT')}
           ${statControl('dunk', 'DUNK')}
           ${statControl('defense', 'DEFENSE')}
+          ${this.renderCareerStatsCard(g)}
         </div>
       </div>
     `;
@@ -1052,8 +1082,16 @@ export class JamUI {
         <div class="jam-panel">
           <div class="jam-row" style="justify-content:space-between;margin-bottom:8px">
             <h2 style="margin:0;font-size:22px;color:#7fb5ff">🌐 ONLINE MULTIPLAYER (1v1 + AI TEAMMATES)</h2>
-            <button id="ol-back" class="jam-btn small">← Back</button>
+            <button id="ol-back" class="jam-btn small">← ${this.pendingSeasonContext ? 'Back to Season' : 'Back'}</button>
           </div>
+
+          ${
+            this.pendingSeasonContext
+              ? `<div style="background:rgba(255,210,31,0.14);border:1px solid rgba(255,210,31,0.55);border-radius:10px;padding:10px;margin:8px 0;font-size:13px">
+                  🏆 <strong style="color:#ffd21f">CAREER MODE MATCH:</strong> ${this.pendingSeasonContext.label} — Result will count toward your GBA Season!
+                </div>`
+              : ''
+          }
 
           ${
             !available
@@ -1131,7 +1169,12 @@ export class JamUI {
     this.screenSlot.querySelector('#ol-back')!.addEventListener('click', () => {
       this.hooks.onClickSound();
       if (isQueuing) this.hooks.onOnlineLeave();
-      this.showTitle();
+      if (this.pendingSeasonContext && this.season) {
+        this.pendingSeasonContext = null;
+        this.showSeasonHub();
+      } else {
+        this.showTitle();
+      }
     });
 
     this.screenSlot.querySelector('#ol-cancel')?.addEventListener('click', () => {
@@ -1260,9 +1303,11 @@ export class JamUI {
               </div>
               <div class="jam-row">
                 <button id="sh-sim" class="jam-btn small">⏭ Sim Game</button>
+                <button id="sh-play-online" class="jam-btn small" style="background:linear-gradient(180deg,#1e64d8,#133e8a);border-color:#7fb5ff">🌐 Play Online</button>
                 <button id="sh-play" class="jam-btn primary">🏀 PLAY GAME</button>
               </div>
             </div>
+            ${this.renderCareerStatsCard(this.customGnome)}
 
             <div style="font-size:12px;color:#b8c4e0;margin-top:8px">
               Top <strong>6</strong> teams advance to the Knockout Tournament. Top <strong>2</strong> earn a <strong>First-Round Bye</strong> straight into the Semifinals!
@@ -1318,6 +1363,16 @@ export class JamUI {
         if (!nextGame) return;
         this.hooks.onClickSound();
         this.launchSeasonMatch(s, oppId, {
+          phase: 'regular',
+          roundIndex: s.currentRound,
+          matchId: nextGame.id,
+          label: `Regular Season — Round ${s.currentRound + 1}`,
+        });
+      });
+      this.screenSlot.querySelector('#sh-play-online')!.addEventListener('click', () => {
+        if (!nextGame) return;
+        this.hooks.onClickSound();
+        this.openSeasonOnlineLobby(s, {
           phase: 'regular',
           roundIndex: s.currentRound,
           matchId: nextGame.id,
@@ -1387,6 +1442,7 @@ export class JamUI {
                 </div>
               </div>
               <div class="jam-row">
+                ${playerHasMatch ? `<button id="po-play-online" class="jam-btn small" style="background:linear-gradient(180deg,#1e64d8,#133e8a);border-color:#7fb5ff">🌐 Play Online</button>` : ''}
                 ${playerHasMatch ? `<button id="po-play" class="jam-btn primary">🏀 PLAY PLAYOFF GAME</button>` : ''}
                 ${nextPO ? `<button id="po-sim" class="jam-btn small">⏭ Sim Next</button>` : ''}
               </div>
@@ -1436,6 +1492,16 @@ export class JamUI {
         label: nextPO.label,
       });
     });
+    this.screenSlot.querySelector('#po-play-online')?.addEventListener('click', () => {
+      if (!nextPO) return;
+      this.hooks.onClickSound();
+      this.openSeasonOnlineLobby(s, {
+        phase: 'playoffs',
+        roundIndex: nextPO.round,
+        matchId: nextPO.id,
+        label: nextPO.label,
+      });
+    });
     this.screenSlot.querySelector('#po-sim')?.addEventListener('click', () => {
       if (!nextPO || !nextPO.homeTeamId || !nextPO.awayTeamId) return;
       this.hooks.onClickSound();
@@ -1445,6 +1511,19 @@ export class JamUI {
       saveSeason(s);
       this.showSeasonHub();
     });
+  }
+
+  private openSeasonOnlineLobby(
+    s: SeasonState,
+    ctx: NonNullable<MatchConfig['seasonContext']>,
+  ): void {
+    this.homeTeamId = s.playerTeamId;
+    this.useCustom = s.useCustomGnome;
+    this.homeDuo = s.playerDuoIndices;
+    this.difficulty = s.difficulty;
+    this.quarterSeconds = s.quarterSeconds;
+    this.pendingSeasonContext = ctx;
+    this.showOnlineLobby();
   }
 
   private launchSeasonMatch(
@@ -1515,33 +1594,37 @@ export class JamUI {
     const winTeam = result.winner === 0 ? home : away;
     const myTeam = config.onlineContext?.myTeam ?? 0;
     const playerWon = result.winner === myTeam;
+    const myScore = myTeam === 0 ? result.homeScore : result.awayScore;
+    const oppScore = myTeam === 0 ? result.awayScore : result.homeScore;
+    const seasonCtx = config.seasonContext ?? this.pendingSeasonContext ?? undefined;
+    this.pendingSeasonContext = null;
     let tournamentWon = false;
 
     // Record into season if applicable!
-    if (config.seasonContext && this.season) {
-      if (config.seasonContext.phase === 'regular') {
-        const game = this.season.schedule.find((g) => g.id === config.seasonContext!.matchId);
+    if (seasonCtx && this.season) {
+      if (seasonCtx.phase === 'regular') {
+        const game = this.season.schedule.find((g) => g.id === seasonCtx.matchId);
         if (game) {
           const isPlayerHomeInSched = game.homeTeamId === this.season.playerTeamId;
           recordRegularGameResult(
             this.season,
             game.id,
-            isPlayerHomeInSched ? result.homeScore : result.awayScore,
-            isPlayerHomeInSched ? result.awayScore : result.homeScore,
+            isPlayerHomeInSched ? myScore : oppScore,
+            isPlayerHomeInSched ? oppScore : myScore,
           );
         }
-      } else if (config.seasonContext.phase === 'playoffs' && this.season.bracket) {
+      } else if (seasonCtx.phase === 'playoffs' && this.season.bracket) {
         const b = this.season.bracket;
         const m = [b.qf1, b.qf2, b.sf1, b.sf2, b.finals].find(
-          (x) => x.id === config.seasonContext!.matchId,
+          (x) => x.id === seasonCtx.matchId,
         );
         if (m) {
           const isPlayerHomeInMatch = m.homeTeamId === this.season.playerTeamId;
           recordPlayoffResult(
             this.season,
             m.id,
-            isPlayerHomeInMatch ? result.homeScore : result.awayScore,
-            isPlayerHomeInMatch ? result.awayScore : result.homeScore,
+            isPlayerHomeInMatch ? myScore : oppScore,
+            isPlayerHomeInMatch ? oppScore : myScore,
           );
           simReadyCpuPlayoffMatches(this.season);
           if (this.season.bracket.championTeamId === this.season.playerTeamId) {
@@ -1553,7 +1636,11 @@ export class JamUI {
       saveSeason(this.season);
     }
 
-    const prog = awardMatchProgression(this.customGnome, { won: playerWon, tournamentWon });
+    const myRoster = myTeam === 0 ? config.homeRoster : config.awayRoster;
+    const myBox =
+      result.boxScore.find((b) => b.team === myTeam && b.name === myRoster[0].name) ??
+      result.boxScore.find((b) => b.team === myTeam);
+    const prog = awardMatchProgression(this.customGnome, { won: playerWon, tournamentWon, box: myBox });
     const unspent = getRemainingStatPoints(this.customGnome);
 
     this.screenSlot.innerHTML = `
@@ -1598,7 +1685,7 @@ export class JamUI {
 
           <div class="jam-row" style="justify-content:center;margin-top:14px">
             ${
-              config.seasonContext
+              seasonCtx
                 ? `<button id="pg-season" class="jam-btn primary">🏆 Continue Season</button>`
                 : config.onlineContext
                   ? `<button id="pg-online" class="jam-btn primary">🌐 New Online Match</button>`
@@ -1607,6 +1694,7 @@ export class JamUI {
             <button id="pg-upgrade" class="jam-btn green">🎨 Upgrade Gnome (${unspent})</button>
             <button id="pg-menu" class="jam-btn">🏠 Main Menu</button>
           </div>
+          ${this.renderCareerStatsCard(this.customGnome)}
         </div>
       </div>
     `;

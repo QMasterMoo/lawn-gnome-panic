@@ -60,10 +60,31 @@ describe('Custom Gnome 0-100 stats & progression', () => {
     expect(g.progression.wins).toBe(1);
     expect(getRemainingStatPoints(g)).toBe(8);
 
-    const tourneyRes = awardMatchProgression(g, { won: true, tournamentWon: true });
+    const tourneyRes = awardMatchProgression(g, {
+      won: true,
+      tournamentWon: true,
+      box: {
+        name: g.name,
+        team: 0,
+        pts: 18,
+        fgm: 7,
+        fga: 10,
+        tpm: 2,
+        tpa: 4,
+        dunks: 3,
+        steals: 2,
+        blocks: 1,
+        rebounds: 4,
+      },
+    });
     expect(tourneyRes.earned).toBe(POINTS_PER_GAME + POINTS_PER_WIN_BONUS + POINTS_PER_TOURNAMENT_WIN);
     expect(g.progression.tournamentWins).toBe(1);
     expect(getTotalStatBudget(g)).toBe(base + 3 + 5 + 25);
     expect(getRemainingStatPoints(g)).toBe(33);
+    expect(g.progression.career.pts).toBe(18);
+    expect(g.progression.career.dunks).toBe(3);
+    expect(g.progression.career.steals).toBe(2);
+    expect(g.progression.career.blocks).toBe(1);
+    expect(g.progression.career.rebounds).toBe(4);
   });
 });
