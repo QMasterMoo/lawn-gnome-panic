@@ -85,6 +85,13 @@ export interface BotController {
 
 export type BotPresetId =
   | 'classic'
+  | 'shove-hound'
+  | 'arc-architect'
+  | 'fire-feeder'
+  | 'alley-oop-express'
+  | 'lockdown-counter'
+  | 'hybrid-ace'
+  | 'champion-v1'
   | 'script-classic'
   | 'script-sniper'
   | 'script-rusher'

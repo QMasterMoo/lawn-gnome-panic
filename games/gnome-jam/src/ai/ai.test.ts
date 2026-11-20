@@ -1,13 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   captureGameState,
+  createAlleyOopExpressBot,
+  createArcArchitectBot,
+  createBotFromAssignment,
+  createChampionV1Bot,
   createClassicBot,
+  createFireFeederBot,
+  createHybridAceBot,
+  createLockdownCounterBot,
+  createShoveHoundBot,
   normalizeBotInput,
   RemoteBotController,
   validateBotScriptSyntax,
   type BotController,
+  type BotPresetId,
   type GameStateSnapshot,
 } from './index';
+import { runSeries, simulateMatch } from './eval';
 import { JamSimulation, type SimCallbacks } from '../sim';
 import { PRO_TEAMS } from '../teams';
 import type { MatchConfig } from '../types';
@@ -166,5 +176,72 @@ describe('GBA GJAM Bot AI framework', () => {
     vi.unstubAllGlobals();
     remote.dispose();
     sim.dispose();
+  });
+
+  it('creates all built-in strategic bot presets and produces valid normalized inputs', () => {
+    const presets: BotPresetId[] = [
+      'classic',
+      'shove-hound',
+      'arc-architect',
+      'fire-feeder',
+      'alley-oop-express',
+      'lockdown-counter',
+      'hybrid-ace',
+      'champion-v1',
+    ];
+    const sim = new JamSimulation(makeConfig(), makeNoopCallbacks());
+    const idle = normalizeBotInput(null);
+    for (let i = 0; i < 25; i++) sim.step(0.05, idle, idle);
+    const snap = sim.getSnapshot();
+
+    for (const preset of presets) {
+      const bot = createBotFromAssignment({ preset });
+      const out = normalizeBotInput(
+        bot.decide(snap, {
+          playerIndex: 0,
+          role: 'solo',
+          difficulty: 'pro',
+          dt: 1 / 60,
+          humanInput: null,
+        }),
+      );
+      expect(Math.hypot(out.moveX, out.moveZ)).toBeLessThanOrEqual(1.0001);
+      bot.dispose?.();
+    }
+    sim.dispose();
+  });
+
+  it('headless evaluation harness is deterministic for a fixed seed and side-swaps in series', () => {
+    const botA = { id: 'shove-hound', name: 'Shove Hound', create: () => createShoveHoundBot() };
+    const botB = { id: 'hybrid-ace', name: 'Hybrid Ace', create: () => createHybridAceBot() };
+
+    const m1 = simulateMatch({ homeBot: botA, awayBot: botB, quarterSeconds: 15, seed: 4242 });
+    const m2 = simulateMatch({ homeBot: botA, awayBot: botB, quarterSeconds: 15, seed: 4242 });
+
+    expect(m1.homeScore).toBe(m2.homeScore);
+    expect(m1.awayScore).toBe(m2.awayScore);
+    expect(m1.ticks).toBe(m2.ticks);
+    expect(m1.home.steals).toBe(m2.home.steals);
+
+    const series = runSeries(botA, botB, { games: 2, quarterSeconds: 15, baseSeed: 777 });
+    expect(series.matches).toHaveLength(2);
+    expect(series.matches[0].homeBotId).toBe('shove-hound');
+    expect(series.matches[1].homeBotId).toBe('hybrid-ace');
+    expect(series.botA.games).toBe(2);
+    expect(series.botB.games).toBe(2);
+  });
+
+  it('all new bot factories instantiate cleanly with distinct ids', () => {
+    const bots = [
+      createShoveHoundBot(),
+      createArcArchitectBot(),
+      createFireFeederBot(),
+      createAlleyOopExpressBot(),
+      createLockdownCounterBot(),
+      createHybridAceBot(),
+      createChampionV1Bot(),
+    ];
+    const ids = new Set(bots.map((b) => b.id));
+    expect(ids.size).toBe(bots.length);
   });
 });

@@ -1,3 +1,12 @@
+import {
+  createAlleyOopExpressBot,
+  createArcArchitectBot,
+  createChampionV1Bot,
+  createFireFeederBot,
+  createHybridAceBot,
+  createLockdownCounterBot,
+  createShoveHoundBot,
+} from './bots';
 import { createClassicBot } from './classicBot';
 import { DEFAULT_REMOTE_BOT_URL, RemoteBotController } from './remoteBot';
 import { loadBotScript } from './scriptLoader';
@@ -9,6 +18,7 @@ import type { BotController, BotPresetId, BotSlotAssignment } from './types';
 export * from './types';
 export * from './snapshot';
 export * from './classicBot';
+export * from './bots';
 export * from './scriptLoader';
 export * from './remoteBot';
 
@@ -23,6 +33,13 @@ export const BOT_SCRIPT_PRESETS: Record<
 
 export const BOT_PRESET_LABELS: Record<BotPresetId, string> = {
   classic: 'Classic Jam (Built-in)',
+  'shove-hound': 'Shove Hound (Enforcer)',
+  'arc-architect': 'Arc Architect (3PT Spacing)',
+  'fire-feeder': 'Fire Feeder (Streak Funnel)',
+  'alley-oop-express': 'Alley-Oop Express (Duo Lob)',
+  'lockdown-counter': 'Lockdown Counter (Rim Blocker)',
+  'hybrid-ace': 'Hybrid Ace (EV Optimizer)',
+  'champion-v1': 'Champion v1 (Experimental Leader)',
   'script-classic': 'Classic Jam (Worker Script)',
   'script-sniper': 'Downtown Sniper (Worker Script)',
   'script-rusher': 'Rim Rusher (Worker Script)',
@@ -42,6 +59,13 @@ export function createBotFromAssignment(
   if (!assignment || assignment.preset === 'classic') {
     return createClassicBot();
   }
+  if (assignment.preset === 'shove-hound') return createShoveHoundBot();
+  if (assignment.preset === 'arc-architect') return createArcArchitectBot();
+  if (assignment.preset === 'fire-feeder') return createFireFeederBot();
+  if (assignment.preset === 'alley-oop-express') return createAlleyOopExpressBot();
+  if (assignment.preset === 'lockdown-counter') return createLockdownCounterBot();
+  if (assignment.preset === 'hybrid-ace') return createHybridAceBot();
+  if (assignment.preset === 'champion-v1') return createChampionV1Bot();
   if (assignment.preset === 'remote-http') {
     return new RemoteBotController({
       url: assignment.remoteUrl || DEFAULT_REMOTE_BOT_URL,
