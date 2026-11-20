@@ -92,6 +92,7 @@ export type BotPresetId =
   | 'lockdown-counter'
   | 'hybrid-ace'
   | 'champion-v1'
+  | 'champion-v2'
   | 'script-classic'
   | 'script-sniper'
   | 'script-rusher'

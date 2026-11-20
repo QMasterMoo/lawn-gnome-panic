@@ -19,6 +19,19 @@ import {
   teammateOf,
 } from './helpers';
 
+export interface ChampionV1Options {
+  /** Exp 6: Immediately pass forward on inbound if teammate is ahead & clear. */
+  inboundPass?: boolean;
+  /** Exp 6: Sprint toward sideline from backcourt to create lateral separation. */
+  sidelineArc?: boolean;
+  /** Exp 7: Use quick-release jump shot (shootHold >= 0.06) instead of strict apex. */
+  quickRelease?: boolean;
+  /** Exp 7: Ban lateral wing-hunting when a defender is within 4.5m. */
+  noWingHunt?: boolean;
+  /** Exp 9: Steer to safest point on outer dunkReach perimeter instead of under the basket. */
+  dunkPerimeter?: boolean;
+}
+
 /**
  * Champion v1: Synthesis of Findings from Experiments 1–4.
  *
@@ -35,7 +48,11 @@ import {
  *    guaranteed turbo-shove turnover whenever turbo >= 24, double-teams paint drives, and
  *    swats rising opponent jump shots within 2.15m.
  */
-export function decideChampionV1(state: GameStateSnapshot, ctx: BotDecisionContext): BotInput {
+export function decideChampionV1(
+  state: GameStateSnapshot,
+  ctx: BotDecisionContext,
+  opts: ChampionV1Options = {},
+): BotInput {
   const out = emptyOut();
   const p = state.players[ctx.playerIndex];
   if (!p || p.stunTimer > 0 || p.isDunking) return out;
@@ -67,7 +84,7 @@ export function decideChampionV1(state: GameStateSnapshot, ctx: BotDecisionConte
   // 3. OFFENSE WITH BALL
   if (state.ball.carrier === p.index) {
     if (honorHumanCalls(ctx, out)) return out;
-    if (handleMidAirShot(p, out, true)) return out;
+    if (handleMidAirShot(p, out, !opts.quickRelease)) return out;
 
     const dHoop = distToHoop(state, p);
     const dRim = distToRim(state, p);
@@ -77,6 +94,19 @@ export function decideChampionV1(state: GameStateSnapshot, ctx: BotDecisionConte
     const mateDefDist = nearestDefenderDist(state, mate);
     const myShot = expectedJumpShotPoints(state, p);
     const mateShot = expectedJumpShotPoints(state, mate);
+
+    // Exp 6: Immediate forward lead-pass on inbound
+    if (
+      opts.inboundPass &&
+      Math.abs(p.pos[0] + dir * (state.court.halfX - 2.4)) < 1.5 &&
+      state.shotClock > 23.2 &&
+      (mate.pos[0] - p.pos[0]) * dir > 2.0 &&
+      mate.stunTimer <= 0 &&
+      mateDefDist > 1.8
+    ) {
+      out.passPressed = true;
+      return out;
+    }
 
     // 3a. Immediate dunk if inside dunk reach (100% immune to shove once dunk starts!)
     if (dHoop <= reach - 0.15) {
@@ -148,10 +178,40 @@ export function decideChampionV1(state: GameStateSnapshot, ctx: BotDecisionConte
     const [o1, o2] = opponentsOf(state, p.team);
     const closer = dist2D(p.pos, o1.pos) < dist2D(p.pos, o2.pos) ? o1 : o2;
     const avoidZ = closer.pos[2] >= p.pos[2] ? -2.4 : 2.4;
-    const preferShooterSpot = p.stats.threePt >= 82 && p.stats.threePt > p.stats.dunk && dRim > 4.8;
-    if (preferShooterSpot) {
+    const allowWingHunt = !opts.noWingHunt || myDefDist >= 4.5;
+    const preferShooterSpot =
+      allowWingHunt && p.stats.threePt >= 82 && p.stats.threePt > p.stats.dunk && dRim > 4.8;
+    if (opts.sidelineArc && (hx - p.pos[0]) * dir > 11.0) {
+      const sideZ = closer.pos[2] >= 0 ? -4.6 : 4.6;
+      steerToward(p, p.pos[0] + dir * 4.5, sideZ, out, p.turbo > 22 || p.onFire);
+    } else if (preferShooterSpot) {
       const wantZ = closer.pos[2] >= 0 ? -4.3 : 4.3;
       steerToward(p, rimX - dir * 5.0, wantZ, out, p.turbo > 30 || p.onFire);
+    } else if (opts.dunkPerimeter) {
+      // Exp 9: Steer toward safest point on outer dunkReach perimeter
+      const targetR = Math.max(2.6, reach - 0.2);
+      let bestX = hx - dir * 0.9;
+      let bestZ = dHoop < 4.5 ? 0 : avoidZ;
+      let bestScore = -Infinity;
+      for (const ang of [-1.05, -0.7, -0.35, 0, 0.35, 0.7, 1.05]) {
+        const cx = hx - dir * Math.cos(ang) * targetR;
+        const cz = Math.max(
+          -state.court.halfZ + 0.8,
+          Math.min(state.court.halfZ - 0.8, Math.sin(ang) * targetR),
+        );
+        const minOpp = Math.min(
+          o1.stunTimer > 0 ? 9 : Math.hypot(cx - o1.pos[0], cz - o1.pos[2]),
+          o2.stunTimer > 0 ? 9 : Math.hypot(cx - o2.pos[0], cz - o2.pos[2]),
+        );
+        const dFromMe = Math.hypot(cx - p.pos[0], cz - p.pos[2]);
+        const score = minOpp - 0.35 * dFromMe;
+        if (score > bestScore) {
+          bestScore = score;
+          bestX = cx;
+          bestZ = cz;
+        }
+      }
+      steerToward(p, bestX, bestZ, out, p.turbo > 22 || p.onFire);
     } else {
       steerToward(p, hx - dir * 0.9, dHoop < 4.5 ? 0 : avoidZ, out, p.turbo > 22 || p.onFire);
     }
@@ -215,10 +275,10 @@ export function decideChampionV1(state: GameStateSnapshot, ctx: BotDecisionConte
   return out;
 }
 
-export function createChampionV1Bot(): BotController {
+export function createChampionV1Bot(opts: ChampionV1Options = {}): BotController {
   return {
     id: 'champion-v1',
     name: 'Champion v1',
-    decide: decideChampionV1,
+    decide: (state, ctx) => decideChampionV1(state, ctx, opts),
   };
 }

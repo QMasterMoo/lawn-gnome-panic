@@ -2,6 +2,7 @@ import {
   createAlleyOopExpressBot,
   createArcArchitectBot,
   createChampionV1Bot,
+  createChampionV2Bot,
   createFireFeederBot,
   createHybridAceBot,
   createLockdownCounterBot,
@@ -40,6 +41,7 @@ export const BOT_PRESET_LABELS: Record<BotPresetId, string> = {
   'lockdown-counter': 'Lockdown Counter (Rim Blocker)',
   'hybrid-ace': 'Hybrid Ace (EV Optimizer)',
   'champion-v1': 'Champion v1 (Experimental Leader)',
+  'champion-v2': 'Champion v2 (Promoted Leader)',
   'script-classic': 'Classic Jam (Worker Script)',
   'script-sniper': 'Downtown Sniper (Worker Script)',
   'script-rusher': 'Rim Rusher (Worker Script)',
@@ -66,6 +68,7 @@ export function createBotFromAssignment(
   if (assignment.preset === 'lockdown-counter') return createLockdownCounterBot();
   if (assignment.preset === 'hybrid-ace') return createHybridAceBot();
   if (assignment.preset === 'champion-v1') return createChampionV1Bot();
+  if (assignment.preset === 'champion-v2') return createChampionV2Bot();
   if (assignment.preset === 'remote-http') {
     return new RemoteBotController({
       url: assignment.remoteUrl || DEFAULT_REMOTE_BOT_URL,
