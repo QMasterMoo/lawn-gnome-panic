@@ -1,5 +1,5 @@
-// Pedestrians: townsgnomes that wander the sidewalks and, when soaked or scared by a speeding mower, put their hands
-// up and run away from whoever did it, dripping. No gore: they just run.
+// Pedestrians: townsgnomes that wander the sidewalks. A speeding mower scares them into running with their hands up;
+// a bullet cracks them apart into clay shards (no gore) and another townsgnome wanders in.
 import * as THREE from 'three';
 import type { GnomeLook, GnomeModel } from '@lawn/gnome';
 import { angleDiff, clampToWorld, pushOutOfBoxes } from './collide';
@@ -15,9 +15,6 @@ const HIT_RADIUS = 0.5;
 const HIT_TOP = 1.2;
 /** Body radius used for walls and boxes. */
 const BODY_R = 0.4;
-/** Seconds a soaked gnome stays wet. */
-const WET_SECONDS = 8;
-const DRIP_INTERVAL = 0.25;
 /** Max yaw change, radians per second. */
 const TURN_RATE = 10;
 /** Distance at which a walking gnome counts as arrived. */
@@ -46,8 +43,6 @@ const RAGDOLL_MAX = 7;
 interface Aux {
   /** Seconds of idling left. */
   idle: number;
-  /** Seconds until the next drip. */
-  dripT: number;
   /** Own clock: drives the flee wobble and the hands-up sway. */
   clock: number;
   /** Extra heading added for the rest of this flee after a blocked run: 0 or ±PI/2. */
@@ -64,7 +59,7 @@ interface Aux {
 }
 
 function freshAux(x: number, z: number): Aux {
-  return { idle: 0, dripT: 0, clock: Math.random() * 10, turn: 0, stuckT: 0, anchorX: x, anchorZ: z, rag: null, upFromX: x, upFromZ: z };
+  return { idle: 0, clock: Math.random() * 10, turn: 0, stuckT: 0, anchorX: x, anchorZ: z, rag: null, upFromX: x, upFromZ: z };
 }
 
 function rnd<T>(a: readonly T[]): T {
@@ -151,7 +146,7 @@ export function createNpcs(scene: THREE.Scene, _world: World, fx: Fx): Npcs {
     return a;
   }
 
-  /** Start (or restart) a flee from the point (fromX, fromZ). Does not touch wetness. */
+  /** Start (or restart) a flee from the point (fromX, fromZ). */
   function startFlee(n: Npc, a: Aux, fromX: number, fromZ: number): void {
     n.state = 'flee';
     n.fleeTime = PEDESTRIANS.fleeSeconds;
@@ -171,7 +166,6 @@ export function createNpcs(scene: THREE.Scene, _world: World, fx: Fx): Npcs {
     a.rag = createRagdoll(n.x, 0, n.z, n.yaw, Math.sin(n.yaw) * sp, Math.cos(n.yaw) * sp);
     impulse(a.rag, vx, vy, vz, spin);
     n.state = 'ragdoll';
-    n.wet = Math.max(n.wet, WET_SECONDS);
     clearHandsUp(n.model);
     return true;
   }
@@ -186,13 +180,6 @@ export function createNpcs(scene: THREE.Scene, _world: World, fx: Fx): Npcs {
     n.x = cl.x;
     n.z = cl.z;
     poseRagdoll(n.model, r);
-    // Soaked gnomes keep dripping while down.
-    a.dripT -= dt;
-    if (a.dripT <= 0) {
-      a.dripT = DRIP_INTERVAL;
-      fx.drip(n.x, Math.max(0.2, c.y), n.z);
-    }
-    n.wet = Math.max(n.wet, 1);
     // Up again once it has lain still, or after a long tumble.
     if ((r.still > RAGDOLL_LIE && r.age > 0.6) || r.age > RAGDOLL_MAX) {
       a.rag = null;
@@ -215,7 +202,7 @@ export function createNpcs(scene: THREE.Scene, _world: World, fx: Fx): Npcs {
       model.object.position.set(p.x, 0, p.z);
       const n: Npc = {
         id: nextId++, name: randomGnomeName(), x: p.x, z: p.z, yaw: Math.random() * Math.PI * 2,
-        state: 'walk', fleeTime: 0, fromX: p.x, fromZ: p.z, targetX: p.x, targetZ: p.z, look, model, wet: 0,
+        state: 'walk', fleeTime: 0, fromX: p.x, fromZ: p.z, targetX: p.x, targetZ: p.z, look, model,
       };
       pickTarget(n, world);
       const a = freshAux(n.x, n.z);
@@ -228,16 +215,7 @@ export function createNpcs(scene: THREE.Scene, _world: World, fx: Fx): Npcs {
     const a = getAux(n);
     a.clock += dt;
 
-    // Wetness: drip about four times a second while wet.
-    if (n.wet > 0) {
-      n.wet = Math.max(0, n.wet - dt);
-      a.dripT -= dt;
-      if (a.dripT <= 0) {
-        a.dripT = DRIP_INTERVAL;
-        fx.drip(n.x + (Math.random() * 2 - 1) * 0.2, 1.0, n.z + (Math.random() * 2 - 1) * 0.2);
-      }
-    }
-
+    // Scare: a speeding mower heading at a gnome makes it run.
     if (n.state === 'ragdoll') {
       tickRagdoll(n, a, dt, world);
       return;
@@ -259,19 +237,17 @@ export function createNpcs(scene: THREE.Scene, _world: World, fx: Fx): Npcs {
       return;
     }
 
-    // Scare: a speeding mower heading at a dry-footed gnome makes it run, without getting it wet.
     if (n.state !== 'flee' && !n.calm) {
       const v = scaringVehicle(n, vehicles);
       if (v) startFlee(n, a, v.x, v.z);
     }
 
-    // Recycle: a calm gnome far from the player reappears dry, nearer the player.
+    // Recycle: a calm gnome far from the player reappears nearer the player.
     if (n.state !== 'flee' && Math.hypot(n.x - px, n.z - pz) > PEDESTRIANS.recycleDistance) {
       const p = pickNear(world, px, pz, RECYCLE_MIN, RECYCLE_MAX);
       if (p) {
         n.x = p.x;
         n.z = p.z;
-        n.wet = 0;
         n.state = 'walk';
         a.idle = 0;
         pickTarget(n, world);
@@ -370,11 +346,25 @@ export function createNpcs(scene: THREE.Scene, _world: World, fx: Fx): Npcs {
       return best;
     },
 
-    soak(n: Npc, fromX: number, fromZ: number): boolean {
-      const fresh = n.state !== 'flee' || n.wet <= 0;
-      startFlee(n, getAux(n), fromX, fromZ);
-      n.wet = WET_SECONDS;
-      return fresh;
+    crack(n: Npc, px: number, pz: number): void {
+      fx.crack(n.x, 0.8, n.z, n.look.shirt);
+      const ag = getAux(n);
+      if (ag.rag) {
+        ag.rag = null;
+        resetPose(n.model);
+      }
+      const p = pickNear(_world, px, pz, RECYCLE_MIN, RECYCLE_MAX);
+      if (p) {
+        n.x = p.x;
+        n.z = p.z;
+        n.state = 'walk';
+        const a = getAux(n);
+        a.idle = 0;
+        pickTarget(n, _world);
+        resetStuck(n, a);
+        n.model.object.position.set(n.x, 0, n.z);
+      }
+      clearHandsUp(n.model);
     },
 
     onRunOver: null,
@@ -389,7 +379,7 @@ export function createNpcs(scene: THREE.Scene, _world: World, fx: Fx): Npcs {
       model.object.position.set(x, 0, z);
       const n: Npc = {
         id: nextId++, name: randomGnomeName(), x, z, yaw: Math.atan2(x - fromX, z - fromZ),
-        state: 'walk', fleeTime: 0, fromX, fromZ, targetX: x, targetZ: z, look: l, model, wet: 0,
+        state: 'walk', fleeTime: 0, fromX, fromZ, targetX: x, targetZ: z, look: l, model,
       };
       const a = freshAux(x, z);
       aux.set(n, a);

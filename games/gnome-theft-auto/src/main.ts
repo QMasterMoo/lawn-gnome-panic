@@ -5,7 +5,7 @@ import { createAchievementTracker } from '@lawn/achievements';
 import { play, setEngine, setSkid, unlockAudio } from './audio';
 import { createChaseCamera } from './camera';
 import {
-  BAIL_MIN_ALTITUDE, BIOME_NAMES, DEFAULT_LOOK, GUNS, HEAT, MOWER_TINTS, PLAYER, RUNOVER_LINES, SOAK_LINES, STEAL_LINES, VIEW, WASHED_OUT_TEXT,
+  BAIL_MIN_ALTITUDE, BIOME_NAMES, DEFAULT_LOOK, GUNS, HEAT, HOSPITAL, MOWER_TINTS, PLAYER, CRACK_LINES, RUNOVER_LINES, STEAL_LINES, VIEW, CRACKED_TEXT,
 } from './config';
 import { createFx } from './fx';
 import { clearHandsUp } from './gnomes';
@@ -16,6 +16,7 @@ import { createSimMenu } from './simmenu';
 import { createNet, VEHICLE_CODES, type NetStatus } from './net';
 import { createNpcs } from './npcs';
 import { createPlayer, setChuteHook } from './player';
+import { createAmbulances } from './ambulance';
 import { createWatch } from './police';
 import { createRemotes } from './remotes';
 import { createTraffic } from './traffic';
@@ -63,6 +64,7 @@ weapons.attachTo(player.hand());
 const npcs = createNpcs(scene, world, fx);
 const traffic = createTraffic(scene, world);
 const watch = createWatch(scene, world, fx);
+const ambulances = createAmbulances(scene, world, fx);
 const achievements = createAchievementTracker({ ui });
 setChuteHook(() => play('chute'));
 
@@ -79,10 +81,10 @@ for (const s of world.airfield.planeSpots) vehicles.push(createVehicle(scene, 'p
 const whirligig = createVehicle(scene, 'whirligig', world.base.padX, world.base.padZ, Math.PI);
 vehicles.push(whirligig);
 
-// ---- Online free roam: other players' gnomes and mowers; our water soaks them, theirs soaks us. ----
+// ---- Online free roam: other players' gnomes and mowers; our bullets hurt them, theirs hurt us. ----
 const remotes = createRemotes(scene);
 let onlineText: string | null = null;
-let soakedTimer = 0;
+let hurtTimer = 0;
 const net = createNet({
   onStatus(status: NetStatus, players: number) {
     onlineText = status === 'online' ? `Online: ${players} in Turfton` : status === 'unavailable' ? null : 'Connecting...';
@@ -91,9 +93,9 @@ const net = createNet({
   onPeerLeave(id) { remotes.leave(id); },
   onPeerPose(id, pose, t) { remotes.pose(id, pose, t); },
   onHit() {
-    player.soak(0.03);
-    if (soakedTimer <= 0) play('splash');
-    soakedTimer = 1.5;
+    player.hurt(0.03);
+    if (hurtTimer <= 0) play('crack');
+    hurtTimer = 1.5;
   },
   onReset() { remotes.clear(); },
 });
@@ -102,7 +104,7 @@ const roomParam = new URLSearchParams(location.search).get('room');
 // ?offline (demos, scripted checks) stays local.
 if (!new URLSearchParams(location.search).has('offline')) net.start(me?.name ?? 'Gnome', me?.code ?? 'gnorman', roomParam ? roomParam.toUpperCase() : null);
 
-const stats = { soaked: 0, driven: new Set<VehicleKind>(), whirligigStolen: false, trespassed: false };
+const stats = { cracked: 0, driven: new Set<VehicleKind>(), whirligigStolen: false, trespassed: false };
 
 // Flight and biome state. A gnome that bails with an open canopy and lands on its feet earns the skydiver achievement.
 let wasAirborne = false;
@@ -117,13 +119,9 @@ const unlock = (): void => unlockAudio();
 window.addEventListener('pointerdown', unlock, { once: true });
 window.addEventListener('keydown', unlock, { once: true });
 
-/** Shove per droplet by gun (units/s): the shotgun lands eight at once, the rifle one hard one. */
-const KNOCK: Record<string, number> = { pistol: 5, smg: 3, shotgun: 4, rifle: 11 };
-
 npcs.onRunOver = (n, v) => {
   if (v.driver !== 'player') return;
-  stats.soaked++;
-  watch.addHeat(HEAT.soakPedestrian * 1.5);
+  watch.addHeat(HEAT.crackPedestrian * 1.5);
   void achievements.increment('gta-ragdoll');
   hud.toast(`${n.name}: "${pickLine(RUNOVER_LINES)}"`);
   play('bump');
@@ -204,50 +202,59 @@ function getOut(): void {
   play('door');
 }
 
-/** A droplet at (x, y, z): soak whoever it hits. */
+/** A bullet at (x, y, z): crack whoever it hits. */
 function hitTest(x: number, y: number, z: number): boolean {
   const n = npcs.hitTest(x, y, z);
   if (n) {
-    // Every droplet shoves: the first one floors the gnome, the rest juggle it while it is down.
-    const k = KNOCK[weapons.gun];
-    if (npcs.knock(n, aim.x * k, 2 + k * 0.3, aim.z * k, k * 0.12, player.x, player.z)) {
-      stats.soaked++;
-      watch.addHeat(HEAT.soakPedestrian);
-      void achievements.increment('gta-rainmaker');
-      if (Math.random() < 0.5) hud.toast(`${n.name}: "${pickLine(SOAK_LINES)}"`);
-      play('splash');
-    }
+    const name = n.name;
+    ambulances.dispatch(n.x, n.z, n.look.shirt);
+    npcs.crack(n, player.x, player.z);
+    stats.cracked++;
+    watch.addHeat(HEAT.crackPedestrian);
+    void achievements.increment('gta-rainmaker');
+    if (Math.random() < 0.5) hud.toast(`${name}: "${pickLine(CRACK_LINES)}"`);
+    play('crack');
     return true;
   }
   const o = watch.hitTest(x, y, z);
   if (o) {
-    if (watch.soak(o, player.x, player.z)) {
-      stats.soaked++;
+    const name = o.name;
+    const ox = o.x;
+    const oz = o.z;
+    if (watch.crack(o)) {
+      ambulances.dispatch(ox, oz, o.look.shirt);
+      stats.cracked++;
       void achievements.increment('gta-rainmaker');
-      hud.toast(`${o.name}: "Hands up! I am off duty!"`);
+      hud.toast(`${name}: "Off duty! Permanently!"`);
+      play('crack');
     }
-    watch.addHeat(HEAT.soakOfficer / 10);
+    watch.addHeat(HEAT.crackOfficer / 10);
     return true;
   }
   const r = remotes.hitTest(x, y, z);
   if (r) {
     net.hit(r.id);
+    fx.crack(x, y, z, 0xc9824a);
+    play('crack');
     return true;
   }
   return false;
 }
 
-function washedOut(): void {
+function crackedUp(): void {
+  fx.crack(player.x, player.y + 0.8, player.z);
+  ambulances.dispatch(player.x, player.z, myLook.shirt, true);
   if (player.vehicle) {
     player.vehicle.driver = 'none';
     player.vehicle.speed = 0;
     player.vehicle.sim = undefined;
   }
-  hud.banner(WASHED_OUT_TEXT, 2500);
-  hud.toast('The Glaze Clinic wrung you out and sent you home.');
+  hud.banner(CRACKED_TEXT, 2500);
+  hud.toast('The Glaze Clinic glued you back together. Welcome to the hospital.');
   play('washed');
   void achievements.unlock('gta-washed-out');
-  player.respawn(world.spawn.x, world.spawn.z, world.spawn.yaw);
+  player.respawn(world.hospital.x, world.hospital.z, world.hospital.yaw);
+  chase.yaw = world.hospital.yaw;
   wasAirborne = false;
   hadChute = false;
   weapons.setVisible(true);
@@ -345,8 +352,8 @@ function frame(now: number): void {
   }
   if (!inBase) stats.trespassed = false;
 
-  const soak = watch.update(dt, { playerX: player.x, playerY: player.y, playerZ: player.z, playerVehicle: v }, world);
-  if (soak > 0) player.soak(soak);
+  const damage = watch.update(dt, { playerX: player.x, playerY: player.y, playerZ: player.z, playerVehicle: v }, world);
+  if (damage > 0) player.hurt(damage);
   const level = Math.floor(watch.heat);
   if (level > lastHeatLevel) {
     play('whistle');
@@ -369,18 +376,19 @@ function frame(now: number): void {
   }
   if (weapons.reloading && !reloadWasOn) play('reload');
   fx.update(dt);
+  ambulances.update(dt, player.x, player.z);
   world.update(dt, player.x, player.z);
   remotes.update(dt);
-  soakedTimer = Math.max(0, soakedTimer - dt);
+  hurtTimer = Math.max(0, hurtTimer - dt);
   const chuteOpen = player.airborne && player.chute > 0.5;
   net.setPose({
     x: player.x, y: v ? v.y : player.y, z: player.z, yaw: v ? v.yaw : player.yaw,
     veh: v ? VEHICLE_CODES.indexOf(v.kind) : -1, tint: v ? v.tint : 0,
-    moving: Math.abs(inp.moveX) + Math.abs(inp.moveY) > 0.1, aiming: firing && !v, soaked: soakedTimer > 0,
+    moving: Math.abs(inp.moveX) + Math.abs(inp.moveY) > 0.1, aiming: firing && !v, hurt: hurtTimer > 0,
     chute: chuteOpen,
   });
 
-  if (player.dryness <= 0) washedOut();
+  if (player.health <= 0) crackedUp();
 
   // Camera.
   const mode: CameraMode = player.airborne ? 'chute' : v ? (v.spec.flies ? 'fly' : 'drive') : 'foot';
@@ -392,7 +400,7 @@ function frame(now: number): void {
   chase.update(dt, target, v ? v.yaw : player.yaw, mode, inp, world);
 
   // HUD.
-  const blips: Blip[] = [{ x: whirligig.x, z: whirligig.z, color: '#ff4fd8' }];
+  const blips: Blip[] = [{ x: whirligig.x, z: whirligig.z, color: '#ff4fd8' }, { x: HOSPITAL.x, z: HOSPITAL.z, color: '#ff3b3b' }];
   for (const veh of vehicles) {
     if (veh.driver !== 'none' || veh === whirligig) continue;
     blips.push({ x: veh.x, z: veh.z, color: veh.kind === 'plane' ? '#ffffff' : '#ffd23f' });
@@ -400,7 +408,7 @@ function frame(now: number): void {
   for (const r of remotes.blips()) blips.push({ x: r.x, z: r.z, color: '#7cf0ff' });
   hud.set({
     heat: level,
-    dryness: player.dryness,
+    health: player.health,
     ammo: weapons.ammo, mag: weapons.mag, reloading: weapons.reloading,
     gun: GUNS[weapons.gun].name,
     altitude: player.airborne ? player.y : v && v.spec.flies ? v.y : null,
@@ -408,7 +416,7 @@ function frame(now: number): void {
     chute: chuteOpen,
     biome: BIOME_NAMES[biome],
     vehicle: v ? v.spec.name : null,
-    soaked: stats.soaked,
+    cracked: stats.cracked,
     prompt: near ? `${near.driver === 'npc' ? 'Steal' : 'Drive'} ${near.spec.name}` : null,
     player: { x: player.x, z: player.z, yaw: v ? v.yaw : player.yaw },
     blips,

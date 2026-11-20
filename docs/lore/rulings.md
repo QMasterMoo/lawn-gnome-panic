@@ -228,3 +228,36 @@ halo over the roof. He is relaxed about it and makes jokes about it in his gradi
 does not change Fescue's own rulebook, and Fescue proper is still the walled back garden.
 **Applies to:** fescue, gnomeokemon.  **Date:** 2026-11-19.
 **Why:** the user wanted the lab to sit in an urban setting on expensive land; making Gnome Jesus wealthy explains it.
+
+---
+
+## R-021
+
+**Question:** Gnome Theft Auto's gnomes now crack apart when shot, and there is no soaking or wetness any more. Does that
+break the no-gore rule, R-015 or R-016?
+**Ruling:** No. Gnomes are fired clay that cracks and shatters and never bleeds (R-003), so a shot gnome bursts into clay
+shards and is gone; another townsgnome wanders in. A guard is glued back together at its post, and a player who loses all
+their clay is *Cracked* and glued back together at the Glaze Clinic. This replaces R-015's soaking and "Washed Out"
+(wetness, dripping, hands up when hit) and R-016's "a hard landing only soaks the gnome" (it now chips the gnome). Gnomes
+still put their hands up and run from a speeding mower. Nothing bleeds and there is no gore.
+**Applies to:** apocrypha, gnome-theft-auto.  **Date:** 2026-11-19.
+**Why:** the user asked for cracking instead of soaking; R-003 already says clay cracks, so it fits the core canon.
+
+## R-022
+
+**Question:** Who collects the clay when a gnome cracks in Gnome Theft Auto?
+**Ruling:** The Glaze Clinic's ambulances. A cracked gnome leaves a heap of shards; an ambulance (a small white van with a
+red cross and a siren) drives out, loads every piece, and takes it back to the Clinic to be glued. Nobody is harmed by the
+ambulance, and it never blocks the road.
+**Applies to:** apocrypha, gnome-theft-auto.  **Date:** 2026-11-19.
+**Why:** gives R-021's cracking an aftermath, in keeping with the Clinic from R-015.
+
+## R-023
+
+**Question:** Do cracked gnomes get cleared away in Gnome Theft Auto, and where does a cracked player wake up?
+**Ruling:** Cracked gnomes are left where they fell, in pieces, for the rest of the session (nobody tidies Turfton in a
+hurry). This replaces R-022's "an ambulance collects every cracked gnome": the Glaze Clinic's ambulance now only comes for
+a cracked player. A cracked player wakes up on the pavement outside the Glaze Clinic Hospital (the block east of the park,
+a white building with a red cross), glued back together.
+**Applies to:** apocrypha, gnome-theft-auto.  **Date:** 2026-11-19.
+**Why:** the user asked for lasting, visibly cracked bodies and a hospital respawn; clay does not bleed, so it stays no-gore.

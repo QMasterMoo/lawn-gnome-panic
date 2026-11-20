@@ -36,7 +36,7 @@ export function biomeAt(x: number, z: number): BiomeId {
 }
 /** Ground colour of each biome (the city is grass between its blocks). */
 export const BIOME_GROUND: Record<BiomeId, number> = {
-  city: 0x5fae4a, desert: 0xd9b87a, forest: 0x2f6b3a, tundra: 0xe8f0f5, farmland: 0x8fc24f,
+  city: 0x5fae4a, desert: 0xd9b87a, forest: 0x3d8a45, tundra: 0xe8f0f5, farmland: 0x8fc24f,
 };
 
 /**
@@ -75,6 +75,8 @@ export const AIRFIELD = {
 } as const;
 
 export const SPAWN = { x: -6.25, z: 14, yaw: 0 } as const;
+/** The Glaze Clinic Hospital fills the block centred here (door facing -x, towards the road); the player wakes at `respawn`. */
+export const HOSPITAL = { x: 30, z: 30, footprint: 30, respawn: { x: 7, z: 30, yaw: -Math.PI / 2 } } as const;
 
 /** Fog and camera range. Fog hides the far edge of the loaded world; flyers see further. */
 export const VIEW = { fogNear: 150, fogFar: 420, cameraFar: 700 } as const;
@@ -202,16 +204,16 @@ export const RUNOVER_LINES = [
   'That was my lane. Mine.',
 ] as const;
 
-/** What a gnome says when soaked (toasted as `Name: "line"`). Dry, no gore, no pop culture. */
-export const SOAK_LINES = [
-  'My good coat!',
-  'I was dry. I had plans.',
+/** What a gnome says when it cracks apart (toasted as `Name: "line"`). Clay, no gore, no pop culture. */
+export const CRACK_LINES = [
+  'My good glaze!',
+  'I was whole. I had plans.',
   'Not the hat. Anything but the hat.',
-  'Hands up! Nobody squirt!',
   'That was a perfectly good beard.',
-  'I will be drying for a week.',
-  'Take the mower. Take anything.',
-  'I am glazed, you know. It still counts.',
+  'Somebody fetch the glue.',
+  'I am only chipped, you know. Mostly.',
+  'Mind the pieces.',
+  'It is only a flesh wound. I have no flesh.',
 ] as const;
 export const STEAL_LINES = [
   'That is my mower!',
@@ -266,16 +268,16 @@ export const CHUTE = {
   descend: 4.5, glideSpeed: 9,
   /** Canopy yaw steering rate, radians/s, and how fast the canopy opens (per second, 0..1). */
   steerRate: 2.2, openRate: 3,
-  /** Landing faster than this without a canopy costs this much dryness (a splat; never fatal on its own below 1). */
-  hardLandingSpeed: 14, hardLandingSoak: 0.6,
+  /** Landing faster than this without a canopy costs this much health (a splat; never fatal on its own below 1). */
+  hardLandingSpeed: 14, hardLandingDamage: 0.6,
 } as const;
 
 // ---- The Hat Watch (police) and the Spade Guard (Fort Sandpit) ------------------------------------------------------
 export const MAX_HEAT = 3;
 export const HEAT = {
-  soakPedestrian: 0.34,
+  crackPedestrian: 0.34,
   stealOccupied: 1,
-  soakOfficer: 0.6,
+  crackOfficer: 0.6,
   trespass: 2,
   stealWhirligig: 3,
   /** Heat lost per second once no officer has seen the player for `coolDelay` s. */
@@ -286,11 +288,11 @@ export const WATCH = {
   /** Officers on the street per heat level (level 1, 2, 3). */
   officersPerLevel: [0, 2, 4, 7],
   speed: 6.8,
-  sprayRange: 9,
-  /** Player dryness lost per second per spraying officer. */
-  sprayPerSecond: 0.06,
-  /** Droplet hits to make an officer or guard give up and flee. */
-  soakHits: 5,
+  shootRange: 9,
+  /** Player health lost per second per shooting officer. */
+  damagePerSecond: 0.06,
+  /** Bullet hits that crack an officer or guard apart. */
+  crackHits: 3,
   fleeSeconds: 8,
   spawnDistance: 35,
   hat: 0x1f3a93,
@@ -298,4 +300,4 @@ export const WATCH = {
   guardHat: 0x556b2f,
   guardCoat: 0x6b7a3a,
 } as const;
-export const WASHED_OUT_TEXT = 'WASHED OUT';
+export const CRACKED_TEXT = 'CRACKED';

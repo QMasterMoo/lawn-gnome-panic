@@ -6,7 +6,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { buildPrefab } from '@lawn/prefabs';
 import {
   AIRFIELD, BASE, BIOME_GROUND, BUILDINGS, CITY_HALF, COLORS, HIGHWAYS, LANE_OFFSET, ROAD_LINES, ROAD_WIDTH,
-  SIDEWALK_WIDTH, SPAWN, VIEW, WORLD_HALF, biomeAt,
+  HOSPITAL, SIDEWALK_WIDTH, SPAWN, VIEW, WORLD_HALF, biomeAt,
 } from './config';
 import { insideBox } from './collide';
 import { buildBiomes } from './biomes';
@@ -308,12 +308,13 @@ export function buildWorld(scene: THREE.Scene, _renderer: THREE.WebGLRenderer): 
     ['tundra', [[0, 0], [-H, -H], [H, -H]]],
     ['farmland', [[0, 0], [H, H], [-H, H]]],
   ];
+  // The wedges are wound facing up (+y) so they are lit like the rest of the ground; a downward-facing triangle gets
+  // flipped normals and renders almost black (the forest did).
   for (const [biome, pts] of biomeTris) {
-    const mesh = merged([groundPoly(pts, 0.004)], BIOME_GROUND[biome], 0);
-    if (mesh) {
-      (mesh.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
-      scene.add(mesh);
-    }
+    const [a, b, c] = pts;
+    const up = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const mesh = merged([groundPoly(up > 0 ? [a, c, b] : pts, 0.004)], BIOME_GROUND[biome], 0);
+    if (mesh) scene.add(mesh);
   }
   const citySquare = merged([
     new THREE.PlaneGeometry(CITY_HALF * 2, CITY_HALF * 2).rotateX(-Math.PI / 2).translate(0, 0.008, 0),
@@ -492,6 +493,10 @@ export function buildWorld(scene: THREE.Scene, _renderer: THREE.WebGLRenderer): 
       const cx = (EDGES[i] + EDGES[i + 1]) / 2;
       const cz = (EDGES[j] + EDGES[j + 1]) / 2;
       if (cx === PARK_CENTRE.x && cz === PARK_CENTRE.z) { buildPark(); continue; }
+      if (cx === HOSPITAL.x && cz === HOSPITAL.z) {
+        boxes.push(boxOf(instantiate(scene, measure('gta-hospital', { footprint: HOSPITAL.footprint }, -Math.PI / 2), cx, cz)));
+        continue;
+      }
       if (Math.hypot(cx, cz) <= BUILDINGS.downtownRadius) { placeTowers(block); continue; }
       const count = 1 + Math.floor(rnd() * 3);
       for (let k = 0; k < count; k++) placeBuilding(block);
@@ -597,6 +602,7 @@ export function buildWorld(scene: THREE.Scene, _renderer: THREE.WebGLRenderer): 
     roads: { nodes, laneOffset: LANE_OFFSET },
     walkPoints,
     spawn: { ...SPAWN },
+    hospital: { ...HOSPITAL.respawn },
     parked,
     base: {
       minX: BASE.minX, maxX: BASE.maxX, minZ: BASE.minZ, maxZ: BASE.maxZ,
