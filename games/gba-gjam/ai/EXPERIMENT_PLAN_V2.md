@@ -17,7 +17,7 @@ Goal: **Dethrone `shove-hound` (Elo 2165) in the Unrestricted League with `champ
   - `exp6-pass-plus-arc`: Combines both.
 - **Controlled Variables:** 4×45s, 60Hz, `pro`, side-swapped, `N = 20` vs `shove-hound` + `N = 12` vs `hybrid-ace`, balanced rosters, seed base `71000`.
 - **Success Criteria:** `shovesSuffered` drops by ≥40% vs `shove-hound` and `medianDiff` improves by ≥+60 PPG.
-- **Replay Seed to Watch:** `npm run replay -w games/gnome-jam -- --home exp6-inbound-pass --away shove-hound --seed 71000 --speed 4`
+- **Replay Seed to Watch:** `npm run replay -w games/gba-gjam -- --home exp6-inbound-pass --away shove-hound --seed 71000 --speed 4`
 
 ---
 
@@ -73,7 +73,7 @@ Goal: **Dethrone `shove-hound` (Elo 2165) in the Unrestricted League with `champ
 - **Hypothesis:** At 150ms cadence, defenders cannot trigger frame-perfect turbo-shoves the instant `d < 1.65`, cutting `shoveTurnovers/g` by **>50%**. As a result, `shove-hound`'s dominance will shrink dramatically, and spacing/shooting/lob strategies (`hybrid-ace`, `arc-architect`, `alley-oop-express`, `champion-v1`) will rise to the top!
 - **Setup:** Full 10-bot round-robin at `decisionCadenceMs: 150` (`6 games/pair = 270 matches`, seed base `75000`), directly compared side-by-side against the 60Hz Unrestricted 10-bot leaderboard from Exp 5.
 - **Success Criteria:** Quantify Elo rank delta (`rank_150ms - rank_60Hz`) and `shoveTurnovers/g` drop for every bot; crown the inaugural **Human-Fair League Champion**.
-- **Replay Seed to Watch:** `npm run replay -w games/gnome-jam -- --home shove-hound --away hybrid-ace --seed 75000 --cadence 150 --speed 4`
+- **Replay Seed to Watch:** `npm run replay -w games/gba-gjam -- --home shove-hound --away hybrid-ace --seed 75000 --cadence 150 --speed 4`
 
 ---
 

@@ -1,6 +1,6 @@
 # GBA GJAM — Bot Strategy Experiments Index
 
-Executed **5 experiments** (**710 total full 4-quarter matches**) in **13.29s** using the deterministic 60Hz evaluation harness (`npm run eval:experiments -w games/gnome-jam`).
+Executed **5 experiments** (**710 total full 4-quarter matches**) in **13.29s** using the deterministic 60Hz evaluation harness (`npm run eval:experiments -w games/gba-gjam`).
 
 | # | Experiment | Matches | Summary | Report |
 |---|---|---:|---|---|
