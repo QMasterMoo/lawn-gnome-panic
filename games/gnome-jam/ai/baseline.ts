@@ -71,15 +71,16 @@ export function formatLeaderboardMarkdown(
   lines.push(`# ${title}`, '', subtitle, '');
   lines.push('## Leaderboard', '');
   lines.push(
-    '| Rank | Bot | Elo | W-L | Win% (95% CI) | PPG | OppPPG | Diff | FG% | 3P% (3PA) | Dunks | Steals | Shove TO | Blocks | Reb | On Fire | Oops |',
+    '| Rank | Bot | Elo | W-L | Win% (95% CI) | PPG | Diff (Med) | PPP | Poss(s) | FG% | 3P% (3PA) | Dunks | Steals (Shove) | ShvSuf | Blocks | On Fire |',
   );
   lines.push(
-    '|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|',
+    '|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|',
   );
   entries.forEach((e, idx) => {
     const ci = `${pct(e.winRate)} (${pct(e.winRateCI95[0])}–${pct(e.winRateCI95[1])})`;
+    const diffStr = `${e.avgDiff >= 0 ? '+' : ''}${num(e.avgDiff)} (${e.medianDiff >= 0 ? '+' : ''}${num(e.medianDiff)})`;
     lines.push(
-      `| ${idx + 1} | **${e.botName}** (\`${e.botId}\`) | ${e.elo} | ${e.wins}-${e.losses} | ${ci} | ${num(e.avgPts)} | ${num(e.avgOppPts)} | ${e.avgDiff >= 0 ? '+' : ''}${num(e.avgDiff)} | ${pct(e.fgPct)} | ${pct(e.tpPct)} (${num(e.avgTpa)}) | ${num(e.avgDunks)} | ${num(e.avgSteals)} | ${num(e.avgShoveTurnovers)} | ${num(e.avgBlocks)} | ${num(e.avgRebounds)} | ${num(e.avgFire)} | ${num(e.avgAlleyOops)} |`,
+      `| ${idx + 1} | **${e.botName}** (\`${e.botId}\`) | ${e.elo} | ${e.wins}-${e.losses} | ${ci} | ${num(e.avgPts)} | ${diffStr} | ${e.ppp.toFixed(2)} | ${e.avgPossessionSec.toFixed(2)}s | ${pct(e.fgPct)} | ${pct(e.tpPct)} (${num(e.avgTpa)}) | ${num(e.avgDunks)} | ${num(e.avgSteals)} (${num(e.avgShoveTurnovers)}) | ${num(e.avgShovesSuffered)} | ${num(e.avgBlocks)} | ${num(e.avgFire)} |`,
     );
   });
 

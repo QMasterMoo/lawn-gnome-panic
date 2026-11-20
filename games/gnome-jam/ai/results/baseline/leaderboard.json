@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-20T05:26:05.003Z",
+  "generatedAt": "2026-11-20T05:44:51.734Z",
   "config": {
     "bots": [
       {
@@ -62,6 +62,14 @@
       "avgPts": 201.6875,
       "avgOppPts": 16.4375,
       "avgDiff": 185.25,
+      "medianDiff": 213.5,
+      "iqrDiff": [
+        172.5,
+        227.75
+      ],
+      "ppp": 1.6405693950177935,
+      "avgPossessionSec": 0.8051198949330272,
+      "avgPossessions": 122.9375,
       "fgPct": 0.9970647304186622,
       "tpPct": 0,
       "avgFga": 101.140625,
@@ -73,6 +81,8 @@
       "avgFire": 1.734375,
       "avgAlleyOops": 0,
       "avgShoveTurnovers": 110.09375,
+      "avgShovesSuffered": 14.125,
+      "avgTurnoversLost": 19.703125,
       "avgShotClockViolations": 0,
       "elo": 2267
     },
@@ -90,6 +100,14 @@
       "avgPts": 168.078125,
       "avgOppPts": 42.265625,
       "avgDiff": 125.8125,
+      "medianDiff": 191.5,
+      "iqrDiff": [
+        139.75,
+        207.75
+      ],
+      "ppp": 1.5819117647058825,
+      "avgPossessionSec": 0.5094289215686105,
+      "avgPossessions": 106.25,
       "fgPct": 0.9426975589573852,
       "tpPct": 0.9122709605774569,
       "avgFga": 75.53125,
@@ -101,6 +119,8 @@
       "avgFire": 1.734375,
       "avgAlleyOops": 0.171875,
       "avgShoveTurnovers": 82.9375,
+      "avgShovesSuffered": 27.09375,
+      "avgTurnoversLost": 31.734375,
       "avgShotClockViolations": 0,
       "elo": 1948
     },
@@ -118,6 +138,14 @@
       "avgPts": 136.25,
       "avgOppPts": 66.265625,
       "avgDiff": 69.984375,
+      "medianDiff": 145.5,
+      "iqrDiff": [
+        -80,
+        196.25
+      ],
+      "ppp": 1.2815990593768372,
+      "avgPossessionSec": 0.6008793846756589,
+      "avgPossessions": 106.3125,
       "fgPct": 0.9448796866256296,
       "tpPct": 0.9295508274231679,
       "avgFga": 55.84375,
@@ -129,6 +157,8 @@
       "avgFire": 1.71875,
       "avgAlleyOops": 0.40625,
       "avgShoveTurnovers": 69.046875,
+      "avgShovesSuffered": 43.171875,
+      "avgTurnoversLost": 50.6875,
       "avgShotClockViolations": 0,
       "elo": 1746
     },
@@ -146,6 +176,14 @@
       "avgPts": 126.59375,
       "avgOppPts": 79.796875,
       "avgDiff": 46.796875,
+      "medianDiff": 118,
+      "iqrDiff": [
+        -173.25,
+        197.5
+      ],
+      "ppp": 1.087662773526648,
+      "avgPossessionSec": 0.7744842708193165,
+      "avgPossessions": 116.390625,
       "fgPct": 0.9977832512315271,
       "tpPct": 0,
       "avgFga": 63.4375,
@@ -157,6 +195,8 @@
       "avgFire": 1.265625,
       "avgAlleyOops": 5.984375,
       "avgShoveTurnovers": 66.296875,
+      "avgShovesSuffered": 44.265625,
+      "avgTurnoversLost": 51.28125,
       "avgShotClockViolations": 0,
       "elo": 1668
     },
@@ -174,6 +214,14 @@
       "avgPts": 95.1875,
       "avgOppPts": 117.78125,
       "avgDiff": -22.59375,
+      "medianDiff": -18.5,
+      "iqrDiff": [
+        -210,
+        137.25
+      ],
+      "ppp": 0.915677138133173,
+      "avgPossessionSec": 0.6234731198957634,
+      "avgPossessions": 103.953125,
       "fgPct": 0.9180549302116164,
       "tpPct": 0.9179580674567,
       "avgFga": 34.703125,
@@ -185,6 +233,8 @@
       "avgFire": 1.359375,
       "avgAlleyOops": 0,
       "avgShoveTurnovers": 41.640625,
+      "avgShovesSuffered": 63.046875,
+      "avgTurnoversLost": 69.703125,
       "avgShotClockViolations": 0,
       "elo": 1555
     },
@@ -202,6 +252,14 @@
       "avgPts": 89.921875,
       "avgOppPts": 118.09375,
       "avgDiff": -28.171875,
+      "medianDiff": -83,
+      "iqrDiff": [
+        -191.75,
+        177
+      ],
+      "ppp": 0.898376522010615,
+      "avgPossessionSec": 0.6104407326464556,
+      "avgPossessions": 100.09375,
       "fgPct": 0.9428,
       "tpPct": 0.9204244031830239,
       "avgFga": 39.0625,
@@ -213,6 +271,8 @@
       "avgFire": 1.046875,
       "avgAlleyOops": 0.109375,
       "avgShoveTurnovers": 37.96875,
+      "avgShovesSuffered": 55.25,
+      "avgTurnoversLost": 61.171875,
       "avgShotClockViolations": 0,
       "elo": 1419
     },
@@ -230,6 +290,14 @@
       "avgPts": 60.125,
       "avgOppPts": 131.5625,
       "avgDiff": -71.4375,
+      "medianDiff": -130,
+      "iqrDiff": [
+        -191.5,
+        63
+      ],
+      "ppp": 0.593643937056464,
+      "avgPossessionSec": 0.7746914532551368,
+      "avgPossessions": 101.28125,
       "fgPct": 0.9806320081549439,
       "tpPct": 0,
       "avgFga": 30.65625,
@@ -241,6 +309,8 @@
       "avgFire": 1.9375,
       "avgAlleyOops": 0,
       "avgShoveTurnovers": 37.578125,
+      "avgShovesSuffered": 62.9375,
+      "avgTurnoversLost": 69.265625,
       "avgShotClockViolations": 0,
       "elo": 1352
     },
@@ -258,6 +328,14 @@
       "avgPts": 23.84375,
       "avgOppPts": 169.640625,
       "avgDiff": -145.796875,
+      "medianDiff": -174,
+      "iqrDiff": [
+        -223,
+        -104.25
+      ],
+      "ppp": 0.24439461883408073,
+      "avgPossessionSec": 0.7032698056800926,
+      "avgPossessions": 97.5625,
       "fgPct": 0.779788838612368,
       "tpPct": 0.7735849056603774,
       "avgFga": 10.359375,
@@ -269,6 +347,8 @@
       "avgFire": 0.671875,
       "avgAlleyOops": 0,
       "avgShoveTurnovers": 14.5625,
+      "avgShovesSuffered": 78.9375,
+      "avgTurnoversLost": 86.78125,
       "avgShotClockViolations": 0,
       "elo": 1124
     },
@@ -286,6 +366,14 @@
       "avgPts": 13.234375,
       "avgOppPts": 173.078125,
       "avgDiff": -159.84375,
+      "medianDiff": -194.5,
+      "iqrDiff": [
+        -210.5,
+        -110.5
+      ],
+      "ppp": 0.1477669225401256,
+      "avgPossessionSec": 0.7660037217957375,
+      "avgPossessions": 89.5625,
       "fgPct": 0.9337748344370861,
       "tpPct": 0.5,
       "avgFga": 7.078125,
@@ -297,6 +385,8 @@
       "avgFire": 0.375,
       "avgAlleyOops": 0,
       "avgShoveTurnovers": 6.296875,
+      "avgShovesSuffered": 77.59375,
+      "avgTurnoversLost": 81.609375,
       "avgShotClockViolations": 0,
       "elo": 422
     }
@@ -306,378 +396,450 @@
       "downtown-sniper": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -39
+        "avgDiff": -39,
+        "medianDiff": -36
       },
       "rim-rusher": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -52.5
+        "avgDiff": -52.5,
+        "medianDiff": -50
       },
       "shove-hound": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -208
+        "avgDiff": -208,
+        "medianDiff": -210
       },
       "arc-architect": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -177.125
+        "avgDiff": -177.125,
+        "medianDiff": -187.5
       },
       "fire-feeder": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -188.375
+        "avgDiff": -188.375,
+        "medianDiff": -195.5
       },
       "alley-oop-express": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -194.75
+        "avgDiff": -194.75,
+        "medianDiff": -196
       },
       "lockdown-counter": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -208.5
+        "avgDiff": -208.5,
+        "medianDiff": -215.5
       },
       "hybrid-ace": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -210.5
+        "avgDiff": -210.5,
+        "medianDiff": -213.5
       }
     },
     "downtown-sniper": {
       "classic": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 39
+        "avgDiff": 39,
+        "medianDiff": 36
       },
       "rim-rusher": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -149.875
+        "avgDiff": -149.875,
+        "medianDiff": -156.5
       },
       "shove-hound": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -238.25
+        "avgDiff": -238.25,
+        "medianDiff": -243
       },
       "arc-architect": {
         "wins": 3,
         "games": 8,
-        "avgDiff": -89.5
+        "avgDiff": -89.5,
+        "medianDiff": -112.5
       },
       "fire-feeder": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -159.5
+        "avgDiff": -159.5,
+        "medianDiff": -140
       },
       "alley-oop-express": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -197
+        "avgDiff": -197,
+        "medianDiff": -229.5
       },
       "lockdown-counter": {
         "wins": 1,
         "games": 8,
-        "avgDiff": -181
+        "avgDiff": -181,
+        "medianDiff": -214.5
       },
       "hybrid-ace": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -190.25
+        "avgDiff": -190.25,
+        "medianDiff": -190
       }
     },
     "rim-rusher": {
       "classic": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 52.5
+        "avgDiff": 52.5,
+        "medianDiff": 50
       },
       "downtown-sniper": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 149.875
+        "avgDiff": 149.875,
+        "medianDiff": 156.5
       },
       "shove-hound": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -235.75
+        "avgDiff": -235.75,
+        "medianDiff": -240
       },
       "arc-architect": {
         "wins": 3,
         "games": 8,
-        "avgDiff": -9.75
+        "avgDiff": -9.75,
+        "medianDiff": -27
       },
       "fire-feeder": {
         "wins": 2,
         "games": 8,
-        "avgDiff": -81.625
+        "avgDiff": -81.625,
+        "medianDiff": -119
       },
       "alley-oop-express": {
         "wins": 1,
         "games": 8,
-        "avgDiff": -130.5
+        "avgDiff": -130.5,
+        "medianDiff": -135
       },
       "lockdown-counter": {
         "wins": 1,
         "games": 8,
-        "avgDiff": -130.375
+        "avgDiff": -130.375,
+        "medianDiff": -161
       },
       "hybrid-ace": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -185.875
+        "avgDiff": -185.875,
+        "medianDiff": -188
       }
     },
     "shove-hound": {
       "classic": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 208
+        "avgDiff": 208,
+        "medianDiff": 210
       },
       "downtown-sniper": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 238.25
+        "avgDiff": 238.25,
+        "medianDiff": 243
       },
       "rim-rusher": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 235.75
+        "avgDiff": 235.75,
+        "medianDiff": 240
       },
       "arc-architect": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 222.5
+        "avgDiff": 222.5,
+        "medianDiff": 223
       },
       "fire-feeder": {
         "wins": 7,
         "games": 8,
-        "avgDiff": 106.75
+        "avgDiff": 106.75,
+        "medianDiff": 156.5
       },
       "alley-oop-express": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 212.25
+        "avgDiff": 212.25,
+        "medianDiff": 216
       },
       "lockdown-counter": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 167.375
+        "avgDiff": 167.375,
+        "medianDiff": 180.5
       },
       "hybrid-ace": {
         "wins": 7,
         "games": 8,
-        "avgDiff": 91.125
+        "avgDiff": 91.125,
+        "medianDiff": 111.5
       }
     },
     "arc-architect": {
       "classic": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 177.125
+        "avgDiff": 177.125,
+        "medianDiff": 187.5
       },
       "downtown-sniper": {
         "wins": 5,
         "games": 8,
-        "avgDiff": 89.5
+        "avgDiff": 89.5,
+        "medianDiff": 112.5
       },
       "rim-rusher": {
         "wins": 5,
         "games": 8,
-        "avgDiff": 9.75
+        "avgDiff": 9.75,
+        "medianDiff": 27
       },
       "shove-hound": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -222.5
+        "avgDiff": -222.5,
+        "medianDiff": -223
       },
       "fire-feeder": {
         "wins": 2,
         "games": 8,
-        "avgDiff": -99.5
+        "avgDiff": -99.5,
+        "medianDiff": -156
       },
       "alley-oop-express": {
         "wins": 1,
         "games": 8,
-        "avgDiff": -170.25
+        "avgDiff": -170.25,
+        "medianDiff": -222
       },
       "lockdown-counter": {
         "wins": 6,
         "games": 8,
-        "avgDiff": 49.5
+        "avgDiff": 49.5,
+        "medianDiff": 88
       },
       "hybrid-ace": {
         "wins": 3,
         "games": 8,
-        "avgDiff": -14.375
+        "avgDiff": -14.375,
+        "medianDiff": -114.5
       }
     },
     "fire-feeder": {
       "classic": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 188.375
+        "avgDiff": 188.375,
+        "medianDiff": 195.5
       },
       "downtown-sniper": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 159.5
+        "avgDiff": 159.5,
+        "medianDiff": 140
       },
       "rim-rusher": {
         "wins": 6,
         "games": 8,
-        "avgDiff": 81.625
+        "avgDiff": 81.625,
+        "medianDiff": 119
       },
       "shove-hound": {
         "wins": 1,
         "games": 8,
-        "avgDiff": -106.75
+        "avgDiff": -106.75,
+        "medianDiff": -156.5
       },
       "arc-architect": {
         "wins": 6,
         "games": 8,
-        "avgDiff": 99.5
+        "avgDiff": 99.5,
+        "medianDiff": 156
       },
       "alley-oop-express": {
         "wins": 4,
         "games": 8,
-        "avgDiff": -26.25
+        "avgDiff": -26.25,
+        "medianDiff": -33.5
       },
       "lockdown-counter": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 222.375
+        "avgDiff": 222.375,
+        "medianDiff": 216
       },
       "hybrid-ace": {
         "wins": 2,
         "games": 8,
-        "avgDiff": -58.5
+        "avgDiff": -58.5,
+        "medianDiff": -126.5
       }
     },
     "alley-oop-express": {
       "classic": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 194.75
+        "avgDiff": 194.75,
+        "medianDiff": 196
       },
       "downtown-sniper": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 197
+        "avgDiff": 197,
+        "medianDiff": 229.5
       },
       "rim-rusher": {
         "wins": 7,
         "games": 8,
-        "avgDiff": 130.5
+        "avgDiff": 130.5,
+        "medianDiff": 135
       },
       "shove-hound": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -212.25
+        "avgDiff": -212.25,
+        "medianDiff": -216
       },
       "arc-architect": {
         "wins": 7,
         "games": 8,
-        "avgDiff": 170.25
+        "avgDiff": 170.25,
+        "medianDiff": 222
       },
       "fire-feeder": {
         "wins": 4,
         "games": 8,
-        "avgDiff": 26.25
+        "avgDiff": 26.25,
+        "medianDiff": 33.5
       },
       "lockdown-counter": {
         "wins": 6,
         "games": 8,
-        "avgDiff": 64.5
+        "avgDiff": 64.5,
+        "medianDiff": 93
       },
       "hybrid-ace": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -196.625
+        "avgDiff": -196.625,
+        "medianDiff": -196.5
       }
     },
     "lockdown-counter": {
       "classic": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 208.5
+        "avgDiff": 208.5,
+        "medianDiff": 215.5
       },
       "downtown-sniper": {
         "wins": 7,
         "games": 8,
-        "avgDiff": 181
+        "avgDiff": 181,
+        "medianDiff": 214.5
       },
       "rim-rusher": {
         "wins": 7,
         "games": 8,
-        "avgDiff": 130.375
+        "avgDiff": 130.375,
+        "medianDiff": 161
       },
       "shove-hound": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -167.375
+        "avgDiff": -167.375,
+        "medianDiff": -180.5
       },
       "arc-architect": {
         "wins": 2,
         "games": 8,
-        "avgDiff": -49.5
+        "avgDiff": -49.5,
+        "medianDiff": -88
       },
       "fire-feeder": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -222.375
+        "avgDiff": -222.375,
+        "medianDiff": -216
       },
       "alley-oop-express": {
         "wins": 2,
         "games": 8,
-        "avgDiff": -64.5
+        "avgDiff": -64.5,
+        "medianDiff": -93
       },
       "hybrid-ace": {
         "wins": 0,
         "games": 8,
-        "avgDiff": -241.5
+        "avgDiff": -241.5,
+        "medianDiff": -240
       }
     },
     "hybrid-ace": {
       "classic": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 210.5
+        "avgDiff": 210.5,
+        "medianDiff": 213.5
       },
       "downtown-sniper": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 190.25
+        "avgDiff": 190.25,
+        "medianDiff": 190
       },
       "rim-rusher": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 185.875
+        "avgDiff": 185.875,
+        "medianDiff": 188
       },
       "shove-hound": {
         "wins": 1,
         "games": 8,
-        "avgDiff": -91.125
+        "avgDiff": -91.125,
+        "medianDiff": -111.5
       },
       "arc-architect": {
         "wins": 5,
         "games": 8,
-        "avgDiff": 14.375
+        "avgDiff": 14.375,
+        "medianDiff": 114.5
       },
       "fire-feeder": {
         "wins": 6,
         "games": 8,
-        "avgDiff": 58.5
+        "avgDiff": 58.5,
+        "medianDiff": 126.5
       },
       "alley-oop-express": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 196.625
+        "avgDiff": 196.625,
+        "medianDiff": 196.5
       },
       "lockdown-counter": {
         "wins": 8,
         "games": 8,
-        "avgDiff": 241.5
+        "avgDiff": 241.5,
+        "medianDiff": 240
       }
     }
   }

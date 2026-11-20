@@ -12,14 +12,18 @@ npm run eval:baseline -w games/gnome-jam
 # Run all 5 designed strategy experiments (710 matches, ~13s)
 npm run eval:experiments -w games/gnome-jam
 
+# Render a 4x-speed tactical MP4 replay of any bot matchup & seed!
+npm run replay -w games/gnome-jam -- --home shove-hound --away champion-v1 --seed 61000 --speed 4
+
 # Run unit tests & production build
 npm test -w games/gnome-jam && npm run build -w games/gnome-jam
 ```
 
 ## Key Documents & Results
 
-- **[EXPERIMENT_PROCESS.md](./EXPERIMENT_PROCESS.md)** — The 6-step repeatable human workflow, Experiment Card template, and Champion Promotion Criteria for devising new bot strategies.
-- **[PROCESS_RETROSPECTIVE.md](./PROCESS_RETROSPECTIVE.md)** — Finalized analysis of the process, key meta discoveries, and the next 5 experiments to build `champion-v2`.
+- **[EXPERIMENT_PROCESS.md](./EXPERIMENT_PROCESS.md)** — The v2 7-step repeatable human workflow (possession telemetry, dual-league 60Hz/150ms evaluation, median/IQR stats, `sweepParameters`, and 4x MP4 film review).
+- **[EXPERIMENT_PLAN_V2.md](./EXPERIMENT_PLAN_V2.md)** — Planned Wave 2 & 3 roadmap (**Experiments 6–12**) aimed at dethroning `shove-hound` with `champion-v2` and testing the Human-Fair 150ms League & mixed duos.
+- **[PROCESS_RETROSPECTIVE.md](./PROCESS_RETROSPECTIVE.md)** — Analysis of Wave 1 results and the problems that drove the v2 process upgrades.
 - **[results/baseline/REPORT.md](./results/baseline/REPORT.md)** — 9-bot baseline leaderboard, Elo ratings, and head-to-head matrix (`leaderboard.json` + `matches.csv` alongside it).
 - **[results/experiments/INDEX.md](./results/experiments/INDEX.md)** — Summary index linking all 5 experiment reports (`exp1` through `exp5`, each with `REPORT.md` + `results.json`).
 

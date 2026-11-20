@@ -57,6 +57,46 @@ throw new Error('Script must define function decide(state, ctx)');`,
   };
 }
 
+/**
+ * Wraps a BotController with a fixed human-like decision cadence (e.g. 150ms = 9 ticks at 60Hz).
+ * Between decision ticks, continuous inputs (moveX, moveZ, turbo, shootDown) are held,
+ * while edge-triggered pulses (shootPressed, shootReleased, passPressed) fire only on the decision tick.
+ */
+export function wrapWithReactionCadence(bot: BotController, cadenceTicks: number): BotController {
+  const step = Math.max(1, Math.round(cadenceTicks));
+  if (step <= 1) return bot;
+  let ticksSinceDecision = step;
+  let held: BotInput = {};
+
+  return {
+    id: bot.id,
+    name: bot.name,
+    decide(state, ctx) {
+      if (ticksSinceDecision >= step) {
+        ticksSinceDecision = 1;
+        const fresh = bot.decide(state, ctx) || {};
+        held = {
+          moveX: fresh.moveX ?? 0,
+          moveZ: fresh.moveZ ?? 0,
+          turbo: Boolean(fresh.turbo),
+          shootDown: Boolean(fresh.shootDown),
+        };
+        return fresh;
+      }
+      ticksSinceDecision++;
+      return { ...held };
+    },
+    reset() {
+      ticksSinceDecision = step;
+      held = {};
+      bot.reset?.();
+    },
+    dispose() {
+      bot.dispose?.();
+    },
+  };
+}
+
 export interface TeamTelemetry {
   pts: number;
   fgm: number;
@@ -71,6 +111,14 @@ export interface TeamTelemetry {
   shotClockViolations: number;
   alleyOops: number;
   shoveTurnovers: number;
+  /** Number of times this team lost the ball to an opponent's turbo-shove. */
+  shovesSuffered: number;
+  /** Total possessions lost to opponent steals + shot clock violations. */
+  turnoversLost: number;
+  /** Total offensive possessions in the match. */
+  possessions: number;
+  /** Total live seconds spent possessing the ball. */
+  possessionSec: number;
 }
 
 export interface MatchTelemetry {
@@ -84,6 +132,7 @@ export interface MatchTelemetry {
   winner: 0 | 1;
   overtime: boolean;
   ticks: number;
+  decisionCadenceMs: number;
   home: TeamTelemetry;
   away: TeamTelemetry;
 }
@@ -105,12 +154,19 @@ export interface MatchOptions {
   quarterSeconds?: number;
   dt?: number;
   seed?: number;
+  /**
+   * Optional human-fair reaction cadence in milliseconds (e.g. 150ms).
+   * 0 (default) = Unrestricted 60Hz League.
+   */
+  decisionCadenceMs?: number;
+  /** Optional per-tick observer hook (used by the 4x MP4 replay recorder). */
+  onTick?: (sim: JamSimulation, lastEvent: string | null) => void;
 }
 
-/** Standardized mirrored balanced roster (70/70/70/70 + 80/80/60/60) for fair strategy comparisons. */
+/** Standardized mirrored balanced roster (75/75/75/75 + 80/80/70/70) for fair strategy comparisons. */
 export function makeBalancedRoster(prefix = 'bal'): [GnomePlayerProfile, GnomePlayerProfile] {
-  const baseA = PRO_TEAMS[0].roster[2]; // 70/70/70/70
-  const baseB = PRO_TEAMS[0].roster[1]; // 90/80/50/60
+  const baseA = PRO_TEAMS[0].roster[2];
+  const baseB = PRO_TEAMS[0].roster[1];
   return [
     { ...baseA, id: `${prefix}-a`, name: `${prefix.toUpperCase()} All-Rounder`, stats: { speed: 75, threePt: 75, dunk: 75, defense: 75 } },
     { ...baseB, id: `${prefix}-b`, name: `${prefix.toUpperCase()} Wing`, stats: { speed: 80, threePt: 80, dunk: 70, defense: 70 } },
@@ -145,6 +201,10 @@ function sumTeamBox(
     shotClockViolations: number;
     alleyOops: number;
     shoveTurnovers: number;
+    shovesSuffered: number;
+    turnoversLost: number;
+    possessions: number;
+    possessionSec: number;
   },
 ): TeamTelemetry {
   const t: TeamTelemetry = {
@@ -180,6 +240,8 @@ export function simulateMatch(opts: MatchOptions): MatchTelemetry {
   const dt = opts.dt ?? 1 / 60;
   const quarterSeconds = opts.quarterSeconds ?? 45;
   const difficulty = opts.difficulty ?? 'pro';
+  const decisionCadenceMs = opts.decisionCadenceMs ?? 0;
+  const cadenceTicks = decisionCadenceMs > 0 ? Math.max(1, Math.round(decisionCadenceMs / (dt * 1000))) : 1;
   const homeRoster = opts.homeRoster ?? makeBalancedRoster('home');
   const awayRoster = opts.awayRoster ?? makeBalancedRoster('away');
 
@@ -188,23 +250,27 @@ export function simulateMatch(opts: MatchOptions): MatchTelemetry {
     const shotClockViolations: [number, number] = [0, 0];
     const alleyOops: [number, number] = [0, 0];
     const shoveTurnovers: [number, number] = [0, 0];
+    const possessions: [number, number] = [0, 0];
+    const possessionSec: [number, number] = [0, 0];
     let matchResult: MatchResult | null = null;
     let simRef: JamSimulation | null = null;
+    let lastEvent: string | null = null;
 
     const cb: SimCallbacks = {
       onAnnounce: (ev) => {
+        lastEvent = ev.text;
         if (!simRef) return;
         const lastTeam = simRef.ball.lastTouchTeam;
         if (ev.text === "HE'S ON FIRE!!") {
-          // Scorer's team is the opposite of inboundTeam (or lastTouchTeam)
-          const scorerTeam = simRef.players.find((p) => p.onFire && ev.subtext?.includes(p.profile.name))?.team ?? lastTeam;
+          const scorerTeam =
+            simRef.players.find((p) => p.onFire && ev.subtext?.includes(p.profile.name))?.team ??
+            lastTeam;
           fireActivations[scorerTeam]++;
         } else if (ev.text === 'SHOT CLOCK VIOLATION!') {
           shotClockViolations[lastTeam]++;
         } else if (ev.text === 'ALLEY-OOP!') {
           alleyOops[lastTeam]++;
         } else if (ev.text === 'CRUNCHING SHOVE!') {
-          // Ball was just given to the shover, so lastTouchTeam is the shover's team
           shoveTurnovers[lastTeam]++;
         }
       },
@@ -230,23 +296,54 @@ export function simulateMatch(opts: MatchOptions): MatchTelemetry {
 
     const sim = new JamSimulation(config, cb);
     simRef = sim;
-    sim.setBot(0, opts.homeBot.create());
-    sim.setBot(1, opts.homeBot.create());
-    sim.setBot(2, opts.awayBot.create());
-    sim.setBot(3, opts.awayBot.create());
+    const mk = (f: BotFactory) => wrapWithReactionCadence(f.create(), cadenceTicks);
+    sim.setBot(0, mk(opts.homeBot));
+    sim.setBot(1, mk(opts.homeBot));
+    sim.setBot(2, mk(opts.awayBot));
+    sim.setBot(3, mk(opts.awayBot));
 
     const idle = normalizeBotInput(null);
-    const maxTicks = Math.ceil((quarterSeconds * 4 + 180) / dt); // safety cap including multi-OT
+    const maxTicks = Math.ceil((quarterSeconds * 4 + 180) / dt);
     let ticks = 0;
+    let prevPossTeam: 0 | 1 | null = null;
+    let prevPhase: string = sim.phase;
+
     while (sim.phase !== 'finished' && ticks < maxTicks) {
+      lastEvent = null;
       sim.step(dt, idle, idle);
       ticks++;
+
+      if (sim.phase === 'live') {
+        const curTeam: 0 | 1 | null =
+          sim.ball.carrier !== null
+            ? sim.players[sim.ball.carrier].team
+            : sim.ball.mode === 'pass'
+              ? sim.ball.lastTouchTeam
+              : null;
+        if (curTeam !== null) {
+          possessionSec[curTeam] += dt;
+          if (curTeam !== prevPossTeam || prevPhase !== 'live') {
+            possessions[curTeam]++;
+          }
+          prevPossTeam = curTeam;
+        }
+      } else {
+        prevPossTeam = null;
+      }
+      prevPhase = sim.phase;
+
+      opts.onTick?.(sim, lastEvent);
     }
 
-    const box = matchResult ? (matchResult as MatchResult).boxScore : sim.players.map((p) => ({ ...p.box }));
+    const box = matchResult
+      ? (matchResult as MatchResult).boxScore
+      : sim.players.map((p) => ({ ...p.box }));
     const homeScore = sim.score[0];
     const awayScore = sim.score[1];
     const winner: 0 | 1 = homeScore >= awayScore ? 0 : 1;
+
+    const homeSteals = box.filter((b) => b.team === 0).reduce((s, b) => s + b.steals, 0);
+    const awaySteals = box.filter((b) => b.team === 1).reduce((s, b) => s + b.steals, 0);
 
     const telemetry: MatchTelemetry = {
       seed,
@@ -259,17 +356,26 @@ export function simulateMatch(opts: MatchOptions): MatchTelemetry {
       winner,
       overtime: sim.quarter > 4,
       ticks,
+      decisionCadenceMs,
       home: sumTeamBox(box, 0, {
         fireActivations: fireActivations[0],
         shotClockViolations: shotClockViolations[0],
         alleyOops: alleyOops[0],
         shoveTurnovers: shoveTurnovers[0],
+        shovesSuffered: shoveTurnovers[1],
+        turnoversLost: awaySteals + shotClockViolations[0],
+        possessions: possessions[0],
+        possessionSec: possessionSec[0],
       }),
       away: sumTeamBox(box, 1, {
         fireActivations: fireActivations[1],
         shotClockViolations: shotClockViolations[1],
         alleyOops: alleyOops[1],
         shoveTurnovers: shoveTurnovers[1],
+        shovesSuffered: shoveTurnovers[0],
+        turnoversLost: homeSteals + shotClockViolations[1],
+        possessions: possessions[1],
+        possessionSec: possessionSec[1],
       }),
     };
 
@@ -289,6 +395,15 @@ export interface AggregateBotStats {
   avgPts: number;
   avgOppPts: number;
   avgDiff: number;
+  /** Median point differential (robust against snowball blowouts). */
+  medianDiff: number;
+  /** Interquartile range [p25, p75] of point differential. */
+  iqrDiff: [number, number];
+  /** Points per offensive possession. */
+  ppp: number;
+  /** Average offensive possession length in seconds. */
+  avgPossessionSec: number;
+  avgPossessions: number;
   fgPct: number;
   tpPct: number;
   avgFga: number;
@@ -300,6 +415,9 @@ export interface AggregateBotStats {
   avgFire: number;
   avgAlleyOops: number;
   avgShoveTurnovers: number;
+  /** Average times per game this bot lost the ball to an opponent turbo-shove. */
+  avgShovesSuffered: number;
+  avgTurnoversLost: number;
   avgShotClockViolations: number;
 }
 
@@ -314,12 +432,22 @@ export function wilsonCI95(wins: number, n: number): [number, number] {
   return [Math.max(0, center - half), Math.min(1, center + half)];
 }
 
+export function quantile(sorted: number[], q: number): number {
+  if (sorted.length === 0) return 0;
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  if (lo === hi) return sorted[lo];
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
 export interface SeriesOptions {
   games?: number;
   baseSeed?: number;
   quarterSeconds?: number;
   difficulty?: Difficulty;
   rosterMode?: 'balanced' | 'shooter' | 'dunker' | 'pro-teams';
+  decisionCadenceMs?: number;
 }
 
 export interface SeriesResult {
@@ -329,7 +457,11 @@ export interface SeriesResult {
   matches: MatchTelemetry[];
 }
 
-function pickRoster(mode: SeriesOptions['rosterMode'], gameIdx: number, side: 'home' | 'away'): [GnomePlayerProfile, GnomePlayerProfile] {
+export function pickRoster(
+  mode: SeriesOptions['rosterMode'],
+  gameIdx: number,
+  side: 'home' | 'away',
+): [GnomePlayerProfile, GnomePlayerProfile] {
   if (mode === 'shooter') return makeShooterRoster(side);
   if (mode === 'dunker') return makeDunkerRoster(side);
   if (mode === 'pro-teams') {
@@ -361,19 +493,24 @@ function aggregateForBot(
   let fire = 0;
   let oops = 0;
   let shoves = 0;
+  let shovesSuf = 0;
+  let toLost = 0;
+  let poss = 0;
+  let possSec = 0;
   let scv = 0;
+  const diffs: number[] = [];
 
   for (const m of matches) {
     const isHome = m.homeBotId === botId;
     const isAway = m.awayBotId === botId;
     if (!isHome && !isAway) continue;
-    // Handle mirror match (if ever called) by skipping double-count
     const mine = isHome ? m.home : m.away;
     const theirs = isHome ? m.away : m.home;
     games++;
     if ((isHome && m.winner === 0) || (!isHome && m.winner === 1)) wins++;
     pts += mine.pts;
     oppPts += theirs.pts;
+    diffs.push(mine.pts - theirs.pts);
     fgm += mine.fgm;
     fga += mine.fga;
     tpm += mine.tpm;
@@ -385,9 +522,14 @@ function aggregateForBot(
     fire += mine.fireActivations;
     oops += mine.alleyOops;
     shoves += mine.shoveTurnovers;
+    shovesSuf += mine.shovesSuffered;
+    toLost += mine.turnoversLost;
+    poss += mine.possessions;
+    possSec += mine.possessionSec;
     scv += mine.shotClockViolations;
   }
 
+  diffs.sort((a, b) => a - b);
   const g = Math.max(1, games);
   return {
     botId,
@@ -400,6 +542,11 @@ function aggregateForBot(
     avgPts: pts / g,
     avgOppPts: oppPts / g,
     avgDiff: (pts - oppPts) / g,
+    medianDiff: quantile(diffs, 0.5),
+    iqrDiff: [quantile(diffs, 0.25), quantile(diffs, 0.75)],
+    ppp: poss > 0 ? pts / poss : 0,
+    avgPossessionSec: poss > 0 ? possSec / poss : 0,
+    avgPossessions: poss / g,
     fgPct: fga > 0 ? fgm / fga : 0,
     tpPct: tpa > 0 ? tpm / tpa : 0,
     avgFga: fga / g,
@@ -411,6 +558,8 @@ function aggregateForBot(
     avgFire: fire / g,
     avgAlleyOops: oops / g,
     avgShoveTurnovers: shoves / g,
+    avgShovesSuffered: shovesSuf / g,
+    avgTurnoversLost: toLost / g,
     avgShotClockViolations: scv / g,
   };
 }
@@ -426,6 +575,7 @@ export function runSeries(
   const quarterSeconds = opts.quarterSeconds ?? 45;
   const difficulty = opts.difficulty ?? 'pro';
   const rosterMode = opts.rosterMode ?? 'balanced';
+  const decisionCadenceMs = opts.decisionCadenceMs ?? 0;
 
   const matches: MatchTelemetry[] = [];
   for (let i = 0; i < games; i++) {
@@ -446,6 +596,7 @@ export function runSeries(
         awayRoster,
         difficulty,
         quarterSeconds,
+        decisionCadenceMs,
         seed: baseSeed + i * 97,
       }),
     );
@@ -465,7 +616,7 @@ export interface LeaderboardEntry extends AggregateBotStats {
 
 export interface RoundRobinResult {
   leaderboard: LeaderboardEntry[];
-  matrix: Record<string, Record<string, { wins: number; games: number; avgDiff: number }>>;
+  matrix: Record<string, Record<string, { wins: number; games: number; avgDiff: number; medianDiff: number }>>;
   totalMatches: number;
   matches: MatchTelemetry[];
 }
@@ -501,11 +652,13 @@ export function runRoundRobin(
         wins: res.botA.wins,
         games: res.games,
         avgDiff: res.botA.avgDiff,
+        medianDiff: res.botA.medianDiff,
       };
       matrix[b.id][a.id] = {
         wins: res.botB.wins,
         games: res.games,
         avgDiff: res.botB.avgDiff,
+        medianDiff: res.botB.medianDiff,
       };
     }
   }
@@ -521,7 +674,7 @@ export function runRoundRobin(
       const expH = 1 / (1 + Math.pow(10, (rA - rH) / 400));
       const scoreH = m.winner === 0 ? 1 : 0;
       elo[m.homeBotId] = rH + K * (scoreH - expH);
-      elo[m.awayBotId] = rA + K * ((1 - scoreH) - (1 - expH));
+      elo[m.awayBotId] = rA + K * (1 - scoreH - (1 - expH));
     }
   }
 
@@ -530,7 +683,7 @@ export function runRoundRobin(
       ...aggregateForBot(b.id, b.name, allMatches),
       elo: Math.round(elo[b.id]),
     }))
-    .sort((x, y) => y.elo - x.elo || y.winRate - x.winRate || y.avgDiff - x.avgDiff);
+    .sort((x, y) => y.elo - x.elo || y.winRate - x.winRate || y.medianDiff - x.medianDiff);
 
   return {
     leaderboard,
@@ -538,4 +691,52 @@ export function runRoundRobin(
     totalMatches: allMatches.length,
     matches: allMatches,
   };
+}
+
+export interface ParameterSweepCandidate<P> {
+  label: string;
+  params: P;
+}
+
+export interface ParameterSweepResult<P> {
+  label: string;
+  params: P;
+  stats: AggregateBotStats;
+}
+
+/**
+ * Deterministic parameter sweep / grid search helper.
+ * Evaluates each parameter config against a fixed opponent gauntlet with identical seeds,
+ * sorting candidates by winRate -> medianDiff -> ppp.
+ */
+export function sweepParameters<P>(opts: {
+  candidates: ParameterSweepCandidate<P>[];
+  createBot: (params: P, label: string) => BotFactory;
+  opponents: BotFactory[];
+  series?: SeriesOptions;
+}): ParameterSweepResult<P>[] {
+  const baseSeed = opts.series?.baseSeed ?? 80000;
+  const results: ParameterSweepResult<P>[] = opts.candidates.map((cand) => {
+    const factory = opts.createBot(cand.params, cand.label);
+    const allMatches: MatchTelemetry[] = [];
+    opts.opponents.forEach((opp, oppIdx) => {
+      const res = runSeries(factory, opp, {
+        ...opts.series,
+        baseSeed: baseSeed + oppIdx * 1009,
+      });
+      allMatches.push(...res.matches);
+    });
+    return {
+      label: cand.label,
+      params: cand.params,
+      stats: aggregateForBot(factory.id, factory.name, allMatches),
+    };
+  });
+
+  return results.sort(
+    (a, b) =>
+      b.stats.winRate - a.stats.winRate ||
+      b.stats.medianDiff - a.stats.medianDiff ||
+      b.stats.ppp - a.stats.ppp,
+  );
 }
