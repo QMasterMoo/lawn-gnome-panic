@@ -12,11 +12,11 @@ describe('formatAnnouncerSpeech', () => {
   it('normalizes score deltas and scores for natural speech', () => {
     expect(
       formatAnnouncerSpeech({ text: 'FROM DOWNTOWN!', subtext: 'Barnaby +3', color: '#44ff88', big: true }),
-    ).toBe('FROM DOWNTOWN!. Barnaby plus 3');
+    ).toBe('FROM DOWNTOWN');
 
     expect(
-      formatAnnouncerSpeech({ text: 'END OF QUARTER 1', subtext: '14 - 10', color: '#ffd21f', big: true }),
-    ).toBe('END OF QUARTER 1. 14 to 10');
+      formatAnnouncerSpeech({ text: 'END OF QUARTER 1', subtext: '14 - 10', color: '#ffd21f' }),
+    ).toBe('END OF QUARTER 1 14 to 10');
   });
 });
 
@@ -24,14 +24,14 @@ describe('classifyAnnouncerProfile', () => {
   it('assigns pitched-down male delivery and distinct envelope shapes per callout', () => {
     const fire = classifyAnnouncerProfile({ text: "HE'S ON FIRE!!", color: '#ff5500', big: true });
     expect(fire.shape).toBe('epic');
-    expect(fire.playbackRate).toBeLessThan(0.95);
-    expect(fire.samPitch).toBeGreaterThan(75);
-    expect(fire.reverbMix).toBeGreaterThan(0.75);
-    expect(fire.crunchDrive).toBeGreaterThan(0.8);
+    expect(fire.playbackRate).toBeLessThan(1.0);
+    expect(fire.samPitch).toBeGreaterThan(70);
+    expect(fire.reverbMix).toBeGreaterThan(0.5);
+    expect(fire.crunchDrive).toBeGreaterThan(0.5);
 
     const block = classifyAnnouncerProfile({ text: 'REJECTED!', color: '#44ccff', big: true });
     expect(block.shape).toBe('punchy');
-    expect(block.playbackRate).toBeLessThan(0.95);
+    expect(block.playbackRate).toBeLessThan(1.0);
 
     const steal = classifyAnnouncerProfile({ text: 'PICKPOCKET!', color: '#44ff88' });
     expect(steal.shape).toBe('staccato');

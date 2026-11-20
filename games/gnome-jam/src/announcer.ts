@@ -36,17 +36,18 @@ const SAM_SAMPLE_RATE = 22050;
 export function formatAnnouncerSpeech(ev: AnnouncerEvent): string {
   const clean = (s: string): string =>
     s
-      .replace(/!+/g, '!')
       .replace(/\+(\d+)/g, 'plus $1')
       .replace(/(\d+)\s*-\s*(\d+)/g, '$1 to $2')
-      .replace(/[^a-zA-Z0-9\s.,!?'-]/g, ' ')
+      .replace(/[^a-zA-Z0-9\s']/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
 
   const main = clean(ev.text);
-  const sub = ev.subtext ? clean(ev.subtext) : '';
-  if (!sub) return main;
-  return `${main}. ${sub}`;
+  // Keep callouts short and punchy so SAM articulates clearly
+  if (ev.big || !ev.subtext) return main;
+  const sub = clean(ev.subtext);
+  if (!sub || sub.length > 18) return main;
+  return `${main} ${sub}`;
 }
 
 /** Classifies an AnnouncerEvent into a dynamic PA envelope & male-voice pitch profile. */
@@ -61,15 +62,15 @@ export function classifyAnnouncerProfile(ev: AnnouncerEvent): AnnouncerProfile {
   ) {
     return {
       shape: 'epic',
-      samPitch: 88,
-      samSpeed: 68,
-      samThroat: 110,
-      samMouth: 106,
-      playbackRate: 0.86,
-      crunchDrive: 0.9,
-      reverbMix: 0.82,
-      hornBoostDb: 6.5,
-      duckGain: 0.36,
+      samPitch: 78,
+      samSpeed: 74,
+      samThroat: 120,
+      samMouth: 122,
+      playbackRate: 0.93,
+      crunchDrive: 0.55,
+      reverbMix: 0.58,
+      hornBoostDb: 4.5,
+      duckGain: 0.42,
     };
   }
 
@@ -85,15 +86,15 @@ export function classifyAnnouncerProfile(ev: AnnouncerEvent): AnnouncerProfile {
   ) {
     return {
       shape: 'punchy',
-      samPitch: 84,
-      samSpeed: 64,
-      samThroat: 112,
-      samMouth: 108,
-      playbackRate: 0.89,
-      crunchDrive: 0.78,
-      reverbMix: 0.62,
-      hornBoostDb: 5.5,
-      duckGain: 0.44,
+      samPitch: 76,
+      samSpeed: 72,
+      samThroat: 122,
+      samMouth: 124,
+      playbackRate: 0.95,
+      crunchDrive: 0.48,
+      reverbMix: 0.44,
+      hornBoostDb: 4.0,
+      duckGain: 0.48,
     };
   }
 
@@ -106,29 +107,29 @@ export function classifyAnnouncerProfile(ev: AnnouncerEvent): AnnouncerProfile {
   ) {
     return {
       shape: 'staccato',
-      samPitch: 78,
-      samSpeed: 60,
-      samThroat: 114,
-      samMouth: 110,
-      playbackRate: 0.93,
-      crunchDrive: 0.62,
-      reverbMix: 0.46,
-      hornBoostDb: 4.5,
-      duckGain: 0.52,
+      samPitch: 72,
+      samSpeed: 68,
+      samThroat: 124,
+      samMouth: 126,
+      playbackRate: 0.97,
+      crunchDrive: 0.38,
+      reverbMix: 0.34,
+      hornBoostDb: 3.5,
+      duckGain: 0.55,
     };
   }
 
   return {
     shape: 'swell',
-    samPitch: 82,
-    samSpeed: 68,
-    samThroat: 112,
-    samMouth: 108,
-    playbackRate: 0.9,
-    crunchDrive: 0.54,
-    reverbMix: 0.66,
-    hornBoostDb: 4.0,
-    duckGain: 0.48,
+    samPitch: 74,
+    samSpeed: 74,
+    samThroat: 122,
+    samMouth: 124,
+    playbackRate: 0.95,
+    crunchDrive: 0.35,
+    reverbMix: 0.48,
+    hornBoostDb: 3.0,
+    duckGain: 0.5,
   };
 }
 
@@ -205,14 +206,14 @@ export function synthesizeSpeechPcm(text: string, profile: AnnouncerProfile): Fl
   }
 }
 
-/** Asymmetric stadium PA horn saturation curve for crunch. */
+/** Asymmetric stadium PA horn saturation curve for subtle crunch. */
 export function createStadiumCrunchCurve(driveAmount: number): Float32Array<ArrayBuffer> {
   const n = 1024;
   const curve = new Float32Array(new ArrayBuffer(n * 4));
-  const k = 4 + driveAmount * 24;
+  const k = 1.5 + driveAmount * 4.5;
   for (let i = 0; i < n; i++) {
     const x = (i * 2) / n - 1;
-    const bias = x > 0 ? 1.07 : 0.93;
+    const bias = x > 0 ? 1.04 : 0.96;
     curve[i] = ((1 + k) * x * bias) / (1 + k * Math.abs(x));
   }
   return curve;
@@ -293,47 +294,47 @@ export class StadiumAnnouncer {
 
     this.hornLp = ctx.createBiquadFilter();
     this.hornLp.type = 'lowpass';
-    this.hornLp.frequency.value = 3900;
+    this.hornLp.frequency.value = 5200;
 
     // Broadcast/PA compressor
     const compressor = ctx.createDynamicsCompressor();
-    compressor.threshold.value = -20;
+    compressor.threshold.value = -16;
     compressor.knee.value = 6;
-    compressor.ratio.value = 10;
-    compressor.attack.value = 0.003;
+    compressor.ratio.value = 6;
+    compressor.attack.value = 0.004;
     compressor.release.value = 0.14;
 
-    // Stadium crunch stage
+    // Subtle stadium crunch stage
     this.crunchDrive = ctx.createGain();
-    this.crunchDrive.gain.value = 1.6;
+    this.crunchDrive.gain.value = 1.05;
 
     const crunchShaper = ctx.createWaveShaper();
-    crunchShaper.curve = createStadiumCrunchCurve(0.7);
+    crunchShaper.curve = createStadiumCrunchCurve(0.45);
     crunchShaper.oversample = '2x';
 
     const crunchMakeup = ctx.createGain();
-    crunchMakeup.gain.value = 0.48;
+    crunchMakeup.gain.value = 0.55;
 
-    // Dry + Stadium Reverb parallel buses
+    // Dry + Stadium Reverb parallel buses (dry stays upfront for intelligibility)
     const dryGain = ctx.createGain();
-    dryGain.gain.value = 0.78;
+    dryGain.gain.value = 0.92;
 
     this.reverbSend = ctx.createGain();
-    this.reverbSend.gain.value = 0.6;
+    this.reverbSend.gain.value = 0.42;
 
     const convolver = ctx.createConvolver();
     convolver.buffer = createStadiumReverbBuffer(ctx);
 
     const revHp = ctx.createBiquadFilter();
     revHp.type = 'highpass';
-    revHp.frequency.value = 200;
+    revHp.frequency.value = 240;
 
     const revLp = ctx.createBiquadFilter();
     revLp.type = 'lowpass';
-    revLp.frequency.value = 3000;
+    revLp.frequency.value = 3200;
 
     const revReturn = ctx.createGain();
-    revReturn.gain.value = 0.58;
+    revReturn.gain.value = 0.24;
 
     this.paMaster = ctx.createGain();
     this.paMaster.gain.value = Math.max(0, Math.min(1, this.getSfxGain())) * 0.28;
@@ -378,11 +379,11 @@ export class StadiumAnnouncer {
       const tNorm = i / steps;
       const t = now + tNorm * durSec;
       const env = evaluateEnvelope(profile.shape, tNorm);
-      const inVal = 0.75 + env.amp * 0.45;
-      const driveVal = 1.0 + env.crunch * profile.crunchDrive * 2.1;
-      const revVal = 0.2 + env.reverb * profile.reverbMix * 0.95;
-      const hornDb = 1.5 + env.filterNorm * profile.hornBoostDb;
-      const lpHz = 2200 + env.filterNorm * 2400;
+      const inVal = 0.8 + env.amp * 0.35;
+      const driveVal = 0.85 + env.crunch * profile.crunchDrive * 0.9;
+      const revVal = 0.16 + env.reverb * profile.reverbMix * 0.75;
+      const hornDb = 1.0 + env.filterNorm * profile.hornBoostDb;
+      const lpHz = 3400 + env.filterNorm * 2200;
 
       if (i === 0) {
         this.paInput.gain.setValueAtTime(inVal, t);
