@@ -331,6 +331,26 @@ export class JamRenderer {
           model.rig.rotation.x = u * Math.PI * 2 * turns;
           model.arms.left.rotation.x = -2.8;
           model.arms.right.rotation.x = -2.8;
+        } else if (p.dunk.style === 'spin720') {
+          model.rig.rotation.y = u * Math.PI * 4;
+          model.rig.rotation.z = Math.sin(u * Math.PI) * 0.28;
+          model.arms.left.rotation.x = -2.3;
+          model.arms.right.rotation.x = -2.8;
+          if (Math.random() < 0.45) {
+            this.spawnBurst(p.pos.clone().add(new THREE.Vector3(0, 1.0, 0)), 'confetti');
+          }
+        } else if (p.dunk.style === 'partnerLaunch') {
+          model.rig.rotation.x = u * Math.PI * 2;
+          model.rig.rotation.y = u * Math.PI * 2;
+          model.arms.left.rotation.x = -3.0;
+          model.arms.right.rotation.x = -3.0;
+          if (Math.random() < 0.5) {
+            this.spawnBurst(p.pos.clone().add(new THREE.Vector3(0, 0.8, 0)), 'confetti');
+          }
+        } else if (p.dunk.style === 'alleyOop' || p.dunk.style === 'backboard') {
+          model.rig.rotation.x = -0.35 + u * 0.55;
+          model.arms.left.rotation.x = u < 0.72 ? -3.0 : -1.2;
+          model.arms.right.rotation.x = u < 0.72 ? -3.0 : -1.2;
         } else if (p.dunk.style === 'helicopter360') {
           model.rig.rotation.y = u * Math.PI * 2;
           model.arms.left.rotation.x = -2.6;
@@ -343,6 +363,10 @@ export class JamRenderer {
           model.arms.right.rotation.x = u < 0.7 ? -3.0 : -1.1;
           model.arms.left.rotation.x = -1.6;
         }
+      } else if (sim.players.some((o) => o.dunk?.style === 'partnerLaunch' && o.dunk.launcherIdx === idx && o.dunk.t < 0.4)) {
+        // Partner boost/launch pose!
+        model.arms.left.rotation.x = -2.95;
+        model.arms.right.rotation.x = -2.95;
       } else if (p.stunTimer > 0) {
         // Knocked backward on clay back!
         model.rig.rotation.x = -1.25;

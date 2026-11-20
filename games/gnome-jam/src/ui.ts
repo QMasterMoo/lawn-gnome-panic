@@ -272,16 +272,65 @@ const STYLE_CSS = `
 }
 .jam-turbo-wrap {
   position: absolute;
-  bottom: max(14px, env(safe-area-inset-bottom, 14px));
+  bottom: max(12px, env(safe-area-inset-bottom, 12px));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 16px;
+  gap: 14px;
   align-items: center;
-  background: rgba(12,14,28,0.82);
+  background: rgba(12,14,28,0.84);
   border: 1px solid rgba(255,255,255,0.22);
   border-radius: 10px;
   padding: 6px 12px;
+  max-width: calc(100vw - 20px);
+}
+.jam-turbo-team {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.jam-turbo-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+}
+.jam-turbo-role {
+  font-size: 9px;
+  font-weight: 900;
+  padding: 1px 4px;
+  border-radius: 4px;
+  min-width: 24px;
+  text-align: center;
+}
+.jam-turbo-name {
+  width: 66px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jam-turbo-track {
+  width: 78px;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.16);
+  overflow: hidden;
+}
+.jam-turbo-fill {
+  height: 100%;
+  width: 100%;
+  transition: width 0.06s linear;
+}
+@media (max-width: 820px), (max-height: 520px) {
+  .jam-turbo-wrap {
+    bottom: auto;
+    top: max(66px, calc(env(safe-area-inset-top, 10px) + 56px));
+    padding: 4px 8px;
+    gap: 8px;
+  }
+  .jam-turbo-name { width: 46px; font-size: 10px; }
+  .jam-turbo-track { width: 52px; height: 7px; }
 }
 .jam-announce {
   position: absolute;
@@ -306,7 +355,6 @@ const STYLE_CSS = `
 }
 @media (max-width: 680px) {
   .jam-bracket { grid-template-columns: 1fr; }
-  .jam-turbo-wrap { bottom: auto; top: max(70px, calc(env(safe-area-inset-top, 10px) + 58px)); }
 }
 .jam-match-box {
   background: rgba(255,255,255,0.06);
@@ -364,9 +412,12 @@ export class JamUI {
   private hudQuarter!: HTMLElement;
   private hudClock!: HTMLElement;
   private hudShot!: HTMLElement;
-  private hudP1Name!: HTMLElement;
-  private hudP1Turbo!: HTMLElement;
-  private hudFireBadge!: HTMLElement;
+  private hudPlayerRows: Array<{
+    role: HTMLElement;
+    name: HTMLElement;
+    fill: HTMLElement;
+    fire: HTMLElement;
+  }> = [];
 
   constructor(uiParent: HTMLElement, hooks: JamUIHooks) {
     this.hooks = hooks;
@@ -393,10 +444,10 @@ export class JamUI {
     this.announceEl.className = 'jam-announce';
     this.hudEl.appendChild(this.announceEl);
 
-    // Mount shared @arcade/volume button + 90s Beat Selector pill in top-left corner
+    // Mount shared @arcade/volume button + 90s Beat Selector pill in top-right (left of pause button)
     const volWrap = document.createElement('div');
     volWrap.style.cssText = `
-      position:fixed;top:max(10px, env(safe-area-inset-top, 10px));left:max(10px, env(safe-area-inset-left, 10px));
+      position:fixed;top:max(10px, env(safe-area-inset-top, 10px));right:max(62px, calc(env(safe-area-inset-right, 10px) + 52px));
       z-index:40;pointer-events:auto;display:flex;align-items:center;gap:8px;
     `;
     createVolumeButton(volWrap, hooks.volume, { title: 'Gnomerena Audio' });
@@ -462,12 +513,18 @@ export class JamUI {
 
     const turboWrap = document.createElement('div');
     turboWrap.className = 'jam-turbo-wrap';
-    turboWrap.innerHTML = `
-      <span id="hud-p1-name" style="font-size:12px;font-weight:800;color:#ffd21f">P1</span>
-      <div style="width:110px;height:10px;border-radius:5px;background:rgba(255,255,255,0.18);overflow:hidden">
-        <div id="hud-p1-turbo" style="height:100%;width:100%;background:linear-gradient(90deg,#33ddff,#ffd21f)"></div>
+    const makeRow = (idx: number) => `
+      <div class="jam-turbo-row" id="hud-p-row-${idx}">
+        <span class="jam-turbo-role" id="hud-p-role-${idx}">CPU</span>
+        <span class="jam-turbo-name" id="hud-p-name-${idx}">P${idx + 1}</span>
+        <div class="jam-turbo-track"><div class="jam-turbo-fill" id="hud-p-turbo-${idx}"></div></div>
+        <span id="hud-p-fire-${idx}" style="display:none;font-size:11px">🔥</span>
       </div>
-      <span id="hud-fire-badge" style="display:none;font-size:12px;font-weight:900;color:#ff6a00">🔥 ON FIRE!</span>
+    `;
+    turboWrap.innerHTML = `
+      <div class="jam-turbo-team">${makeRow(0)}${makeRow(1)}</div>
+      <div style="width:1px;height:30px;background:rgba(255,255,255,0.16)"></div>
+      <div class="jam-turbo-team">${makeRow(2)}${makeRow(3)}</div>
     `;
 
     this.hudEl.append(sb, pauseBtn, turboWrap);
@@ -478,9 +535,12 @@ export class JamUI {
     this.hudQuarter = sb.querySelector('#hud-quarter')!;
     this.hudClock = sb.querySelector('#hud-clock')!;
     this.hudShot = sb.querySelector('#hud-shot')!;
-    this.hudP1Name = turboWrap.querySelector('#hud-p1-name')!;
-    this.hudP1Turbo = turboWrap.querySelector('#hud-p1-turbo')!;
-    this.hudFireBadge = turboWrap.querySelector('#hud-fire-badge')!;
+    this.hudPlayerRows = [0, 1, 2, 3].map((idx) => ({
+      role: turboWrap.querySelector(`#hud-p-role-${idx}`)!,
+      name: turboWrap.querySelector(`#hud-p-name-${idx}`)!,
+      fill: turboWrap.querySelector(`#hud-p-turbo-${idx}`)!,
+      fire: turboWrap.querySelector(`#hud-p-fire-${idx}`)!,
+    }));
   }
 
   showHUD(show: boolean): void {
@@ -495,9 +555,7 @@ export class JamUI {
     quarter: number,
     clockSec: number,
     shotClock: number,
-    p1Name: string,
-    p1Turbo: number,
-    onFire: boolean,
+    players: Array<{ name: string; turbo: number; onFire: boolean; role: 'P1' | 'P2' | 'CPU'; teamColor: string }>,
   ): void {
     this.hudHomeLbl.textContent = homeAbbr;
     this.hudAwayLbl.textContent = awayAbbr;
@@ -508,12 +566,30 @@ export class JamUI {
     const s = Math.floor(Math.max(0, clockSec) % 60);
     this.hudClock.textContent = `${m}:${String(s).padStart(2, '0')}`;
     this.hudShot.textContent = `SC ${Math.ceil(Math.max(0, shotClock))}`;
-    this.hudP1Name.textContent = p1Name;
-    this.hudP1Turbo.style.width = `${Math.max(0, Math.min(100, p1Turbo))}%`;
-    this.hudP1Turbo.style.background = onFire
-      ? 'linear-gradient(90deg,#ff3300,#ffee33)'
-      : 'linear-gradient(90deg,#33ddff,#ffd21f)';
-    this.hudFireBadge.style.display = onFire ? 'inline' : 'none';
+    for (let i = 0; i < this.hudPlayerRows.length && i < players.length; i++) {
+      const row = this.hudPlayerRows[i];
+      const p = players[i];
+      row.role.textContent = p.role;
+      if (p.role === 'P1') {
+        row.role.style.background = '#ffd21f';
+        row.role.style.color = '#111';
+        row.name.style.color = '#ffd21f';
+      } else if (p.role === 'P2') {
+        row.role.style.background = '#33eeff';
+        row.role.style.color = '#111';
+        row.name.style.color = '#33eeff';
+      } else {
+        row.role.style.background = 'rgba(255,255,255,0.14)';
+        row.role.style.color = '#ccc';
+        row.name.style.color = '#e5e7eb';
+      }
+      row.name.textContent = p.name;
+      row.fill.style.width = `${Math.max(0, Math.min(100, p.turbo))}%`;
+      row.fill.style.background = p.onFire
+        ? 'linear-gradient(90deg,#ff3300,#ffee33)'
+        : `linear-gradient(90deg,${p.teamColor},#ffd21f)`;
+      row.fire.style.display = p.onFire ? 'inline' : 'none';
+    }
   }
 
   announce(ev: AnnouncerEvent): void {
@@ -602,6 +678,7 @@ export class JamUI {
           </div>
           <div style="font-size:12px;color:#b8c4e0;line-height:1.5;margin-top:8px;background:rgba(0,0,0,0.28);padding:10px;border-radius:8px">
             <strong>Controls (P1):</strong> WASD / Arrows Move &nbsp;•&nbsp; <strong>Space / J</strong> Shoot, Dunk &amp; Block &nbsp;•&nbsp; <strong>K / E</strong> Pass, Steal &amp; Shove &nbsp;•&nbsp; <strong>Shift / L</strong> Turbo<br/>
+            <strong>Specials:</strong> <strong>Turbo + Pass</strong> Alley-Oop / Off-the-Glass Spike &nbsp;•&nbsp; <strong>Turbo + Shoot</strong> near Partner = Launch Dunk &nbsp;•&nbsp; <strong>Shoot (off-ball)</strong> Jump for Alley-Oop / Putback<br/>
             <strong>Mobile:</strong> Virtual Joystick + On-Screen Action Buttons &nbsp;•&nbsp; <strong>2P Local:</strong> Arrows + N/M/Comma
           </div>
         </div>

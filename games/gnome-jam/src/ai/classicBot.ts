@@ -84,6 +84,13 @@ export function decideClassicBot(state: GameStateSnapshot, ctx: BotDecisionConte
       return out;
     }
     if (ctx.role === 'teammate' && ctx.humanInput?.shootPressed) {
+      const mateDistHoop = Math.hypot(hx - mate.pos[0], mate.pos[2]);
+      // If human is near the hoop calling for an alley-oop, lob it instead of shooting!
+      if (mateDistHoop < 6.2) {
+        out.turbo = true;
+        out.passPressed = true;
+        return out;
+      }
       out.shootPressed = true;
       out.shootDown = true;
       return out;
@@ -103,13 +110,20 @@ export function decideClassicBot(state: GameStateSnapshot, ctx: BotDecisionConte
       return out;
     }
 
+    // Throw an alley-oop if teammate is airborne or cutting near the rim!
+    const mateDistHoop = Math.hypot(hx - mate.pos[0], mate.pos[2]);
+    if (!mate.grounded && mateDistHoop < 5.5) {
+      out.turbo = true;
+      out.passPressed = true;
+      return out;
+    }
+
     if (preferThree && Math.random() < 0.035 * diffScale) {
       out.shootPressed = true;
       out.shootDown = true;
       return out;
     }
 
-    const mateDistHoop = Math.hypot(hx - mate.pos[0], mate.pos[2]);
     if (mateDistHoop + 2.5 < distHoop && Math.random() < 0.025 * diffScale) {
       out.passPressed = true;
       return out;
@@ -127,6 +141,19 @@ export function decideClassicBot(state: GameStateSnapshot, ctx: BotDecisionConte
 
   // 3. TEAMMATE HAS THE BALL (Off-ball offense!)
   if (teamHasBall) {
+    // Jump for alley-oop if a lob pass is coming to us near the hoop
+    if (
+      state.ball.mode === 'pass' &&
+      state.ball.passTarget === p.index &&
+      p.grounded &&
+      Math.hypot(hx - p.pos[0], p.pos[2]) < 5.8 &&
+      state.ball.pos[1] > 2.0
+    ) {
+      out.shootPressed = true;
+      out.turbo = true;
+      return out;
+    }
+
     const wantZ = mate.pos[2] >= 0 ? -3.0 : 3.0;
     const wantX =
       p.stats.dunk >= 70
