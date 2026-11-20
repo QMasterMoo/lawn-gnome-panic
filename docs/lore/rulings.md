@@ -194,3 +194,37 @@ a Yard nickname, not a plant name; the Yard allows sillier nicknames (R-011, the
 **Ruling:** GBA GJAM is played inside the indoor **Gnomerena**, a converted garden shed-turned-arena in `the-yard` with hardwood floorboards, rafters, banners, a hanging Jumbotron, and packed bleacher crowds. Eight pro GBA teams (Mossbottom Mowers, Redcap Rockets, Thatchford Thunder, Acorn Alley Alphas, Dewdrop Dynamos, Pebblebrook Pistons, Bramble Bush Ballers, Sunpatch Suns) compete 2-on-2 in a regular season and Top-6 knockout tournament for the Golden Acorn Trophy. Shoving is legal and sends clay gnomes skidding without shattering; catching fire after three straight baskets is treated as normal league play.
 **Applies to:** the-yard, gnome-jam.  **Date:** 2026-11-19.
 **Why:** the Yard is the shared silly, sporty setting for arcade gnome sports alongside bowling, golf, and racing.
+
+---
+
+## R-019
+
+**Question:** Gnomokemon Snap needs a home base for its menus, like Professor Oak's lab in Pokemon Snap. Whose is it, and what is in it?
+**Ruling:** The Fescue Field Lab, run by Gnome Jesus (the existing grader). It is a closed two-storey house with a red roof,
+a chimney, a garden and a front door, at the edge of the Fescue lawn. Downstairs: the Safari Map Room (the seven courses are
+pins on a table), the Lobby behind the front door (the Giant Fetch Dog sleeps on the rug; a staircase climbs the back wall)
+and the Gnomokedex Archive (shelves and glass cases of specimens). Upstairs: the Dressing Room (a standing mirror, a
+wardrobe and a hat stand), the Grading Office over the lobby (Gnome Jesus's desk and a trophy shelf) and the Darkroom (the
+player's best prints hang on a clothesline). It is a place, not a character: no new named people beyond the rooms.
+The player's viewpoint is a gnome (their own, from the Gnome Creator) standing on the shoulders of an unnamed carrier gnome
+and holding a camera. The carrier is a plain Fescue gnome who asks for nothing. Gnome Jesus speaks in the same deep
+muttering voice as the Blackjack gnomes, and is witty, warm and a little vain; his lines live in
+`games/gnomeokemon/src/snap/jesus.ts`.
+**Applies to:** fescue, gnomeokemon.  **Date:** 2026-11-19.
+**Why:** menus read better as rooms a person walks through than as a web page; a camera that is itself a gnome fits the
+Yard's scale; reusing Gnome Jesus keeps the cast small.
+
+---
+
+---
+
+## R-020
+
+**Question:** Where does the Fescue Field Lab stand, and how does Gnome Jesus afford it?
+**Ruling:** On a big, well-kept lot of prime lawn at the edge of Fescue, where the garden meets the Yard's town: a street with
+parked cars along the front, neighbours shoulder to shoulder either side and towers on the horizon. The town is built to gnome
+scale and unnamed. Gnome Jesus is not broke: he owns the lot outright, has gold trim on the lab, and drives a gold car with a
+halo over the roof. He is relaxed about it and makes jokes about it in his grading lines. This scenery is Field-Lab-only: it
+does not change Fescue's own rulebook, and Fescue proper is still the walled back garden.
+**Applies to:** fescue, gnomeokemon.  **Date:** 2026-11-19.
+**Why:** the user wanted the lab to sit in an urban setting on expensive land; making Gnome Jesus wealthy explains it.
