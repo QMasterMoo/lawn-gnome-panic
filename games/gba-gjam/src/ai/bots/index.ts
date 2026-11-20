@@ -6,3 +6,4 @@ export * from './alleyOopExpress';
 export * from './lockdownCounter';
 export * from './hybridAce';
 export * from './championV1';
+export * from './championV2';

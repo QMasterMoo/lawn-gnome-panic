@@ -308,4 +308,26 @@ describe('GBA GJAM Bot AI framework', () => {
     expect(sweep).toHaveLength(2);
     expect(sweep[0].stats.games).toBe(2);
   });
+
+  it('does not emit player achievements in botvsbot mode', () => {
+    const onAchievement = vi.fn();
+    const sim = new JamSimulation(makeConfig({ quarterSeconds: 10 }), {
+      ...makeNoopCallbacks(),
+      onAchievement,
+    });
+    sim.setBot(0, createChampionV1Bot());
+    sim.setBot(1, createChampionV1Bot());
+    sim.setBot(2, createClassicBot());
+    sim.setBot(3, createClassicBot());
+
+    const idle = normalizeBotInput(null);
+    for (let i = 0; i < 60 * 120 && sim.phase !== 'finished'; i++) {
+      sim.step(1 / 60, idle, idle);
+    }
+
+    expect(sim.phase).toBe('finished');
+    expect(sim.score[0]).toBeGreaterThan(0);
+    expect(onAchievement).not.toHaveBeenCalled();
+    sim.dispose();
+  });
 });

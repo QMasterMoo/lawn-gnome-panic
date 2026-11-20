@@ -14,12 +14,25 @@ import {
   teammateOf,
 } from './helpers';
 
+export interface ShoveHoundOptions {
+  /** Minimum turbo required for secondary defender to shove off-ball opponent (default 55). */
+  offBallShoveTurboMin?: number;
+  /** Carrier distance from hoop within which secondary defender pinches to double-team (default 6.0). */
+  doubleTeamRadius?: number;
+}
+
 /**
  * Shove Hound: High-pressure physical enforcer.
  * Exploits GBA GJAM's guaranteed turbo-shove turnover mechanic on defense,
  * stuns off-ball opponents when nearby, and pushes relentless fast-break dunks.
  */
-export function decideShoveHound(state: GameStateSnapshot, ctx: BotDecisionContext): BotInput {
+export function decideShoveHound(
+  state: GameStateSnapshot,
+  ctx: BotDecisionContext,
+  opts: ShoveHoundOptions = {},
+): BotInput {
+  const offBallShoveTurboMin = opts.offBallShoveTurboMin ?? 55;
+  const doubleTeamRadius = opts.doubleTeamRadius ?? 6.0;
   const out = emptyOut();
   const p = state.players[ctx.playerIndex];
   if (!p || p.stunTimer > 0 || p.isDunking) return out;
@@ -105,7 +118,7 @@ export function decideShoveHound(state: GameStateSnapshot, ctx: BotDecisionConte
       const carrierHoopX = targetHoopX(state, carrier.team);
       const carrierDist = Math.hypot(carrierHoopX - carrier.pos[0], carrier.pos[2]);
 
-      if (carrierDist < 6.0) {
+      if (carrierDist < doubleTeamRadius) {
         // Double-team the paint drive!
         steerToward(p, carrier.pos[0], carrier.pos[2], out, myD > 1.5 && (p.turbo > 30 || p.onFire));
         if (myD < 1.6 && p.stealCooldown <= 0 && !carrier.isDunking && carrier.stunTimer <= 0) {
@@ -114,9 +127,15 @@ export function decideShoveHound(state: GameStateSnapshot, ctx: BotDecisionConte
         }
       } else if (oppOff) {
         const dOff = dist2D(p.pos, oppOff.pos);
-        steerToward(p, oppOff.pos[0], oppOff.pos[2], out, false);
+        steerToward(p, oppOff.pos[0], oppOff.pos[2], out, p.turbo > offBallShoveTurboMin + 10 && dOff > 2.2);
         // Occasional off-ball shove to disrupt cuts
-        if (dOff < 1.55 && p.stealCooldown <= 0 && p.turbo > 55 && oppOff.stunTimer <= 0) {
+        if (
+          dOff < 1.55 &&
+          p.stealCooldown <= 0 &&
+          Number.isFinite(offBallShoveTurboMin) &&
+          (p.onFire || p.turbo > offBallShoveTurboMin) &&
+          oppOff.stunTimer <= 0
+        ) {
           out.passPressed = true;
           out.turbo = true;
         }
@@ -127,10 +146,10 @@ export function decideShoveHound(state: GameStateSnapshot, ctx: BotDecisionConte
   return out;
 }
 
-export function createShoveHoundBot(): BotController {
+export function createShoveHoundBot(opts: ShoveHoundOptions = {}): BotController {
   return {
     id: 'shove-hound',
     name: 'Shove Hound',
-    decide: decideShoveHound,
+    decide: (state, ctx) => decideShoveHound(state, ctx, opts),
   };
 }

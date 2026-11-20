@@ -1,5 +1,6 @@
 import type { GnomeLook } from '@lawn/gnome';
 import type { BotSlotAssignment } from './ai/types';
+import type { SimBalanceConfig } from './balance';
 
 export interface PlayerStats {
   /** Movement & sprint speed (0-100). */
@@ -81,6 +82,8 @@ export interface MatchConfig {
   quarterSeconds: number;
   /** Optional per-slot (0..3) bot AI assignments; omitted slots use the Classic Jam AI. */
   botSlots?: Partial<Record<0 | 1 | 2 | 3, BotSlotAssignment>>;
+  /** Optional simulation balance overrides (used by eval:balance sweeps). */
+  balance?: Partial<SimBalanceConfig>;
   seasonContext?: {
     phase: 'regular' | 'playoffs';
     roundIndex: number;
