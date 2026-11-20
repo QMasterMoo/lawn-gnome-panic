@@ -210,13 +210,19 @@ export function synthesizeSpeechPcm(text: string, profile: AnnouncerProfile): Fl
 export function createStadiumCrunchCurve(driveAmount: number): Float32Array<ArrayBuffer> {
   const n = 1024;
   const curve = new Float32Array(new ArrayBuffer(n * 4));
-  const k = 1.5 + driveAmount * 4.5;
+  const k = 0.8 + driveAmount * 2.5;
   for (let i = 0; i < n; i++) {
     const x = (i * 2) / n - 1;
-    const bias = x > 0 ? 1.04 : 0.96;
+    const bias = x > 0 ? 1.03 : 0.97;
     curve[i] = ((1 + k) * x * bias) / (1 + k * Math.abs(x));
   }
   return curve;
+}
+
+/** Attenuates bus gain when multiple announcer lines overlap. */
+export function stackGainMultiplier(activeCount: number): number {
+  if (activeCount <= 1) return 1;
+  return 1 / (1 + 0.55 * (activeCount - 1));
 }
 
 /** Synthesizes a 2.0s stereo stadium impulse response with arena slapback echoes. */
@@ -253,7 +259,7 @@ export class StadiumAnnouncer {
   private readonly onDuckMusic?: (mult: number) => void;
 
   private lastSpeakMs = 0;
-  private activeSource: AudioBufferSourceNode | null = null;
+  private activeSources = new Set<AudioBufferSourceNode>();
 
   // Stadium PA WebAudio graph
   private ctx: AudioContext | null = null;
@@ -306,10 +312,10 @@ export class StadiumAnnouncer {
 
     // Subtle stadium crunch stage
     this.crunchDrive = ctx.createGain();
-    this.crunchDrive.gain.value = 1.05;
+    this.crunchDrive.gain.value = 0.85;
 
     const crunchShaper = ctx.createWaveShaper();
-    crunchShaper.curve = createStadiumCrunchCurve(0.45);
+    crunchShaper.curve = createStadiumCrunchCurve(0.32);
     crunchShaper.oversample = '2x';
 
     const crunchMakeup = ctx.createGain();
@@ -337,7 +343,7 @@ export class StadiumAnnouncer {
     revReturn.gain.value = 0.24;
 
     this.paMaster = ctx.createGain();
-    this.paMaster.gain.value = Math.max(0, Math.min(1, this.getSfxGain())) * 0.28;
+    this.paMaster.gain.value = Math.max(0, Math.min(1, this.getSfxGain())) * 0.21;
 
     this.paInput.connect(hornHp);
     hornHp.connect(this.hornPresence);
@@ -360,13 +366,19 @@ export class StadiumAnnouncer {
     this.paMaster.connect(ctx.destination);
   }
 
+  private updateMasterGain(ctx: AudioContext, vol: number): void {
+    if (!this.paMaster) return;
+    const target = vol * 0.21 * stackGainMultiplier(this.activeSources.size);
+    this.paMaster.gain.setTargetAtTime(target, ctx.currentTime, 0.015);
+  }
+
   private applyDynamicEnvelope(ctx: AudioContext, profile: AnnouncerProfile, durSec: number, vol: number): void {
     if (!this.paInput || !this.crunchDrive || !this.reverbSend || !this.hornPresence || !this.hornLp || !this.paMaster) {
       return;
     }
 
     const now = ctx.currentTime;
-    this.paMaster.gain.setTargetAtTime(vol * 0.28, now, 0.01);
+    this.updateMasterGain(ctx, vol);
 
     const steps = 14;
     this.paInput.gain.cancelScheduledValues(now);
@@ -380,7 +392,7 @@ export class StadiumAnnouncer {
       const t = now + tNorm * durSec;
       const env = evaluateEnvelope(profile.shape, tNorm);
       const inVal = 0.8 + env.amp * 0.35;
-      const driveVal = 0.85 + env.crunch * profile.crunchDrive * 0.9;
+      const driveVal = 0.72 + env.crunch * profile.crunchDrive * 0.55;
       const revVal = 0.16 + env.reverb * profile.reverbMix * 0.75;
       const hornDb = 1.0 + env.filterNorm * profile.hornBoostDb;
       const lpHz = 3400 + env.filterNorm * 2200;
@@ -415,13 +427,8 @@ export class StadiumAnnouncer {
     const pcm = synthesizeSpeechPcm(text, profile);
     if (!pcm) return;
 
-    if (ev.big && this.activeSource) {
-      try {
-        this.activeSource.stop();
-      } catch {
-        // ignore already stopped
-      }
-      this.activeSource = null;
+    if (ev.big && this.activeSources.size > 0) {
+      this.stop();
     }
 
     this.ensureGraph(ctx);
@@ -434,14 +441,15 @@ export class StadiumAnnouncer {
     src.buffer = audioBuf;
     src.playbackRate.value = profile.playbackRate;
 
+    this.activeSources.add(src);
     const durSec = audioBuf.duration / profile.playbackRate;
     this.applyDynamicEnvelope(ctx, profile, durSec, sfx);
 
     this.onDuckMusic?.(profile.duckGain);
-    this.activeSource = src;
     src.onended = () => {
-      if (this.activeSource === src) {
-        this.activeSource = null;
+      this.activeSources.delete(src);
+      this.updateMasterGain(ctx, this.getSfxGain());
+      if (this.activeSources.size === 0) {
         this.onDuckMusic?.(1.0);
       }
     };
@@ -451,13 +459,16 @@ export class StadiumAnnouncer {
   }
 
   stop(): void {
-    if (this.activeSource) {
+    for (const src of this.activeSources) {
       try {
-        this.activeSource.stop();
+        src.stop();
       } catch {
         // ignore
       }
-      this.activeSource = null;
+    }
+    this.activeSources.clear();
+    if (this.ctx) {
+      this.updateMasterGain(this.ctx, this.getSfxGain());
     }
     this.onDuckMusic?.(1.0);
   }

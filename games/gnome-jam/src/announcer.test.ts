@@ -4,6 +4,7 @@ import {
   createStadiumCrunchCurve,
   evaluateEnvelope,
   formatAnnouncerSpeech,
+  stackGainMultiplier,
   synthesizeSpeechPcm,
   type EnvelopeShape,
 } from './announcer';
@@ -81,5 +82,14 @@ describe('createStadiumCrunchCurve', () => {
     expect(curve[0]).toBeLessThan(0);
     expect(curve[curve.length - 1]).toBeGreaterThan(0);
     expect(Math.abs(curve[curve.length - 1])).not.toBeCloseTo(Math.abs(curve[0]), 3);
+  });
+});
+
+describe('stackGainMultiplier', () => {
+  it('attenuates output progressively when multiple announcer lines stack', () => {
+    expect(stackGainMultiplier(0)).toBe(1);
+    expect(stackGainMultiplier(1)).toBe(1);
+    expect(stackGainMultiplier(2)).toBeLessThan(0.7);
+    expect(stackGainMultiplier(3)).toBeLessThan(stackGainMultiplier(2));
   });
 });
