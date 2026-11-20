@@ -192,7 +192,7 @@ a Yard nickname, not a plant name; the Yard allows sillier nicknames (R-011, the
 
 **Question:** Where does GBA GJAM take place, and how does professional gnome basketball fit into the Yard?
 **Ruling:** GBA GJAM is played inside the indoor **Gnomerena**, a converted garden shed-turned-arena in `the-yard` with hardwood floorboards, rafters, banners, a hanging Jumbotron, and packed bleacher crowds. Eight pro GBA teams (Mossbottom Mowers, Redcap Rockets, Thatchford Thunder, Acorn Alley Alphas, Dewdrop Dynamos, Pebblebrook Pistons, Bramble Bush Ballers, Sunpatch Suns) compete 2-on-2 in a regular season and Top-6 knockout tournament for the Golden Acorn Trophy. Shoving is legal and sends clay gnomes skidding without shattering; catching fire after three straight baskets is treated as normal league play.
-**Applies to:** the-yard, gnome-jam.  **Date:** 2026-11-19.
+**Applies to:** the-yard, gba-gjam.  **Date:** 2026-11-19.
 **Why:** the Yard is the shared silly, sporty setting for arcade gnome sports alongside bowling, golf, and racing.
 
 ---

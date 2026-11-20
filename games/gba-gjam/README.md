@@ -15,7 +15,7 @@
 ## Run
 
 ```bash
-npm run dev -w games/gnome-jam     # http://localhost:5201
-npm run build -w games/gnome-jam   # typecheck + production bundle
-npm test -w games/gnome-jam        # unit tests for season & top-6 bracket
+npm run dev -w games/gba-gjam     # http://localhost:5201
+npm run build -w games/gba-gjam   # typecheck + production bundle
+npm test -w games/gba-gjam        # unit tests for season & top-6 bracket
 ```

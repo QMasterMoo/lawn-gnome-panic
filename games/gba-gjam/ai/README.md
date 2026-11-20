@@ -1,22 +1,22 @@
 # GBA GJAM — Bot AI, Evaluation & Experimentation Framework
 
-This directory (`games/gnome-jam/ai/`) holds the bot evaluation harness, experimentation process, saved experiment data, and external Python/ML tooling.
+This directory (`games/gba-gjam/ai/`) holds the bot evaluation harness, experimentation process, saved experiment data, and external Python/ML tooling.
 Because it sits outside `src/` and `public/`, Vite never bundles it into `dist/`, and `npm run site` / `deploy/site.Dockerfile` never include it in the production site image.
 
 ## Quick Start
 
 ```bash
 # Run the 9-bot baseline round-robin (288 full 4-quarter matches, ~5s)
-npm run eval:baseline -w games/gnome-jam
+npm run eval:baseline -w games/gba-gjam
 
 # Run all 5 designed strategy experiments (710 matches, ~13s)
-npm run eval:experiments -w games/gnome-jam
+npm run eval:experiments -w games/gba-gjam
 
 # Render a 4x-speed tactical MP4 replay of any bot matchup & seed!
-npm run replay -w games/gnome-jam -- --home shove-hound --away champion-v1 --seed 61000 --speed 4
+npm run replay -w games/gba-gjam -- --home shove-hound --away champion-v1 --seed 61000 --speed 4
 
 # Run unit tests & production build
-npm test -w games/gnome-jam && npm run build -w games/gnome-jam
+npm test -w games/gba-gjam && npm run build -w games/gba-gjam
 ```
 
 ## Key Documents & Results
@@ -84,7 +84,7 @@ User/custom JS bot scripts run inside an **isolated Web Worker** (`src/ai/script
 Run the zero-dependency Python 3 policy server:
 
 ```bash
-python games/gnome-jam/ai/poc_bot.py
+python games/gba-gjam/ai/poc_bot.py
 ```
 
 Then in GBA GJAM:

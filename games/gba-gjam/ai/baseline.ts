@@ -217,7 +217,7 @@ export async function main(): Promise<void> {
     ),
   );
 
-  console.log(`Done in ${elapsedSec}s! Results saved to games/gnome-jam/ai/results/baseline/`);
+  console.log(`Done in ${elapsedSec}s! Results saved to games/gba-gjam/ai/results/baseline/`);
   console.log('\nTop 9 Leaderboard:');
   rr.leaderboard.forEach((e, i) => {
     console.log(

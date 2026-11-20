@@ -7,8 +7,8 @@ Receives GameStateSnapshot + BotDecisionContext JSON via POST /decide
 and returns a PlayerControlInput JSON action.
 
 Usage:
-    python games/gnome-jam/ai/poc_bot.py
-    python games/gnome-jam/ai/poc_bot.py --port 8765
+    python games/gba-gjam/ai/poc_bot.py
+    python games/gba-gjam/ai/poc_bot.py --port 8765
 
 Then in GBA GJAM -> Team Select -> "Bot AI", choose "Python / Remote HTTP"
 (default http://127.0.0.1:8765/decide) and tip off!

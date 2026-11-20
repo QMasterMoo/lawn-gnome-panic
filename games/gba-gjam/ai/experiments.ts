@@ -468,7 +468,7 @@ export async function main(): Promise<void> {
   const indexMd = [
     '# GBA GJAM — Bot Strategy Experiments Index',
     '',
-    `Executed **5 experiments** (**${totalMatches} total full 4-quarter matches**) in **${elapsedSec}s** using the deterministic 60Hz evaluation harness (\`npm run eval:experiments -w games/gnome-jam\`).`,
+    `Executed **5 experiments** (**${totalMatches} total full 4-quarter matches**) in **${elapsedSec}s** using the deterministic 60Hz evaluation harness (\`npm run eval:experiments -w games/gba-gjam\`).`,
     '',
     '| # | Experiment | Matches | Summary | Report |',
     '|---|---|---:|---|---|',

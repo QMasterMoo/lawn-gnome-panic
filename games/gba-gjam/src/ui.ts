@@ -1898,7 +1898,7 @@ export class JamUI {
               <input id="bot-url-${side}" type="text" value="${assignment.remoteUrl ?? DEFAULT_REMOTE_BOT_URL}"
                 style="width:100%;min-height:44px;padding:8px 10px;border-radius:8px;background:#11162e;color:#fff;border:1px solid #ffd21f;font-family:monospace;font-size:13px" />
               <div style="font-size:11px;color:#b8c4e0;margin-top:4px">
-                Run <code>python games/gnome-jam/ai/poc_bot.py</code> locally to start the POC server.
+                Run <code>python games/gba-gjam/ai/poc_bot.py</code> locally to start the POC server.
               </div>
             </div>
           `
