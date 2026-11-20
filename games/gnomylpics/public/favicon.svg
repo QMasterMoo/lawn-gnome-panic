@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#1d4ed8" />
+  <!-- Ribbons -->
+  <polygon points="18,6 28,6 34,26 26,26" fill="#dc2626" />
+  <polygon points="46,6 36,6 30,26 38,26" fill="#ffffff" />
+  <!-- Gold medal -->
+  <circle cx="32" cy="39" r="17" fill="#facc15" stroke="#ca8a04" stroke-width="3" />
+  <circle cx="32" cy="39" r="12" fill="#fde047" />
+  <!-- Tiny gnome hat emblem -->
+  <path d="M25 45l7-14 7 14c-4.5 1.5-9.5 1.5-14 0z" fill="#dc2626" />
+</svg>

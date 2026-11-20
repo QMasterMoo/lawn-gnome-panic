@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0369a1" />
+  <!-- Waves -->
+  <path d="M0 46c8-4 16 4 24 0s16 4 24 0 16 4 16 0v18H0z" fill="#0284c7" />
+  <!-- Mast & sail -->
+  <rect x="30" y="12" width="3.5" height="28" fill="#78350f" />
+  <path d="M33.5 13L50 34H33.5z" fill="#f8fafc" />
+  <path d="M30 17L19 34h11z" fill="#e2e8f0" />
+  <!-- Lawn patch & log raft -->
+  <rect x="13" y="38" width="38" height="5" rx="2" fill="#4ade80" />
+  <rect x="11" y="42" width="42" height="8" rx="4" fill="#92400e" />
+  <circle cx="17" cy="46" r="2.2" fill="#b45309" />
+  <circle cx="32" cy="46" r="2.2" fill="#b45309" />
+  <circle cx="47" cy="46" r="2.2" fill="#b45309" />
+</svg>

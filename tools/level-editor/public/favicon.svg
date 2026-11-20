@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#1e293b" />
+  <!-- Isometric terrain slab -->
+  <polygon points="32,20 56,33 32,46 8,33" fill="#4ade80" />
+  <polygon points="8,33 32,46 32,54 8,41" fill="#854d0e" />
+  <polygon points="56,33 32,46 32,54 56,41" fill="#713f12" />
+  <!-- Raised hill -->
+  <path d="M20 33c4-10 20-10 24 0-6 4-18 4-24 0z" fill="#22c55e" />
+  <!-- Sculpting pencil -->
+  <g transform="rotate(35 44 18)">
+    <rect x="40" y="6" width="8" height="20" rx="2" fill="#f59e0b" />
+    <polygon points="40,26 48,26 44,33" fill="#fef3c7" />
+  </g>
+</svg>

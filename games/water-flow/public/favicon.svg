@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0c4a6e" />
+  <!-- Ripple -->
+  <ellipse cx="32" cy="52" rx="20" ry="5" fill="none" stroke="#38bdf8" stroke-width="2.5" opacity="0.7" />
+  <!-- Water droplet -->
+  <path d="M32 10C32 10 15 29 15 40a17 17 0 0 0 34 0C49 29 32 10 32 10z" fill="#38bdf8" />
+  <path d="M24 37c0 6 4 10 8 11-7 0-12-5-12-11 0-5 5-12 8-17-2 6-4 12-4 17z" fill="#bae6fd" opacity="0.85" />
+</svg>
