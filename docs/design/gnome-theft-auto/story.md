@@ -1,11 +1,11 @@
 # Gnome Theft Auto: Story & Narrative Design Bible
 
-> **Setting:** `apocrypha` ([docs/lore/settings.md](../../lore/settings.md), [R-015](../../lore/rulings.md#r-015), [R-016](../../lore/rulings.md#r-016))  
+> **Setting:** `apocrypha` ([docs/lore/settings.md](../../lore/settings.md), [R-015](../../lore/rulings.md#r-015), [R-016](../../lore/rulings.md#r-016), [R-021–R-025](../../lore/rulings.md#r-021))  
 > **Game:** `games/gnome-theft-auto` ([README](../../../games/gnome-theft-auto/README.md))  
 > **World & Area Lore:** [world-lore.md](world-lore.md)  
 > **Fictional Brands & Rivalries:** [brands.md](brands.md)  
 > **Society, Power & Themes:** [society.md](society.md)  
-> **Status:** Narrative & Content Design Proposal
+> **Status:** Narrative & Content Design Proposal (synced with `src/quests/` from PR #266)
 
 ---
 
@@ -18,7 +18,7 @@ The Gnomiverse has serious bones. In **Fescue** (*Gnomes of Gnomomia*), gnomes a
 - **The lore stays serious.** Gnomes are still fired clay who chip, glaze, and fear the unseen Tall Ones. The Mower is still an existential terror in the collective gnome subconscious. Fescue refugees still carry trauma from the Rumbling. A cracked hat or a shattered friend still lands with real drama.
 - **The game is unapologetically tongue-in-cheek.** Turfton is what happens when gnomes stop worshipping the Mower and start **hotwiring** it. Every character treats absurd garden-scale crime—boosting a Ride-On Mower, laundering acorns through a birdbath, dodging an HOA special assessment—with *Heat* / *Goodfellas* / *GTA* gravitas.
 - **Self-aware satire (Apocrypha privilege).** Because *Gnome Theft Auto* lives in `apocrypha` (R-005, R-015, R-016), it can sarcastically poke at:
-  1. **Itself & the crime-sandbox genre:** "Washed Out" at the Glaze Clinic instead of Wasted; "Hat Watch" stars instead of wanted levels; pedestrians throwing their hands up and sprinting the second a single droplet hits their glaze.
+  1. **Itself & the crime-sandbox genre:** "Cracked" and hauled by a Glaze Clinic ambulance to the Glaze Clinic Hospital instead of Wasted (R-021–R-023); "Hat Watch" stars instead of wanted levels; exploding, charred mowers (R-024); pedestrians throwing their hands up and sprinting from speeding mowers.
   2. **The Gnomiverse itself:** Fescue's 3,000-year-old prophecies treated like pretentious art-school nonsense by Turfton street hustlers; *Lawn Gnome Panic*'s acorn hoarding mocked as boomer-gnome prepper culture; *Gnome Front*'s endless Red Cap vs. Blue Cap war reduced to two rival corners selling bootleg Black Dew.
   3. **Yet the stakes are real.** When the jokes stop and a betrayal hits—or when a rogue Combine Harvester is bearing down on a clay village—the story plays it completely straight.
 
@@ -54,7 +54,7 @@ The Gnomiverse has serious bones. In **Fescue** (*Gnomes of Gnomomia*), gnomes a
 - **Dialogue:**  
   - **Pip:** *"Don't look at me like that! Technically it's not stealing if the owner left the key in the ignition and went inside a flowerpot!"*
   - **Player objective:** Hop on a nearby **Ride-On Mower** (`ride-on-mower`) at the kerb (`E` / Enter button) and follow Pip through Turfton's grid while dodging two Hat Watch officers.
-- **First Genre Joke:** An officer steps into the road, fires a warning shot from a pistol (`weapons.ts`), and misses—hitting a pedestrian instead. The pedestrian immediately throws both hands into the air (`poseHandsUp`) and sprints down the sidewalk screaming, *"MY GLAZE! I JUST GOT THIS BUFFED!"*
+- **First Genre Joke:** An officer steps into the road, fires a warning shot from a pistol (`weapons.ts`), and misses—clipping a flowerpot behind a pedestrian. The pedestrian throws both hands into the air and sprints down the sidewalk screaming, *"MY GLAZE! I JUST GOT THIS BUFFED!"* (While anyone actually caught by a stray shot cracks into harmless clay shards on the pavement per R-021/R-023!)
 - **The Hook:** You lose the Hat Watch in an alley behind **The Gnomecino** (Turfton branch), only to find Pip's "employer"—**Tansy "Side-Valve" Clayfoot**—waiting by a smoking **Zero-Turn Racer**. Inside the mower's grass-catcher bag isn't grass clippings. It's a **sealed crate stamped with the Fescue Crown** and a glowing **Golden Acorn** humming like a battery.
 - **Title Card:** **GNOME THEFT AUTO** slams onto the screen as Pip whispers: *"Okay, yeah. That might not be grass."*
 
@@ -69,6 +69,7 @@ The Gnomiverse has serious bones. In **Fescue** (*Gnomes of Gnomomia*), gnomes a
 | **Tansy "Side-Valve" Clayfoot** | Mentor / Fixer | Charcoal coat, dark glasses, yellow cap | Claims to be a direct descendant of **Gnorwin Clayfoot**. Runs *Side-Valve Salvage* on the edge of downtown. Sharp, cynical, speaks in garden proverbs twisted into street slang. | Starts out using the protagonist to skim Black Dew; genuinely comes to care for the crew when the HOA tries to bulldoze her garage. |
 | **Vesper "The Glazier" Thorne** | Main Antagonist | Crisp white porcelain finish, tall obsidian top-hat, monocle | Not earthenware like Turfton's gnomes—**porcelain**, rumored to have escaped **The Tall House**. CEO of *Thorne Lawn & Order LLC* and secret Chair of **The HOA**. Believes Turfton is "weedy, chipped, and unseemly." | Wants to seize Fort Sandpit's tech and Cloverfield's Black Dew to power **The Grand Combine**, leveling Turfton into a silent, manicured estate. |
 | **Commander Diggs** | Spade Guard Hardliner | Olive cap, tactical trowel bandolier | Decorated veteran of Fort Sandpit who has spent 15 years guarding a flying mower nobody is legally allowed to turn on. | Starts as an enemy during the Fort Sandpit raid; turns reluctant ally in Act IV when he realizes Vesper plans to scrap the Spade Guard too. |
+| **Don Compost** *(In-Game — R-025)* | Silent Underworld Boss | Cream suit, black hat, armchair on a dais inside **The Mulch Club** (`x: -16, z: -30`), flanked by two pistol-packing bodyguards | Runs Turfton's members-only syndicate without uttering a single word. Lays out wanted posters with red crosses, taps icon bubbles (`🎯`, `💰`), and points. | Gives the protagonist their **First Contract** (cracking gold-hatted targets across three biomes) to pay down their Kiln-Debt; later becomes an uneasy underworld ally against Vesper's HOA takeover. |
 | **Granny Gnertrude** | Information Broker / Fence | Floral apron, oversized spectacles, pink bonnet | Runs a "bake shop" near the Cloverfield border. Actually the sharpest black-market acorn fence in three biomes. | Supplies the crew with forged HOA permits and heavy hardware (`Shotgun`, `Rifle`) in exchange for rare Fescue relics. |
 
 ### Supporting Cast & Local Weirdos
@@ -124,7 +125,8 @@ The Gnomiverse has serious bones. In **Fescue** (*Gnomes of Gnomomia*), gnomes a
 ### Chapter 1: *Acorns & Alibis* (Turfton Downtown)
 - **Focus:** Groundwork, street hustle, paying down your **5,000-Acorn Kiln-Debt** (bought up by *Clay-Mart Collections*), and learning Turfton's grid, guns, and vehicle classes.
 - **Key Beats:**
-  - Repossess three "delinquent" Push-Mower Bikes for Tansy (only to realize the owners are Cloverfield farmers being squeezed by the HOA), putting your first dent in the Kiln-Debt.
+  - **Playable Opening Contract — *"First Contract"* (`src/quests/defs.ts`, Live In-Game):** To make fast acorns, Pip sends you to **The Mulch Club** (`x: -16, z: -30`). Inside the back room, **Don Compost** silently lays out three wanted posters and points: crack the three gold-hatted rogues—**Dandy Dibbler** (Mossy Wood), **Gordie Gravelbottom** (Frostbite Fells), and **Sandy Spadewell** (The Dust Flats)—earning the *Made Gnome* (`Wiseguy Hat`) reward.
+  - Repossess three "delinquent" Push-Mower Bikes for Tansy (only to realize the owners are Cloverfield farmers being squeezed by the HOA), putting another dent in the Kiln-Debt.
   - **Vesper's First Visit:** Vesper Thorne personally walks into *Side-Valve Salvage* in spotless porcelain, politely compliments your hat, serves Tansy a 48-hour foreclosure lien, and warns you not to open the Fescue crate containing the **Golden Acorn** ("Seed-Cell").
   - **City Hall Backroom:** **Councilwoman Juniper Vance** hires you off-the-books to tail **Mayor Barnaby "Two-Coat" Mulch**—catching him secretly signing median-lease kickbacks to Vesper.
   - Break into the **Turfton Glaze & Tax Office** to steal back Tansy's deed—discovering Vesper's blueprint for **The Grand Combine**, which requires a Fescue **Golden Acorn** as its ignition core.
@@ -411,14 +413,15 @@ All new toys honor the Gnomiverse's **no-gore fired-clay & garden-scale comedy**
 | `weapons.ts` & `fx.ts` | Hitscan `Pistol`, `SMG`, `Shotgun`, `Rifle` + reload/swap + projectile tracers. |
 | `police.ts` & `npcs.ts` | **Hat Watch** (1–3 Hats), **Spade Guard** at `BASE.guardPosts`, hands-up flee reactions (`poseHandsUp`), and `ragdoll.ts` flings. |
 | `gnomes.ts` | `@lawn/gnome` integration (`loadMyGnome`, `getMyGnome`) so the player's own gnome is the protagonist. |
-| `net.ts` & `remotes.ts` | `@lawn/mp` drop-in online free-roam (`1–16` players) — co-op story or free-roam mayhem ready. |
+| `ambulance.ts` | **Glaze Clinic Ambulance** (R-022/R-023) that collects a cracked player and glues them back together outside the Glaze Clinic Hospital. |
+| `quests/` (`defs.ts`, `quests.ts`, `cutscene.ts`, `types.ts`) | **Data-driven quest engine** (PR #266): `crack` and `visit` objective table, `localStorage` save, silent mob-boss back-room cutscene (`Don Compost` at `gta-mulch-club`), spinning markers, map blips, tracker HUD, and *"First Contract"* demo quest. |
+| `net.ts` & `remotes.ts` | `@lawn/mp` drop-in online free-roam (`1–16` players) — quests currently run single-player; co-op lobbies planned. |
 
 ### What Has Yet to Exist (Implementation Roadmap)
-1. **Mission & Quest State Machine (`src/story.ts` / `src/missions/`):**
-   - Mission registry (`id`, `chapter`, `giver`, `objectives[]`, `onComplete`), save state (via `@lawn/cloudsave` + `localStorage`), and active-mission lock (switching between Free Roam and Story Mission mode).
-2. **Dialogue, Cutscene & Radio UI (`src/dialogue.ts` / `src/radio.ts`):**
-   - Bottom-third subtitle & portrait box for briefings/banter while driving (mobile-friendly, tap-to-advance, 44px+ buttons).
-   - **Turfton FM Radio** (synthesized via `@lawn/music` / Tone.js + text-ticker DJ banter): *K-DEW Classic Mower Rock*, *Fescue Public Radio* (dry lore lectures), and *HOA Compliance Beats*.
+1. **Extending `src/quests/` (`defs.ts`, `quests.ts`):**
+   - Add new objective kinds (`drive`, `escort`, `deliver`, `fly`, `survive-heat`) alongside `crack` and `visit`, plus `@lawn/cloudsave` sync alongside `localStorage`.
+2. **Dialogue, Voice/Subtitle & Radio UI (`src/dialogue.ts` / `src/radio.ts`):**
+   - Keep **Don Compost**'s signature silent poster-and-icon cutscenes (`cutscene.ts`) for Mulch Club contracts, while adding a bottom-third subtitle/portrait box for speaking characters (Pip, Tansy, Vesper, Granny) and **Turfton FM Radio** via `@lawn/music`.
 3. **Quest Givers, Waypoints & World Markers (`src/markers.ts`):**
    - Glowing 3D ground rings (`T`, `P`, `G`, `!`) on the map + minimap icons in `hud.ts` to start missions and mark mission targets.
 4. **Faction Hostility & Pursuit Mowers:**

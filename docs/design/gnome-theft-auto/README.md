@@ -1,6 +1,6 @@
 # Gnome Theft Auto: Narrative & World Design Bible
 
-Design documentation for turning `games/gnome-theft-auto` ([README](../../../games/gnome-theft-auto/README.md)) from an open-world sandbox into a story-driven, lore-rich *GTA* parody inside the Gnomiverse (`apocrypha`, [R-015](../../lore/rulings.md#r-015), [R-016](../../lore/rulings.md#r-016)).
+Design documentation for turning `games/gnome-theft-auto` ([README](../../../games/gnome-theft-auto/README.md)) from an open-world sandbox into a story-driven, lore-rich *GTA* parody inside the Gnomiverse (`apocrypha`, [R-015](../../lore/rulings.md#r-015), [R-016](../../lore/rulings.md#r-016), [R-021–R-025](../../lore/rulings.md#r-021)).
 
 | Document | Contents |
 |---|---|
