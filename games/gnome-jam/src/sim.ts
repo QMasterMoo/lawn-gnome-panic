@@ -10,6 +10,7 @@ import {
   type GameStateSnapshot,
 } from './ai';
 import { COURT_HALF_X, COURT_HALF_Z, HOOP_X, HOOP_Y, THREE_PT_RADIUS } from './arena';
+import { DEFAULT_BALANCE_CONFIG, type SimBalanceConfig } from './balance';
 import type { PlayerControlInput } from './input';
 import type {
   AnnouncerEvent,
@@ -128,9 +129,11 @@ export class JamSimulation {
   tick = 0;
   private finishedSent = false;
   private bots: [BotController, BotController, BotController, BotController];
+  private readonly bal: SimBalanceConfig;
 
   constructor(config: MatchConfig, cb: SimCallbacks, botOpts: CreateBotOptions = {}) {
     this.config = config;
+    this.bal = { ...DEFAULT_BALANCE_CONFIG, ...config.balance };
     this.cb = cb;
     this.clockSec = config.quarterSeconds;
     this.bots = [
@@ -482,7 +485,8 @@ export class JamSimulation {
     const moving = Math.hypot(inp.moveX, inp.moveZ) > 0.1;
     const usingTurbo = inp.turbo && (p.onFire || p.turbo > 2);
     if (usingTurbo && moving) {
-      if (!p.onFire) p.turbo = Math.max(0, p.turbo - 32 * dt);
+      const drain = p.onFire ? 32 * this.bal.fireTurboDrainScale : 32;
+      if (drain > 0) p.turbo = Math.max(0, p.turbo - drain * dt);
     } else {
       p.turbo = Math.min(100, p.turbo + 18 * dt);
     }
@@ -543,7 +547,11 @@ export class JamSimulation {
       if (inp.shootPressed && p.grounded) {
         const hx = this.targetHoopX(p.team);
         const distToHoop = Math.hypot(hx - p.pos.x, p.pos.z);
-        const dunkReach = 3.2 + (p.profile.stats.dunk / 10) * 0.24 + (usingTurbo ? 1.25 : 0) + (p.onFire ? 1.1 : 0);
+        const dunkReach =
+          this.bal.dunkBaseReach +
+          (p.profile.stats.dunk / 10) * 0.24 +
+          (usingTurbo ? this.bal.dunkTurboReachBonus : 0) +
+          (p.onFire ? this.bal.dunkFireReachBonus : 0);
 
         if (distToHoop <= dunkReach) {
           this.startDunk(p, usingTurbo);
@@ -566,7 +574,8 @@ export class JamSimulation {
         if (inp.shootReleased || (p.vel.y < -0.6 && p.shootHold > 0.18)) {
           // Peak of jump (vel.y near 0) is ideal timing!
           const timingQuality = Math.max(0, 1 - Math.abs(p.vel.y) / 7.5);
-          this.releaseJumpShot(p, timingQuality);
+          const earlyPenalty = p.shootHold < 0.14 ? this.bal.earlyReleasePenalty : 0;
+          this.releaseJumpShot(p, timingQuality, earlyPenalty);
           p.isShooting = false;
           p.shootHold = 0;
         }
@@ -663,7 +672,7 @@ export class JamSimulation {
       for (const opp of this.players) {
         if (opp.team === p.team || opp.grounded || opp.stunTimer > 0) continue;
         const dist = opp.pos.distanceTo(p.pos);
-        if (dist < 1.25 && opp.pos.y > 1.4 && Math.random() < 0.04 + (opp.profile.stats.defense / 10) * 0.012) {
+        if (dist < 1.25 && opp.pos.y > 1.4 && Math.random() < this.bal.dunkBlockBaseChance + (opp.profile.stats.defense / 10) * 0.012) {
           // REJECTED!
           p.dunk = null;
           p.vel.set((p.team === 0 ? -1 : 1) * 4, 2, (Math.random() - 0.5) * 3);
@@ -699,7 +708,7 @@ export class JamSimulation {
     }
   }
 
-  private releaseJumpShot(p: SimPlayer, timingQuality: number): void {
+  private releaseJumpShot(p: SimPlayer, timingQuality: number, earlyPenalty = 0): void {
     const hx = this.targetHoopX(p.team);
     const rimX = hx + (p.team === 0 ? -0.36 : 0.36);
     const dist = Math.hypot(rimX - p.pos.x, p.pos.z);
@@ -715,14 +724,15 @@ export class JamSimulation {
         contest = Math.max(contest, (1 - d / 2.2) * (0.14 + (opp.profile.stats.defense / 10) * 0.018) + jumpBonus);
       }
     }
+    contest *= this.bal.contestScale;
 
     const baseChance = isThree
-      ? 0.28 + (p.profile.stats.threePt / 10) * 0.055
-      : 0.44 + (p.profile.stats.threePt / 10) * 0.042;
-    const timingBonus = timingQuality * 0.22;
-    const fireBonus = p.onFire ? 0.28 : 0;
+      ? this.bal.threeBaseChance + (p.profile.stats.threePt / 10) * this.bal.threeStatScale
+      : this.bal.twoBaseChance + (p.profile.stats.threePt / 10) * this.bal.twoStatScale;
+    const timingBonus = timingQuality * this.bal.timingBonusMax;
+    const fireBonus = p.onFire ? this.bal.fireShotBonus : 0;
     const distPenalty = Math.max(0, (dist - 8.5) * 0.045);
-    const chance = Math.max(0.08, Math.min(0.96, baseChance + timingBonus + fireBonus - contest - distPenalty));
+    const chance = Math.max(0.08, Math.min(0.96, baseChance + timingBonus + fireBonus - contest - distPenalty - earlyPenalty));
 
     const willScore = Math.random() < chance;
     p.box.fga++;
@@ -777,7 +787,7 @@ export class JamSimulation {
     if (this.ball.mode !== 'shot') return;
     if (this.ball.flightT / this.ball.flightDur > 0.72) return; // no goaltending on way down
     const dist = p.pos.distanceTo(this.ball.pos);
-    if (dist < 2.2) {
+    if (dist < this.bal.shotBlockReach) {
       p.box.blocks++;
       this.ball.mode = 'loose';
       this.ball.vel.set((p.team === 0 ? 1 : -1) * 5.5, 4.5, (Math.random() - 0.5) * 5);
@@ -789,7 +799,7 @@ export class JamSimulation {
   }
 
   private tryStealOrShove(p: SimPlayer, usingTurbo: boolean): void {
-    p.stealCooldown = 0.55;
+    p.stealCooldown = this.bal.shoveCooldownSec;
     p.shoveTimer = 0.22;
 
     // Find nearest opponent within reach
@@ -805,6 +815,7 @@ export class JamSimulation {
     }
 
     if (!target) {
+      p.stealCooldown = this.bal.shoveWhiffCooldownSec;
       // On defense with no opponent nearby, pressing Pass switches control to teammate!
       if (p.index === this.p1ControlIdx) {
         this.p1ControlIdx = p.index === 0 ? 1 : 0;
@@ -821,23 +832,30 @@ export class JamSimulation {
 
     if (usingTurbo) {
       // Classic NBA Jam SHOVE!
-      if (!p.onFire) p.turbo = Math.max(0, p.turbo - 22);
-      target.stunTimer = 0.85;
+      if (!p.onFire) p.turbo = Math.max(0, p.turbo - this.bal.shoveTurboCost);
+      target.stunTimer = this.bal.shoveStunSec;
       target.vel.set((dx / len) * 8.5, 3.2, (dz / len) * 8.5);
       target.grounded = false;
       this.cb.onSound('shove');
       this.cb.onBurst(target.pos.clone().add(new THREE.Vector3(0, 0.5, 0)), 'dust');
       this.cb.onCameraPunch(0.25);
 
-      if (this.ball.carrier === target.index) {
+      if (this.ball.carrier === target.index && Math.random() < this.bal.shoveTurnoverChance) {
         p.box.steals++;
-        this.giveBallTo(p.index);
-        this.shotClock = SHOT_CLOCK_MAX;
+        if (this.bal.shoveKnocksLoose) {
+          this.ball.carrier = null;
+          this.ball.mode = 'loose';
+          this.ball.vel.set((dx / len) * 5.0, 3.6, (dz / len) * 5.0);
+          this.ball.pickupLock = 0.25;
+        } else {
+          this.giveBallTo(p.index);
+          this.shotClock = SHOT_CLOCK_MAX;
+        }
         this.cb.onAnnounce({ text: 'CRUNCHING SHOVE!', subtext: 'TURNOVER!', color: '#ff8844' });
       }
     } else if (this.ball.carrier === target.index) {
       // Quick steal poke!
-      const stealChance = 0.34 + (p.profile.stats.defense / 10) * 0.045;
+      const stealChance = this.bal.stealBaseChance + (p.profile.stats.defense / 10) * 0.045;
       if (Math.random() < stealChance) {
         p.box.steals++;
         this.giveBallTo(p.index);
@@ -994,7 +1012,7 @@ export class JamSimulation {
       }
     }
     scorer.streak++;
-    const justCaughtFire = !scorer.onFire && scorer.streak >= 3;
+    const justCaughtFire = !scorer.onFire && scorer.streak >= this.bal.fireStreakThreshold;
     if (justCaughtFire) {
       scorer.onFire = true;
       scorer.turbo = 100;

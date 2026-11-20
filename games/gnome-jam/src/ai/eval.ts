@@ -1,4 +1,5 @@
 import { JamSimulation, type SimCallbacks } from '../sim';
+import type { SimBalanceConfig } from '../balance';
 import { PRO_TEAMS } from '../teams';
 import type { Difficulty, GnomePlayerProfile, MatchConfig, MatchResult, PlayerBoxScore } from '../types';
 import { normalizeBotInput } from './snapshot';
@@ -159,6 +160,8 @@ export interface MatchOptions {
    * 0 (default) = Unrestricted 60Hz League.
    */
   decisionCadenceMs?: number;
+  /** Optional simulation balance overrides. */
+  balance?: Partial<SimBalanceConfig>;
   /** Optional per-tick observer hook (used by the 4x MP4 replay recorder). */
   onTick?: (sim: JamSimulation, lastEvent: string | null) => void;
 }
@@ -292,6 +295,7 @@ export function simulateMatch(opts: MatchOptions): MatchTelemetry {
       opponentMode: 'botvsbot',
       difficulty,
       quarterSeconds,
+      balance: opts.balance,
     };
 
     const sim = new JamSimulation(config, cb);
@@ -448,6 +452,7 @@ export interface SeriesOptions {
   difficulty?: Difficulty;
   rosterMode?: 'balanced' | 'shooter' | 'dunker' | 'pro-teams';
   decisionCadenceMs?: number;
+  balance?: Partial<SimBalanceConfig>;
 }
 
 export interface SeriesResult {
@@ -597,6 +602,7 @@ export function runSeries(
         difficulty,
         quarterSeconds,
         decisionCadenceMs,
+        balance: opts.balance,
         seed: baseSeed + i * 97,
       }),
     );
