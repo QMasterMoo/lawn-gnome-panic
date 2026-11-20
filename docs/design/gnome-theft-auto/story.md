@@ -140,7 +140,7 @@ The Gnomiverse has serious bones. In **Fescue** (*Gnomes of Gnomomia*), gnomes a
   - **Vesper's Offer:** At a highway diner, Vesper corners you alone and offers to wipe Tansy's lien *and* give you a patio penthouse if you hand over the **Golden Acorn**—establishing his chillingly reasonable "order over chaos" worldview.
   - **Mossy Wood:** Track a missing shipment into the deep woods, where **The Unmowed** (Fescue exiles) ambush you with tangled vines and an ancient **Stopping Stone** shard. **Pip** confronts his own Fescue exile when an Elder recognizes his Potsworth glaze and calls him a traitor for loving engines.
   - **The Serious Turn:** An Elder of the Unmowed shows the protagonist a cracked earthenware tablet: *the Grand Combine Vesper is building isn't a Turfton toy—it's patterned after Fescue's original Mower.* For the first time, the jokes drop. Pip asks quietly: *"Wait... they're really gonna level the whole lawn?"*
-- **Escalated Setpiece — *The Cloverfield Sprinkler Gauntlet*:** Tow Granny Gnertrude's armored acorn silo on a flatbed behind a souped-up Ride-On Mower while weaving through synchronized, high-pressure oscillating sprinklers (instant soak hazard!) and dodging Reginald Vance's laser-level squad.
+- **Escalated Setpiece — *The Cloverfield Sprinkler Gauntlet*:** Tow Granny Gnertrude's armored acorn silo on a flatbed behind a souped-up Ride-On Mower while weaving through synchronized, high-pressure oscillating sprinklers (spinning out your tires and chipping your glaze!) and dodging Reginald Vance's laser-level squad.
 
 ### Chapter 3: *Cold Clay* (Frostbite Fells)
 - **Focus:** Betrayal, exile, tundra survival, and rebuilding the crew.
@@ -188,7 +188,7 @@ Every biome and block in Turfton can quietly nod to the wider Gnomiverse without
 | **Incregnomtal** | A giant muddy pawprint crater in Cloverfield Farms called **"Biscuit's Nap"** where acorns spawn twice as fast. | Cloverfield Farms |
 | **Gnaft** | A battered turf-raft washed up in the southern drainage canal with a "Castaway" NPC muttering about lawn sharks. | South edge of Turfton / Farmland |
 | **Gnome Bowling / Billiards / Blackjack / Club Gnome** | **The Gnomecino** neon sign downtown; **Big Lou** occasionally spotted as a VIP bouncer outside who refuses to let anyone in wearing a wet hat. | Downtown Turfton |
-| **Cooking Gnoma** | **Gnoma's Food Truck** parked near the Glaze Clinic, selling *Acorn-Flour Cake* (+100% Dryness) while Gnoma yells *"Oops, a little wobbly! We learn from it!"* if you bump her truck. | Outside Glaze Clinic |
+| **Cooking Gnoma** | **Gnoma's Food Truck** parked near the Glaze Clinic, selling *Acorn-Flour Cake* (+100% Clay Health) while Gnoma yells *"Oops, a little wobbly! We learn from it!"* if you bump her truck. | Outside Glaze Clinic |
 | **Aether Board** | A glowing blue ley-line ramp on the highest peak of **Frostbite Fells**—hitting it on a Push-Mower Bike triggers a brief zero-gravity trick chime. | North Frostbite Fells |
 | **Faster Than Lawn** | A charred, crop-circle scorch mark in the Dust Flats with a tinfoil-hatted NPC swearing a "Faster-Than-Lawn Crew Cruiser" abducted his lawnmower. | Dust Flats desert |
 | **Peak Climb** | A tiny rusted climbing piton and coiled twine hammered into the tallest snow-drift of Frostbite Fells. | North Frostbite Fells |
@@ -208,7 +208,7 @@ Each side quest pushes the Gnomiverse's lore forward while keeping the dry, sarc
 2. **"Porcelain Blues"** *(Mossy Wood — Connects `the-tall-house` to `apocrypha`)*
    - **Giver:** **Clara**, a cracked porcelain gnome hiding in a hollow log near the boarded-up porch.
    - **Plot:** Unlike Turfton's earthenware gnomes, Clara can't just "wash out" and walk away—she's brittle. She asks you to recover three **Wax Lanterns** stolen by HOA scavengers before nightfall so she can seal the porch door for good.
-   - **Lore Payoff:** Explores the real tragedy of porcelain gnomes vs. earthenware gnomes (R-003), ending on a quiet, sincere note before Clara gifts you a **Porcelain-Glaze Charm** (reduces vehicle/fall soak damage).
+   - **Lore Payoff:** Explores the real tragedy of porcelain gnomes vs. earthenware gnomes (R-003), ending on a quiet, sincere note before Clara gifts you a **Porcelain-Glaze Charm** (reduces vehicle/fall chip damage).
 
 3. **"The Fescue Fugitive"** *(Mossy Wood / Cloverfield — Connects `fescue` myths to `apocrypha`)*
    - **Giver:** **Elder Bracken**, a grumpy Unmowed scholar.
@@ -355,7 +355,7 @@ Whenever the player hops onto a Push-Mower Bike, Ride-On Lowrider, or Crop Duste
 - **Side-Valve Salvage:** *"Is your mower smoking? Are the Hat Watch cruisers asking awkward questions about whose flowerpot you drove through? Bring it to **Side-Valve Salvage**! We'll slap a fresh coat of `MOWER_TINTS` on it in three seconds flat. Is your VIN filed off? Great—we don't even know what a VIN is!"*
 - **HOA Compliance & Lien Services:** *"Think nobody's watching your verge? **Reginald Vance is.** One millimeter over regulation height and we will put a lien on your wheelbarrow. Remember: a crooked hat is a cry for foreclosure."*
 - **The Gnomecino:** *"Come lose your acorns in style at **The Gnomecino**! Now featuring 100% fewer chair-thrown brawls! Tuesdays are Half-Price Acorn-Poker Night—and remember, Big Lou checks your hat at the door. Wet brims stay on the curb!"*
-- **Gnoma's Food Truck:** *"Hungry after a 3-Hat chase? Swing by **Gnoma's Food Truck** outside the Glaze Clinic! Try our Triple-Acorn Waffle—100% Dryness restored! And if you accidentally ram the truck with a Combine Harvester, don't worry: 'Oops, a little wobbly! We learn from it!'"*
+- **Gnoma's Food Truck:** *"Hungry after a 3-Hat chase? Swing by **Gnoma's Food Truck** outside the Glaze Clinic Hospital! Try our Triple-Acorn Waffle—100% Clay Health restored! And if you accidentally ram the truck with a Combine Harvester, don't worry: 'Oops, a little wobbly! We learn from it!'"*
 
 ### Dynamic Breaking News Bulletins
 - **1-Hat Watch:** *"Traffic alert on `ROAD_LINES`: A gnome in a suspiciously shiny hat was just spotted 'aggressively borrowing' a Push-Mower Bike. Citizens are advised to keep their keys out of their flowerpots."*
@@ -409,9 +409,10 @@ All new toys honor the Gnomiverse's **no-gore fired-clay & garden-scale comedy**
 | Existing Module | Story Hook / Ready Today |
 |---|---|
 | `config.ts` & `biomes.ts` | 1200×1200 map with 5 named biomes (`Turfton`, `The Dust Flats`, `Mossy Wood`, `Frostbite Fells`, `Cloverfield Farms`), `HIGHWAYS`, `BASE` (Fort Sandpit), and `AIRFIELD` are already built and named. |
-| `vehicles.ts` & `simdrive.ts` | All 6 signature vehicles (`push-bike`, `ride-on`, `zero-turn`, `combine`, `plane`, `whirligig`) + damage stages (`dented`, `wrecked`) + `@lawn/vehicle` sim physics. |
-| `weapons.ts` & `fx.ts` | Hitscan `Pistol`, `SMG`, `Shotgun`, `Rifle` + reload/swap + projectile tracers. |
-| `police.ts` & `npcs.ts` | **Hat Watch** (1–3 Hats), **Spade Guard** at `BASE.guardPosts`, hands-up flee reactions (`poseHandsUp`), and `ragdoll.ts` flings. |
+| `vehicles.ts` & `simdrive.ts` | All 6 signature vehicles (`push-bike`, `ride-on`, `zero-turn`, `combine`, `plane`, `whirligig`) + damage stages (`dented`, `wrecked`), exploding/charred wrecks (R-024), and `@lawn/vehicle` sim physics. |
+| `weapons.ts` & `fx.ts` | Hitscan `Pistol`, `SMG`, `Shotgun`, `Rifle` + reload/swap + projectile tracers + clay-shard & explosion FX. |
+| `police.ts` & `npcs.ts` | **Hat Watch** (1–3 Hats), **Spade Guard** at `BASE.guardPosts`, `CRACK_LINES` / `STEAL_LINES` / `RUNOVER_LINES` toasts, `ragdoll.ts` flings, and persistent clay shards (`R-023`). |
+| `hud.ts` & `textures.ts` | Minimap + full-screen map (`M`), procedural road/building textures, and quest tracker HUD. |
 | `gnomes.ts` | `@lawn/gnome` integration (`loadMyGnome`, `getMyGnome`) so the player's own gnome is the protagonist. |
 | `ambulance.ts` | **Glaze Clinic Ambulance** (R-022/R-023) that collects a cracked player and glues them back together outside the Glaze Clinic Hospital. |
 | `quests/` (`defs.ts`, `quests.ts`, `cutscene.ts`, `types.ts`) | **Data-driven quest engine** (PR #266): `crack` and `visit` objective table, `localStorage` save, silent mob-boss back-room cutscene (`Don Compost` at `gta-mulch-club`), spinning markers, map blips, tracker HUD, and *"First Contract"* demo quest. |
@@ -430,7 +431,7 @@ All new toys honor the Gnomiverse's **no-gore fired-clay & garden-scale comedy**
    - Private `?room=CODE` lobbies support co-op story missions where crewmates ride shotgun or fly escort in the Crop Duster.
    - Public free-roam turns story beats into shared **World Events** (Dew Convoy ambushes, Zero-Turn Drift Trials using `?drive=sim`, 4-Hat HOA Van raids).
 6. **Sandbox Loops, Economy & Safehouses:**
-   - **Acorns** currency (`hud.ts`), Glaze Clinic "Washed Out" fee, **Safehouse Garage** (save, store `MOWER_TINTS` rides), **Pay 'n' Glaze**, **Kiln-Shield Ragdoll Fraud** (`ragdoll.ts` side activity), and map **Collectibles** (25 Golden Acorns, 10 Stopping-Stone Shards, 15 HOA Foreclosure Signs to smash).
+   - **Acorns** currency (`hud.ts`), Glaze Clinic "Cracked" hospital fee, **Safehouse Garage** (save, store `MOWER_TINTS` rides), **Pay 'n' Glaze**, **Kiln-Shield Ragdoll Fraud** (`ragdoll.ts` side activity), and map **Collectibles** (25 Golden Acorns, 10 Stopping-Stone Shards, 15 HOA Foreclosure Signs to smash).
 7. **New `@lawn/prefabs` & `@lawn/achievements`:**
    - Prefabs listed in §11; achievements in `packages/achievements/src/catalog.ts`.
 
