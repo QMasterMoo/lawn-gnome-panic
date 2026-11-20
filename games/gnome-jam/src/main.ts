@@ -53,7 +53,10 @@ async function boot(): Promise<void> {
       const away = getTeamById(config.awayTeamId);
 
       sim = new JamSimulation(config, {
-        onAnnounce: (ev) => ui.announce(ev),
+        onAnnounce: (ev) => {
+          ui.announce(ev);
+          audio.announce(ev);
+        },
         onSound: (kind) => {
           switch (kind) {
             case 'bounce': audio.playBounce(); break;
@@ -101,6 +104,7 @@ async function boot(): Promise<void> {
       input.setTouchVisible(!paused);
     },
     onQuitMatch: () => {
+      audio.stopAnnouncer();
       audio.setMusicMode('chill');
       sim = null;
       paused = false;
