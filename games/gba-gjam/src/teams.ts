@@ -1,7 +1,6 @@
 import { GNORMAN_LOOK, getMyGnome, type GnomeLook } from '@lawn/gnome';
+import { readSave, writeSave } from './save';
 import type { CareerStats, CustomGnomeData, GnomePlayerProfile, PlayerBoxScore, ProTeam } from './types';
-
-const CUSTOM_KEY = 'gnome-jam.custom.v1';
 
 export const CUSTOM_STAT_BUDGET = 180;
 export const STAT_MIN = 0;
@@ -346,87 +345,87 @@ export function awardMatchProgression(
   return { earned, gamePoints, winPoints, tournamentPoints };
 }
 
-export function loadCustomGnome(): CustomGnomeData {
-  try {
-    const raw = localStorage.getItem(CUSTOM_KEY);
-    if (!raw) return defaultCustomGnome();
-    const parsed = JSON.parse(raw) as Partial<CustomGnomeData>;
-    const def = defaultCustomGnome();
-    const mine = getMyGnome();
+export function normalizeCustomGnome(raw: unknown): CustomGnomeData {
+  const def = defaultCustomGnome();
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return def;
+  const parsed = raw as Partial<CustomGnomeData>;
+  const mine = getMyGnome();
 
-    const rawStats = parsed.stats;
-    // Migrate legacy 3-9 stat scale to 0-100 scale
-    const isLegacyScale =
-      rawStats !== undefined &&
-      rawStats.speed <= 10 &&
-      rawStats.threePt <= 10 &&
-      rawStats.dunk <= 10 &&
-      rawStats.defense <= 10;
-    const scale = isLegacyScale ? 10 : 1;
+  const rawStats = parsed.stats;
+  // Migrate legacy 3-9 stat scale to 0-100 scale
+  const isLegacyScale =
+    rawStats !== undefined &&
+    rawStats.speed <= 10 &&
+    rawStats.threePt <= 10 &&
+    rawStats.dunk <= 10 &&
+    rawStats.defense <= 10;
+  const scale = isLegacyScale ? 10 : 1;
 
-    const prog = parsed.progression;
-    const rawCareer = prog?.career;
-    const numOr0 = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.round(v)) : 0);
-    const progression = {
-      gamesPlayed: numOr0(prog?.gamesPlayed),
-      wins: numOr0(prog?.wins),
-      tournamentWins: numOr0(prog?.tournamentWins),
-      bonusPoints: numOr0(prog?.bonusPoints),
-      career: {
-        pts: numOr0(rawCareer?.pts),
-        fgm: numOr0(rawCareer?.fgm),
-        fga: numOr0(rawCareer?.fga),
-        tpm: numOr0(rawCareer?.tpm),
-        tpa: numOr0(rawCareer?.tpa),
-        dunks: numOr0(rawCareer?.dunks),
-        steals: numOr0(rawCareer?.steals),
-        blocks: numOr0(rawCareer?.blocks),
-        rebounds: numOr0(rawCareer?.rebounds),
-      },
-    };
+  const prog = parsed.progression;
+  const rawCareer = prog?.career;
+  const numOr0 = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.round(v)) : 0);
+  const progression = {
+    gamesPlayed: numOr0(prog?.gamesPlayed),
+    wins: numOr0(prog?.wins),
+    tournamentWins: numOr0(prog?.tournamentWins),
+    bonusPoints: numOr0(prog?.bonusPoints),
+    career: {
+      pts: numOr0(rawCareer?.pts),
+      fgm: numOr0(rawCareer?.fgm),
+      fga: numOr0(rawCareer?.fga),
+      tpm: numOr0(rawCareer?.tpm),
+      tpa: numOr0(rawCareer?.tpa),
+      dunks: numOr0(rawCareer?.dunks),
+      steals: numOr0(rawCareer?.steals),
+      blocks: numOr0(rawCareer?.blocks),
+      rebounds: numOr0(rawCareer?.rebounds),
+    },
+  };
 
-    const stats = {
-      speed: clampStat((rawStats?.speed ?? def.stats.speed / scale) * scale),
-      threePt: clampStat((rawStats?.threePt ?? def.stats.threePt / scale) * scale),
-      dunk: clampStat((rawStats?.dunk ?? def.stats.dunk / scale) * scale),
-      defense: clampStat((rawStats?.defense ?? def.stats.defense / scale) * scale),
-    };
+  const stats = {
+    speed: clampStat((rawStats?.speed ?? def.stats.speed / scale) * scale),
+    threePt: clampStat((rawStats?.threePt ?? def.stats.threePt / scale) * scale),
+    dunk: clampStat((rawStats?.dunk ?? def.stats.dunk / scale) * scale),
+    defense: clampStat((rawStats?.defense ?? def.stats.defense / scale) * scale),
+  };
 
-    // Enforce budget cap in case of corrupted or legacy data
-    const maxBudget = CUSTOM_STAT_BUDGET + progression.bonusPoints;
-    const used = stats.speed + stats.threePt + stats.dunk + stats.defense;
-    if (used > maxBudget) {
-      const ratio = maxBudget / used;
-      stats.speed = clampStat(stats.speed * ratio);
-      stats.threePt = clampStat(stats.threePt * ratio);
-      stats.dunk = clampStat(stats.dunk * ratio);
-      stats.defense = clampStat(stats.defense * ratio);
-    }
-
-    return {
-      name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim().slice(0, 18) : def.name,
-      nickname: typeof parsed.nickname === 'string' && parsed.nickname.trim() ? parsed.nickname.trim().slice(0, 14) : def.nickname,
-      number: typeof parsed.number === 'number' ? Math.max(0, Math.min(99, Math.round(parsed.number))) : def.number,
-      look: {
-        ...def.look,
-        ...(parsed.look ?? {}),
-        // Always keep unlocked achievement equipment from @lawn/gnome if present
-        equipment: parsed.look?.equipment ?? mine?.look.equipment,
-      },
-      stats,
-      progression,
-    };
-  } catch {
-    return defaultCustomGnome();
+  // Enforce budget cap in case of corrupted or legacy data
+  const maxBudget = CUSTOM_STAT_BUDGET + progression.bonusPoints;
+  const used = stats.speed + stats.threePt + stats.dunk + stats.defense;
+  if (used > maxBudget) {
+    const ratio = maxBudget / used;
+    stats.speed = clampStat(stats.speed * ratio);
+    stats.threePt = clampStat(stats.threePt * ratio);
+    stats.dunk = clampStat(stats.dunk * ratio);
+    stats.defense = clampStat(stats.defense * ratio);
   }
+
+  return {
+    name: typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim().slice(0, 18) : def.name,
+    nickname: typeof parsed.nickname === 'string' && parsed.nickname.trim() ? parsed.nickname.trim().slice(0, 14) : def.nickname,
+    number: typeof parsed.number === 'number' ? Math.max(0, Math.min(99, Math.round(parsed.number))) : def.number,
+    look: {
+      ...def.look,
+      ...(parsed.look ?? {}),
+      // Always keep unlocked achievement equipment from @lawn/gnome if present
+      equipment: parsed.look?.equipment ?? mine?.look.equipment,
+    },
+    stats,
+    progression,
+  };
+}
+
+export function loadCustomGnome(): CustomGnomeData {
+  return readSave().custom;
 }
 
 export function saveCustomGnome(data: CustomGnomeData): void {
-  try {
-    localStorage.setItem(CUSTOM_KEY, JSON.stringify(data));
-  } catch {
-    // ignore storage errors
-  }
+  const cur = readSave();
+  writeSave({
+    ...cur,
+    updatedAt: Date.now(),
+    custom: normalizeCustomGnome(data),
+  });
 }
 
 export function customGnomeToProfile(data: CustomGnomeData, team?: ProTeam): GnomePlayerProfile {

@@ -1,6 +1,9 @@
 // Arcade UI for GBA GJAM: Title, 8-Team Character Select, Custom Gnome Creator,
 // Season Standings & Top-6 Knockout Bracket, In-Game HUD, Pause & Post-Game Box Score.
 import { createVolumeButton, type VolumeStore } from '@arcade/volume';
+import { showSyncNotice } from '@lawn/sync';
+import { cloud } from './cloud';
+import { exportSaveJson, importSaveJson } from './save';
 import {
   BOT_PRESET_LABELS,
   BOT_SCRIPT_PRESETS,
@@ -608,6 +611,12 @@ export class JamUI {
     this.screenSlot.innerHTML = '';
   }
 
+  reloadSaveFromStorage(): void {
+    this.customGnome = loadCustomGnome();
+    this.season = loadSeason();
+    if (document.getElementById('jam-title')) this.showTitle();
+  }
+
   // =========================================================================
   // 1. TITLE SCREEN
   // =========================================================================
@@ -651,6 +660,14 @@ export class JamUI {
     const tier = getProgressionTier(totalBudget);
     const prog = this.customGnome.progression;
     const bigHeadOn = this.hooks.isBigHead();
+    const cloudStatus = cloud.status();
+    const cloudLabel =
+      cloudStatus === 'synced'
+        ? '☁️ CLOUD BACKUP ON'
+        : cloudStatus === 'syncing'
+          ? '☁️ SYNCING...'
+          : '💾 LOCAL SAVE';
+    const cloudColor = cloudStatus === 'synced' ? '#44ff88' : cloudStatus === 'syncing' ? '#ffd21f' : '#b8c4e0';
 
     this.screenSlot.innerHTML = `
       <div class="jam-screen" id="jam-title">
@@ -675,6 +692,12 @@ export class JamUI {
               style="width:130px;min-height:44px;border-radius:8px;border:1px solid rgba(255,255,255,0.28);background:#11152c;color:#fff;padding:6px 10px;font-weight:800;text-transform:uppercase;text-align:center;font-size:12px" />
             <button id="jam-cheat-btn" class="jam-btn small">🎮 Apply</button>
             ${bigHeadOn ? `<button id="jam-bighead-badge" class="jam-btn small active">🗿 BIGHEAD: ON</button>` : ''}
+          </div>
+          <div class="jam-row" style="justify-content:center;align-items:center;margin:8px 0;gap:8px;flex-wrap:wrap">
+            <span id="jam-save-status" style="font-size:11px;font-weight:800;color:${cloudColor};padding:4px 8px;border-radius:999px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14)">${cloudLabel}</span>
+            <button id="jam-export-save" class="jam-btn small" style="display:none;min-height:44px">⬇️ Export Backup</button>
+            <button id="jam-import-save" class="jam-btn small" style="display:none;min-height:44px">⬆️ Restore Backup</button>
+            <input id="jam-import-file" type="file" accept=".json,application/json" style="display:none" />
           </div>
           <div style="font-size:12px;color:#b8c4e0;line-height:1.5;margin-top:8px;background:rgba(0,0,0,0.28);padding:10px;border-radius:8px">
             <strong>Controls (P1):</strong> WASD / Arrows Move &nbsp;•&nbsp; <strong>Space / J</strong> Shoot, Dunk &amp; Block &nbsp;•&nbsp; <strong>K / E</strong> Pass, Steal &amp; Shove &nbsp;•&nbsp; <strong>Shift / L</strong> Turbo<br/>
@@ -725,6 +748,41 @@ export class JamUI {
       this.hooks.onClickSound();
       this.hooks.onToggleBigHead();
       this.showTitle();
+    });
+
+    this.screenSlot.querySelector('#jam-export-save')?.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      const json = exportSaveJson();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const day = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `gba-gjam-backup-${day}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showSyncNotice('Save backup downloaded.');
+    });
+
+    const fileInput = this.screenSlot.querySelector('#jam-import-file') as HTMLInputElement | null;
+    this.screenSlot.querySelector('#jam-import-save')?.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      fileInput?.click();
+    });
+    fileInput?.addEventListener('change', () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      void file.text().then((text) => {
+        try {
+          importSaveJson(text);
+          this.customGnome = loadCustomGnome();
+          this.season = loadSeason();
+          this.showTitle();
+          showSyncNotice('Save backup restored!');
+        } catch (err) {
+          showSyncNotice(err instanceof Error ? err.message : 'Invalid backup file.');
+        }
+      });
     });
   }
 

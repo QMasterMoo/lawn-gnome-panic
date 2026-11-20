@@ -1,3 +1,4 @@
+import { readSave, writeSave } from './save';
 import { PRO_TEAMS } from './teams';
 import type {
   Difficulty,
@@ -7,8 +8,6 @@ import type {
   SeasonState,
   TeamStanding,
 } from './types';
-
-const SEASON_KEY = 'gnome-jam.season.v1';
 
 /**
  * Generates a single round-robin schedule for an even number of teams using the circle method.
@@ -348,20 +347,16 @@ export function getPlayerSeed(season: SeasonState): number | null {
 }
 
 export function saveSeason(season: SeasonState | null): void {
-  try {
-    if (!season) localStorage.removeItem(SEASON_KEY);
-    else localStorage.setItem(SEASON_KEY, JSON.stringify(season));
-  } catch {
-    // ignore storage errors
-  }
+  const cur = readSave();
+  const now = Date.now();
+  writeSave({
+    ...cur,
+    updatedAt: now,
+    seasonUpdatedAt: now,
+    season,
+  });
 }
 
 export function loadSeason(): SeasonState | null {
-  try {
-    const raw = localStorage.getItem(SEASON_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as SeasonState;
-  } catch {
-    return null;
-  }
+  return readSave().season;
 }
