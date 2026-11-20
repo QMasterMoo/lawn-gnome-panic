@@ -4,6 +4,7 @@
 > **Game:** `games/gnome-theft-auto` ([README](../../games/gnome-theft-auto/README.md))  
 > **World & Area Lore:** [gnome-theft-auto-world-lore.md](gnome-theft-auto-world-lore.md)  
 > **Fictional Brands & Rivalries:** [gnome-theft-auto-brands.md](gnome-theft-auto-brands.md)  
+> **Society, Power & Themes:** [gnome-theft-auto-society.md](gnome-theft-auto-society.md)  
 > **Status:** Narrative & Content Design Proposal
 
 ---
