@@ -68,6 +68,16 @@ The Gnomiverse has serious bones. In **Fescue** (*Gnomes of Gnomomia*), gnomes a
 | **Commander Diggs** | Spade Guard Hardliner | Olive cap, tactical trowel bandolier | Decorated veteran of Fort Sandpit who has spent 15 years guarding a flying mower nobody is legally allowed to turn on. | Starts as an enemy during the Fort Sandpit raid; turns reluctant ally in Act IV when he realizes Vesper plans to scrap the Spade Guard too. |
 | **Granny Gnertrude** | Information Broker / Fence | Floral apron, oversized spectacles, pink bonnet | Runs a "bake shop" near the Cloverfield border. Actually the sharpest black-market acorn fence in three biomes. | Supplies the crew with forged HOA permits and heavy hardware (`Shotgun`, `Rifle`) in exchange for rare Fescue relics. |
 
+### Supporting Cast & Local Weirdos
+| Character | Role | Look & Vibe | Unhinged Behaviour & Lore Hook |
+|---|---|---|---|
+| **Rooster "Squall-Box" Weatherby** | Rogue Weather-Vane Prophet | Tinfoil-lined pointed cap, crooked tin-funnel megaphone, grass-stained overalls | Roosts atop a rusted Cloverfield windmill screaming barometric prophecies (*"THE BAROMETER IS DROPPING! VESPERS IN THE CLOUDS!"*). Insists the Tall Ones communicate exclusively through oscillating sprinkler patterns. |
+| **Reginald "Quarter-Inch" Vance** | Obsessive HOA Turf-Auditor | Beige vest, brass pocket-calipers, monocle-loupe, laminated *Turfton Municipal Code §404-B* | Measures grass height with a laser level at 3:00 AM. Issues fines for "unauthorized dandelion posture" and carries a whistle tuned to summon Code-Enforcement Vans. |
+| **Baroness Brenda of the Vinyl Lounge** | Feral Lawn-Chair Baron | Leopard-print poncho, sun-visor hat, feather duster scepter | Rules the southern drainage canal ("The Sovereign Republic of New Puddle") from a 9-foot throne of zip-tied folding patio loungers. Commands a biker gang of Push-Mower Bikes. |
+| **Shelldon "No-Trail" Mucilage** | Conspiracy-Theorist Snail-Courier | Oversized spectacles, mossy trench coat, backpack full of lettuce | Refuses to step on paved roads (*"THE GRID IS A TALL-ONE CIRCUIT BOARD, MAN!"*). Runs Turfton's only encrypted messaging network by taping micro-scrolls to racing snails. |
+| **Father Loam** | Chop-Shop Chaplain | Compost-stained robe, chrome-rimmed sunglasses, wrench-shaped pendant | Excommunicated from *The Chapel of Mulch* (`gnome-company`) for preaching that twin-turbo carburetors are a "gift of the Kiln." Blesses getaway mowers with artisanal compost tea. |
+| **Squeaky-Clean Midge** | Hyper-Caffeinated Glaze Clinic Intern | Splattered white lab coat, dual-cup espresso-acorn helmet | Treats a minor hat chip like a five-alarm ER trauma while vibrating at 140 BPM. Can re-glaze a shattered bumper in four seconds flat if you don't ask what's in the bucket. |
+
 ---
 
 ## 5. Factions & Motivations
@@ -115,6 +125,7 @@ The Gnomiverse has serious bones. In **Fescue** (*Gnomes of Gnomomia*), gnomes a
   - Run security for an illegal **Zero-Turn Racer** street race through downtown (`ROAD_LINES`), interrupted by Red Cap / Blue Cap crossfire.
   - Break into the **Turfton Glaze & Tax Office** to steal back Tansy's deed—discovering Vesper Thorne's signature on every foreclosure in the city.
 - **Climax:** A high-speed getaway through downtown in a stolen **Combine Harvester** (`combine`), smashing through HOA roadblocks while Pip hangs off the ladder firing an SMG.
+- **Escalated Setpiece — *The Gnorwin Clayfoot Boot Float Hijack*:** During Turfton's annual *Founder's Trim Day* parade, you hijack a 30-foot papier-mâché parade float shaped like Gnorwin Clayfoot's mud-caked boot, drifting it sideways through three acorn-pretzel carts while Red Caps and Blue Caps pelting each other accidentally provide cover.
 
 ### Chapter 2: *Black Dew & Greenbacks* (Cloverfield Farms & Mossy Wood)
 - **Focus:** Leaving the city grid via the `south` and `west` highways (`HIGHWAYS`). Exploring biomes, convoy heists, and Fescue lore.
@@ -122,6 +133,7 @@ The Gnomiverse has serious bones. In **Fescue** (*Gnomes of Gnomomia*), gnomes a
   - **Cloverfield Farms:** Help Granny Gnertrude defend her acorn silos from HOA "Code Enforcement" squads. Hijack a Black Dew tanker convoy on the `south` highway.
   - **Mossy Wood:** Track a missing shipment into the deep woods, where **The Unmowed** (Fescue exiles) ambush you—not with guns, but with tangled vines and an ancient, rusted **Stopping Stone** shard.
   - **The Serious Turn:** An Elder of the Unmowed shows the protagonist a cracked earthenware tablet: *the Grand Combine Vesper is building isn't a Turfton toy—it's patterned after Fescue's original Mower.* For the first time, the jokes drop. Pip asks quietly: *"Wait... they're really gonna level the whole lawn?"*
+- **Escalated Setpiece — *The Cloverfield Sprinkler Gauntlet*:** Tow Granny Gnertrude's armored acorn silo on a flatbed behind a souped-up Ride-On Mower while weaving through synchronized, high-pressure oscillating sprinklers (instant soak hazard!) and dodging Reginald Vance's laser-level squad.
 
 ### Chapter 3: *Cold Clay* (Frostbite Fells)
 - **Focus:** Betrayal, exile, tundra survival, and rebuilding the crew.
@@ -129,6 +141,7 @@ The Gnomiverse has serious bones. In **Fescue** (*Gnomes of Gnomomia*), gnomes a
   - **The Ambush:** Vesper frames Tansy and the protagonist for soaking the Hat Watch Commissioner. *Side-Valve Salvage* is raided and burned (well, *hosed down and demolished*). Pip takes a heavy hit—his clay arm cracks clean off—and the protagonist flees north up the `north` highway into **Frostbite Fells**.
   - **Tundra Hustle:** Hide out in a frozen cabin, smuggle Black Dew and Glaze-Glue across frozen lakes for the Carburettors, and patch Pip back together using **Kiln-Resin** from an abandoned shrine.
   - **The Plan:** Tansy surfaces via encrypted snail-mail (literally a snail). If Vesper is building the Grand Combine in downtown Turfton, they need **air superiority** and **the Unmowed's Stopping Stone**. That means hitting **The Dust Flats**.
+- **Escalated Setpiece — *The Frozen Birdbath Derby*:** A 12-mower demolition derby across Frostbite Fells' frozen duck pond while HOA snowplows try to salt the ice under your tires and Father Loam cheers from a snowmobile.
 
 ### Chapter 4: *Sandpit Protocol* (The Dust Flats: Fort Sandpit & Airfield)
 - **Focus:** Military heist, planes, parachutes, and the Whirligig.
@@ -137,10 +150,12 @@ The Gnomiverse has serious bones. In **Fescue** (*Gnomes of Gnomomia*), gnomes a
   - **Prep 2 — Bailout:** Parachute directly into **Fort Sandpit** (`BASE`, `x: 340..408, z: -34..34`) to avoid the main gate's Spade Guard turrets.
   - **The Heist:** Fight through the sandbox walls, raise **3-Hat Heat**, and lift **The Whirligig** (`whirligig`) off the pad (`padX: 358, padZ: -8`) while Commander Diggs chases you on a Zero-Turn.
   - **The Truce:** Mid-air, Diggs radios in—Vesper's HOA goons just locked Fort Sandpit's armory remotely and declared the Spade Guard "redundant." Diggs mutters: *"Nobody fires the Guard. Especially not a guy in a porcelain hat."*
+- **Escalated Setpiece — *Mid-Air Crop Duster to Whirligig Transfer*:** When your Crop Duster's intake swallows a rogue pinecone mid-canyon, you climb out onto the wing, grapple-hook onto the hovering Whirligig's skid mid-air while Commander Diggs is still inside, and wrestle the collective stick over Fort Sandpit.
 
 ### Chapter 5: *The Even Cut* (Turfton Finale)
 - **Focus:** Multi-angle finale combining driving, shooting, flying, and Fescue's oldest myth.
 - **Key Beats:**
+  - **Pre-Finale Setpiece — *The HOA Tribunal Ambush*:** Vesper drags Tansy's garage into an emergency kangaroo-court HOA Tribunal in the Turfton Amphitheater. Mid-closing-argument, Pip crashes a Combine Harvester *straight through the jury box*, turning a zoning hearing into a 3-Hat rolling shootout.
   - Vesper activates **The Grand Combine**—a skyscraper-sized, autonomous harvester rolling down `x = 0` toward downtown Turfton, escorted by HOA enforcers and bribed Hat Watch cruisers.
   - **Phase 1 (Air):** Pilot the **Crop Duster** / **Whirligig** to strafe the Grand Combine's escort and drop Pip onto its moving deck (`parachute` bailout).
   - **Phase 2 (Deck):** Fight across the Combine's roof while Vesper monologues over the PA system about "eliminating chaos, weeds, and crooked hats forever."
@@ -198,6 +213,36 @@ Each side quest pushes the Gnomiverse's lore forward while keeping the dry, sarc
    - **Plot:** Tow his makeshift raft across Cloverfield Farms using a Combine Harvester's hitch so he can reach the "Big Puddle" before the dry season hits.
    - **Reward:** Unlocks a custom **Sea-Foam Mower Tint** and a **Captain's Hat** cosmetic.
 
+6. **"The Mulch Pyramid Scheme"** *(Turfton / Mossy Wood — Connects `gnome-company`)*
+   - **Giver:** **Cedric "Double-Bag" Peat**, a fast-talking *Chapel of Mulch* upline recruiter operating out of a rusted van.
+   - **Plot:** Cedric convinces you to deliver three pallets of "Artisanal Miracle Mulch" (literally dyed sawdust and craft glitter) to gullible suburban yards—only for the buyers to realize it attracts wasps and call the Hat Watch. You have to repo the bags before the HOA confiscates them as "unregistered organic matter."
+   - **Lore Payoff:** Exposes how *The Chapel of Mulch* funds its quota-driven operations in the wider Gnomiverse, and rewards you with the **Mulch-Spreader** attachment.
+
+7. **"Biscuit's Lost Squeaky Toy"** *(Cloverfield Farms — Connects `incregnomtal`)*
+   - **Giver:** **Farmer Bramble**, trembling in a storm cellar near the giant pawprint crater.
+   - **Plot:** **Biscuit** (the unseen giant dog whose pawprint is a literal landmark) dropped a rubber squeaky hotdog the size of a city bus into Cloverfield's irrigation ditch. You must winch it out with a **Combine Harvester** and drag it back to the fence line before Biscuit returns and accidentally flattens three barns looking for it.
+   - **Lore Payoff:** Every time the hotdog hits a bump, it lets out a deafening *SQUEAK* that panics every NPC within 80 units (`poseHandsUp`) and temporarily clears Hat Watch patrols who think a Tall One is whistling.
+
+8. **"Snail-Racing Rigging"** *(Turfton Alleys — Shelldon's Side Arc)*
+   - **Giver:** **Shelldon "No-Trail" Mucilage**, hiding behind a dumpster off `ROAD_LINES`.
+   - **Plot:** Shelldon's encrypted courier snails are losing the underground alley-races to a rival syndicate's *Espresso-Fed Slugs*. Sneak into the rival paddock, swap their romaine lettuce for *decaf dandelion greens*, and toss a **Dandelion Puff-Grenade** to cover your escape.
+   - **Reward:** Unlocks Shelldon's **Courier Express** perk (faster Hat Watch heat cooldown in alleys) and a **Tinfoil-Lined Trench Hat**.
+
+9. **"The Porcelain Support Group"** *(Mossy Wood — Connects `the-tall-house` / `paragnormal`)*
+   - **Giver:** **Clara**, hosting a whispered midnight meeting inside a hollow oak stump.
+   - **Plot:** Four newly escaped porcelain gnomes from the Tall House porch need to be escorted to a padded moss bunker. Because porcelain shatters easily, you must drive them in a shock-absorbed **Ride-On Lowrider**—every curb hop, pothole, or gunfire ping chips their glaze and slashes your payout.
+   - **Lore Payoff:** Heartfelt, darkly funny dialogue from the porcelain refugees arguing over whether a toaster is a Tall-One altar.
+
+10. **"The Great Hose-Pipe Tax Revolt"** *(Turfton Suburbs — Connects `hat-watch` & `hoa`)*
+    - **Giver:** **Baroness Brenda of the Vinyl Lounge**, holding court on her zip-tied lawn-chair throne.
+    - **Plot:** Brenda declares the southern drainage canal "The Sovereign Republic of New Puddle" and tasks you with kinking four pressurized Tall-One garden hoses across Turfton to flood Vesper's pristine putting-green country club—triggering an instant **4-Hat HOA Van** response.
+    - **Reward:** Unlocks the **Garden-Hose Whip** weapon and Brenda's **Leopard Sun-Visor**.
+
+11. **"Big Lou's Wet-Hat Embargo"** *(Downtown Turfton — Connects `club-gnome` / `gnome-bowling`)*
+    - **Giver:** **Big Lou**, glaring outside *The Gnomecino* with his arms crossed.
+    - **Plot:** Red Cap hooligans hijacked Big Lou's VIP shipment of microfiber hat-towels. Recover the crate and chauffeur a high-roller bowler across downtown in a **Zero-Turn Racer** without touching a single puddle or sprinkler—if the VIP's bowler hat gets even 1% damp, Big Lou locks the Gnomecino doors for a week.
+    - **Reward:** Free VIP entry to *The Gnomecino* + **Pin-Striped Bowling Shirt** cosmetic.
+
 ---
 
 ## 9. Storyboarded Main Story Quests
@@ -239,9 +284,114 @@ Each side quest pushes the Gnomiverse's lore forward while keeping the dry, sarc
   5. **The Lift:** Entering Fort Sandpit immediately triggers **2-Hat Heat**; boarding **The Whirligig** (`whirligig`) spikes it to **3-Hat Heat**. Climb straight up (`Space`, `ceiling: 100`) over the sandbox walls while Spade Guard shots ping off the blades, then fly back to the safehouse to clear heat.
 - **Gameplay Systems Used:** `vehicles.ts` (`plane` takeoff/stall, `whirligig` vertical flight), `player.ts` (parachute bailout & glide), `police.ts` (Fort Sandpit guards + 3-Hat Heat).
 
+### Quest 4: *"Founder's Boot & The Kangaroo Court"* (Chapter 1/2 Bridge — Parade Heist & HOA Tribunal Ambush)
+- **Trigger:** Tansy gets served a same-day demolition summons for *Side-Valve Salvage* outside the **Turfton Amphitheater**.
+- **Briefing (Cutscene/Dialogue):**  
+  > **Tansy:** *"Vesper scheduled an emergency HOA zoning hearing during the Founder's Trim Day parade so nobody can protest. He's got Reginald Vance measuring my driveway with brass calipers."*  
+  > **Pip:** *"Okay, hear me out. What if we steal the 30-foot Gnorwin Clayfoot Boot float, fill the toe with fireworks, and park it inside the jury box?"*
+- **Beats:**
+  1. **The Parade Snatch (`x: 0, z: -120`):** Infiltrate the *Founder's Trim Day* parade route on `ROAD_LINES`. Hijack **Gnorwin's Boot Parade Float** while marching-band gnomes scatter (`poseHandsUp`) and Red Caps / Blue Caps accidentally shoot each other across the avenue.
+  2. **Heavy Drift:** Drive the massive, sluggish Boot Float through downtown while dodging **2-Hat Hat Watch** roadblocks and firing the float's confetti-and-acorn horn cannon.
+  3. **The Tribunal Ambush:** Crash the Boot Float straight through the Turfton Amphitheater's cardboard archway mid-verdict. Vesper flees in an armored **Zero-Turn**, leaving **Reginald Vance** and six HOA Enforcers to fight you across the amphitheater benches.
+  4. **The Escape:** Clear the enforcers with the **Leaf-Blower Cannon** (sending Vance's clipboard flying into the upper bleachers), grab Tansy's stamped deed off the podium, and bail out on Pip's getaway **Combine Harvester** before the **4-Hat HOA Van** arrives.
+- **Gameplay Systems Used:** Heavy ramming vehicle physics, multi-faction crossfire (`police.ts` + Red/Blue Caps), arena shootout, 4-Hat HOA escalation.
+
+### Quest 5: *"Kiln-Resin & Black Ice"* (Chapter 3 — Frostbite Fells Survival)
+- **Trigger:** Automatic start after fleeing north up the `north` highway following the *Side-Valve Salvage* raid.
+- **Briefing:**  
+  > **Pip (cradling one clay arm):** *"I'm fine! It's just a hairline fracture! Wait—did I just hear my elbow rattle?"*  
+  > **Father Loam (over radio):** *"Bring him to the Frozen Duck Pond, my children. The Carburettors have Kiln-Resin, but the HOA's salt-plows are already closing the ice."*
+- **Beats:**
+  1. **Low-Visibility Run:** Drive a battered **Push-Mower Bike** (or **Ride-On Lowrider**) through a blinding Frostbite Fells snow-squall while Pip shouts directions from the passenger rack.
+  2. **The Salt-Plow Blockade:** Two HOA snowplows block the bridge to the Frozen Duck Pond. Use **Acorn Mortar** fire to knock their headlights out and slip past on the shoulder.
+  3. **The Frozen Birdbath Derby:** Meet Father Loam and three Carburettor racers on the ice. While Loam mixes the **Kiln-Resin** to glue Pip's arm back on, survive a 90-second demolition derby against six HOA pursuit mowers on zero-traction black ice.
+  4. **The Snail-Mail Reveal:** Just as Pip's arm sets, one of Shelldon's racing snails crawls out of a thermos with a micro-scroll from Tansy: *"Found the Stopping Stone. Meet me in the Dust Flats."*
+- **Gameplay Systems Used:** Low-friction ice handling, timed survival/derby wave defense, escort protection, story radio triggers.
+
+### Quest 6: *"The Even Cut"* (Chapter 5 — The Finale)
+- **Trigger:** Meet **Tansy**, **Pip**, **Granny Gnertrude**, and **Commander Diggs** at the Dust Flats safehouse with the **Whirligig**, **Crop Duster**, and **Fescue Stopping Stone** secured.
+- **Briefing:**  
+  > **Tansy:** *"Vesper's Grand Combine just crossed `z = -300` on the center meridian. In four minutes it hits downtown, and it's set to zero-millimeter scalp."*  
+  > **Commander Diggs:** *"Spade Guard's with you. Nobody levels my sandbox—or your city—without a permit."*  
+  > **Pip:** *"Let's go jam a god-machine with a rock!"*
+- **Beats:**
+  1. **Phase 1 — Air Support (`x: 0`, moving south):** Pilot the **Whirligig** (or **Crop Duster**) down Turfton's main boulevard while Pip mans the door-mounted **Acorn Mortar**. Destroy four HOA **Code-Enforcement Vans** and two escort Zero-Turns clearing the Combine's path.
+  2. **Phase 2 — The Deck Drop:** When the Grand Combine's outer shield grates open, hover over the moving roof (`speed: 18`) and hit `E` to parachute onto the upper deck while Diggs provides strafing cover.
+  3. **Phase 3 — Deck Firefight:** Fight forward across three rolling tiers of the Combine against Vesper's elite **Porcelain Guard** (armed with `Rifle`s and `Garden-Hose Whip`s) while Vesper monologues over the 40-foot PA horns: *"Look at yourselves! Chipped! Muddy! Unregulated! Tomorrow, Turfton will be silent, smooth, and beige!"*
+  4. **Phase 4 — Boss Showdown (*The Gilded Lawn-Throne*):** On the bridge, Vesper pilots a gold-plated, hydraulic **Lawn-Throne Mech-Mower**. Use **Sprinkler Mines** and heavy gunfire to short out his hydraulics, knock his obsidian top-hat off, and crack his porcelain monocle (sending him fleeing via an emergency escape-glider into a municipal hedge).
+  5. **Phase 5 — The Jam:** Carry the **Fescue Stopping Stone** to the spinning main intake, trigger the cinematic slam, and sprint-parachute off the stern as the Grand Combine's blades lock up with a thunderous *CRUNCH* and the skyscraper-sized machine tips sideways into the southern drainage canal.
+- **Epilogue Cutscene:** Dawn breaks over Turfton. *Side-Valve Salvage* is being rebuilt with Baroness Brenda's lawn chairs, Gnoma is handing out free Acorn-Flour Cakes from her truck, and the protagonist's phone buzzes with a text from **Club Gnome**: *"Heard you're good with heavy machinery. Need a guy for a bowling alley."*
+- **Gameplay Systems Used:** `whirligig` / `plane` air-to-ground combat, moving-vehicle parachute landing, multi-phase boss fight, `stopping-stone` objective carry, full-city **3-Hat + 4-Hat** chaos.
+
 ---
 
-## 10. Architecture: Connecting to What Exists vs. What's Next
+## 10. Turfton FM: Radio, Commercials & Breaking News Satire
+
+Whenever the player hops onto a Push-Mower Bike, Ride-On Lowrider, or Crop Duster, they can cycle three in-universe stations—complete with DJ banter, fake ads, and live breaking-news bulletins that react to the player's current Hat Watch level and story progress.
+
+### The Stations & DJ Banter
+1. **99.3 THE BLADE (*K-DEW Classic Mower Rock*)** — Hosted by **"Two-Stroke" Tony**
+   - *Banter:* *"You're listening to 99.3 The Blade, the only station loud enough to drown out an HOA leaf-blower at 6:00 AM! Coming up next: 'Born to Be Mowed' followed by an anonymous caller who swears he saw a Giant Armadillo eating a mailbox in the Dust Flats!"*
+   - *Banter (Post-Chapter 2):* *"Remember folks, if your grass is over two inches tall today, don't cut it—just paint it beige and tell Reginald Vance it's a decorative wheat-field!"*
+2. **88.7 FESCUE PUBLIC RADIO (*FPR*)** — Hosted by **Barnaby Soft-Spoken**
+   - *Banter:* *"Good afternoon. Today on 'Kiln & Culture,' we examine why Turfton youths insist on strapping twin-turbos to sacred gardening implements, and whether Gnorwin Clayfoot would have preferred a 3-speed transmission. Stay tuned after the pledge drive for forty-five minutes of soothing rain-on-terracotta ambiance."*
+3. **104.1 HOA COMPLIANCE BEATS** — Hosted by **Cynthia Caliper**
+   - *Banter:* *"Welcome back to Compliance Beats—smooth elevator jazz to trim your edges to. Reminder: Section 12-C prohibits unlicensed lawn flamingos, unauthorized puddles, and smiling without a municipal permit. Keep those hats upright, Turfton!"*
+
+### In-Universe Commercials
+- **Glaze Clinic:** *"Chipped? Cracked? Got caught in a rogue sprinkler and now your beard looks like wet oatmeal? Come on down to the **Glaze Clinic**! We'll dry you out, buff your brim, and glue your arm back on—no questions asked! Now offering 24-hour Kiln-Resin Express!"*
+- **Side-Valve Salvage:** *"Is your mower smoking? Are the Hat Watch cruisers asking awkward questions about whose flowerpot you drove through? Bring it to **Side-Valve Salvage**! We'll slap a fresh coat of `MOWER_TINTS` on it in three seconds flat. Is your VIN filed off? Great—we don't even know what a VIN is!"*
+- **HOA Compliance & Lien Services:** *"Think nobody's watching your verge? **Reginald Vance is.** One millimeter over regulation height and we will put a lien on your wheelbarrow. Remember: a crooked hat is a cry for foreclosure."*
+- **The Gnomecino:** *"Come lose your acorns in style at **The Gnomecino**! Now featuring 100% fewer chair-thrown brawls! Tuesdays are Half-Price Acorn-Poker Night—and remember, Big Lou checks your hat at the door. Wet brims stay on the curb!"*
+- **Gnoma's Food Truck:** *"Hungry after a 3-Hat chase? Swing by **Gnoma's Food Truck** outside the Glaze Clinic! Try our Triple-Acorn Waffle—100% Dryness restored! And if you accidentally ram the truck with a Combine Harvester, don't worry: 'Oops, a little wobbly! We learn from it!'"*
+
+### Dynamic Breaking News Bulletins
+- **1-Hat Watch:** *"Traffic alert on `ROAD_LINES`: A gnome in a suspiciously shiny hat was just spotted 'aggressively borrowing' a Push-Mower Bike. Citizens are advised to keep their keys out of their flowerpots."*
+- **3-Hat Watch:** *"BREAKING NEWS: An unidentified maniac is currently drifting a Zero-Turn Racer through downtown Turfton while launching acorns at municipal property! Hat Watch units are advised to... actually, wait, they're all hiding behind Gnoma's Food Truck."*
+- **4-Hat ("THE HOA"):** *"THIS IS AN EMERGENCY BYLAW ALERT. A Code-Enforcement Van has been dispatched to your sector. Please pull over, surrender your lawn ornaments, and prepare to hear Municipal Code §404-B read aloud at 110 decibels."*
+- **Post-Quest 4 (*Boot Float Heist*):** *"Turfton's Founder's Trim Day parade ended abruptly today when a 30-foot papier-mâché statue of Gnorwin Clayfoot's boot crashed straight through the HOA Amphitheater. Witnesses say it smelled faintly of Black Dew and justice."*
+- **Post-Chapter 4 (*Fort Sandpit*):** *"Spade Guard officials deny reports that their top-secret Whirligig was stolen by a gnome parachuting out of a Crop Duster, calling the incident 'an unscheduled vertical-lift audit.'"*
+
+---
+
+## 11. Unhinged New Prefabs, Weapons, Vehicles & Achievements (PG-13 / No-Gore)
+
+All new toys honor the Gnomiverse's **no-gore fired-clay & garden-scale comedy** rules—sending gnomes flying in goofy ragdoll arcs, drenching them in water, or popping their hats off without a single drop of blood.
+
+### New Weapons (Garden-Scale Mayhem)
+| Weapon | Mechanic & Comedy Payoff |
+|---|---|
+| **Leaf-Blower Cannon** | High-velocity air blast that launches ragdoll pedestrians, Hat Watch cruisers, and loose acorns halfway down the block with zero lethal gore. |
+| **Acorn Mortar** | Arcing launcher firing toasted acorns that burst into bouncing shrapnel, knocking enemies off their mowers and rattling porcelain shields. |
+| **Garden-Hose Whip** | Pressurized water stream that instantly "washes out" HOA enforcers' glaze, spins out pursuing mowers, and sends wet-hatted NPCs sprinting in panic. |
+| **Sprinkler Mine** | Deployable oscillating lawn sprinkler that creates an instant, rhythmic slip-and-soak hazard zone across intersections. |
+| **Dandelion Puff-Grenade** | Explodes in a blinding white fluff-cloud smoke screen that makes nearby Hat Watch officers sneeze uncontrollably and drop aggro. |
+
+### New Vehicles
+| Vehicle | Class & Signature Gimmick |
+|---|---|
+| **Ride-On Lowrider** | Custom `MOWER_TINTS` Ride-On equipped with working hydraulics—tap `Space` to bounce over roadblocks, kerb-hop, or keep Clara's porcelain passengers level over bumps. |
+| **Gnorwin's Boot Parade Float** | 30-foot papier-mâché boot on a tractor chassis. Slow, massive ramming weight, and honking the horn fires a confetti-and-acorn fanfare blast. |
+| **Snail-Coach** | Turfton's boxy public transit bus. Hilarious drift angle; NPCs inside politely hold onto the overhead garden-twine straps while you barrel-roll it. |
+| **Pressurized Mulch-Spreader** | Utility mower with a rear-mounted mulch cannon that drops slippery compost slicks behind you to spin out tailgating Code-Enforcement Vans. |
+
+### New `@lawn/prefabs`
+- `leaf-blower-cannon`, `acorn-mortar`, `garden-hose-whip`, `sprinkler-mine`, `stopping-stone`, `hoa-clipboard`, `dew-tanker`, `grand-combine-boss`, `tall-one-pencil`, `porcelain-lantern`, `boot-parade-float`, `squeaky-hotdog-giant`, `brass-calipers`.
+
+### New `@lawn/achievements` (with Cosmetic Gear Rewards)
+| Achievement | Unlock Condition | Cosmetic Reward (`@lawn/prefabs`) |
+|---|---|---|
+| **Fresh Out the Kiln** | Complete the Prologue and reach *Side-Valve Salvage*. | *Tansy's Grease-Stained Apron* (`back`) |
+| **Boot-Legger** | Hijack Gnorwin's Boot Parade Float and crash the HOA Tribunal. | *Mini Boot Hat* (`head`) |
+| **Turf-Code Violator** | Trigger 4-Hat ("THE HOA") heat and smash a Code-Enforcement Van. | *Broken Brass Calipers* (`hand`) |
+| **Mid-Air Mower-Jack** | Complete the Crop Duster to Whirligig mid-air grapple transfer. | *Aviator Acorn Goggles* (`head`) |
+| **Snail-Mail Saboteur** | Rig the underground alley snail races for Shelldon. | *Tinfoil Conspiracy Brim* (`head`) |
+| **Dry as a Bone** | Deliver Big Lou's VIP bowler hat without touching a single puddle. | *Microfiber Bowler* (`head`) |
+| **The Even Cut** | Jam the Grand Combine with the Stopping Stone and finish Chapter 5. | *Golden Stopping-Stone Charm* (`neck`) |
+
+---
+
+## 12. Architecture: Connecting to What Exists vs. What's Next
 
 ### What Already Exists in `games/gnome-theft-auto/src/`
 | Existing Module | Story Hook / Ready Today |
@@ -271,7 +421,7 @@ Each side quest pushes the Gnomiverse's lore forward while keeping the dry, sarc
 
 ---
 
-## 11. New Content & Feature Ideas (In-Theme)
+## 13. New Content & Feature Ideas (In-Theme)
 
 - **Turfton Radio ("99.3 THE BLADE"):** While driving any mower or flying the Crop Duster, a subtle radio pill lets players cycle stations—including satirical commercials for *Side-Valve Salvage*, *Glaze Clinic* ("We'll dry you out, no questions asked"), and *Gnomecino* ("Now with 100% fewer chair-thrown brawls!").
 - **Pay 'n' Glaze:** Drive a smoking, dented mower with 3-Hat Heat into Tansy's garage to repair it, swap its `MOWER_TINTS` colour, and instantly clear Hat Watch heat.
