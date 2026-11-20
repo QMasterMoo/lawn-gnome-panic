@@ -1,7 +1,7 @@
 # Gnome Theft Auto: World & Area Lore Gazetteer
 
-> **Companion to:** [gnome-theft-auto-story.md](gnome-theft-auto-story.md)  
-> **Setting:** `apocrypha` ([docs/lore/settings.md](../lore/settings.md), [R-015](../lore/rulings.md#r-015), [R-016](../lore/rulings.md#r-016))  
+> **Companion to:** [story.md](story.md)  
+> **Setting:** `apocrypha` ([docs/lore/settings.md](../../lore/settings.md), [R-015](../../lore/rulings.md#r-015), [R-016](../../lore/rulings.md#r-016))  
 > **Map Reference:** `games/gnome-theft-auto/src/config.ts` (`WORLD_HALF = 600`, `CITY_HALF = 215`, `ROAD_LINES`, `HIGHWAYS`, `BASE`, `AIRFIELD`)
 
 Every region in *Gnome Theft Auto* is built in four **time layers** (*Long Ago*, *Not Too Distant*, *Recent*, *Unfolding Now*) and four **knowledge tiers** (*Globally Known*, *City/Region-Known*, *Locality-Known*, and *Special-Character / Vibe Lore*—the quiet background gnomes who just exist, 24/7, giving Turfton a pulse).
@@ -87,9 +87,20 @@ Every region in *Gnome Theft Auto* is built in four **time layers** (*Long Ago*,
 
 ---
 
-## Part II: Areas Yet to Exist (Proposed Expansions & Interiors)
+## Part II: Daily Life, Stakes, Weather & Wildlife
 
-### 6. The Under-Deck (Sub-Turfton Storm Drains)
+- **Housing & Arrival:** Turfton gnomes live in stacked terracotta pot-apartments downtown, shed lofts, and converted birdbaths. Newcomers either arrive on the *Snail-Coach* through the Fence-Line or—so the rumor goes—step straight out of a *Clay-Mart* garden-centre crate with a fresh coat of glaze and a pre-approved Kiln-Debt.
+- **What Gnomes Fear Losing (Non-Lethal Stakes):** Under [R-016](../../lore/rulings.md#r-016), nobody bleeds or shatters permanently—Washed Out gnomes wake up dry at the Glaze Clinic. Real mob power comes from **acorn liens**, **impounded mowers**, **shattered pride**, and the HOA's ultimate threat: **forced beige re-glazing** (stripping your custom hat/coat colours into regulation uniformity).
+- **Day/Night & Rainstorms:** At night, Turfton's neon (*The Gnomecino*, *John Bodega*, *Pay 'n' Glaze*) lights up the grid while street races fire up. When **rain** hits, fired-clay gnomes panic—streets empty, `?drive=sim` roads turn slick, and getting caught outside slowly drains your Dryness.
+- **Garden Wildlife & Pests (`canon.md`):** Following core canon (*"every pest wants something"*), the outer biomes aren't empty: **burrowing moles** pop up as sudden highway potholes, **acorn-hoarding squirrels** mug unattended pickups in Mossy Wood, **territorial robins** dive-bomb slow Push-Mower Bikes, and **canal frogs** heckle racers in Cloverfield.
+
+---
+
+## Part III: Areas Yet to Exist (Proposed Expansions & Interiors)
+
+> **Terrain Note:** `games/gnome-theft-auto/src/config.ts` currently uses flat `y = 0` ground everywhere. Areas marked *(Requires `world.ts` heightmap)* either need a terrain/elevation pass or can be adapted to `y = 0` (e.g., surface culvert pipes and walled ground-level compounds).
+
+### 6. The Under-Deck (Sub-Turfton Storm Drains) *(Requires `world.ts` heightmap or surface culvert adaptation)*
 *A damp, echoing network of corrugated drainpipes and brick culverts running directly beneath Turfton's 60-unit grid.*
 - **Origin:** Built by the Tall Ones for rainwater runoff; colonized **Not Too Distantly** by Carburettor smugglers and Fescue tunnelers avoiding Hat Watch patrols. **Recently**, Vesper's crews sealed off the main grates to hide underground power cables feeding **The Grand Combine**.
 - **Knowledge Tiers:**
@@ -98,7 +109,7 @@ Every region in *Gnome Theft Auto* is built in four **time layers** (*Long Ago*,
   - **Locality-Known:** Damp air makes clay heavy; don't linger without a lantern.
   - **Vibe Character — Silt-Diver Sal:** A gnome in rubber waders and a colander helmet who fishes lost acorns and dropped pistol magazines out of the storm grates with a magnet on a string.
 
-### 7. Patio Heights (Vesper's Gated Flagstone Terrace)
+### 7. Patio Heights (Vesper's Gated Flagstone Terrace) *(Requires `world.ts` heightmap or walled `y = 0` slab)*
 *An elevated, impeccably swept flagstone plateau overlooking Turfton's northeast corner, walled off by miniature wrought-iron fencing.*
 - **Origin:** **Long Ago**, it was a Tall-One patio where dropped sunglasses were worshipped as skylights. **Recently**, Vesper Thorne bought the whole slab, evicted the pigeons, and turned it into **HOA Central**—complete with manicured astro-turf and silent electric golf-carts.
 - **Knowledge Tiers:**

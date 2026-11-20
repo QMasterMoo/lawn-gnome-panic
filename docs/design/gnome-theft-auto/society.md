@@ -1,7 +1,7 @@
 # Gnome Theft Auto: Society, Power Structure, Celebrities & Greater Questions
 
-> **Companion to:** [gnome-theft-auto-story.md](gnome-theft-auto-story.md) · [gnome-theft-auto-world-lore.md](gnome-theft-auto-world-lore.md) · [gnome-theft-auto-brands.md](gnome-theft-auto-brands.md)  
-> **Setting:** `apocrypha` ([docs/lore/settings.md](../lore/settings.md))
+> **Companion to:** [story.md](story.md) · [world-lore.md](world-lore.md) · [brands.md](brands.md)  
+> **Setting:** `apocrypha` ([docs/lore/settings.md](../../lore/settings.md))
 
 Beneath the stolen Ride-On Mowers and *Acorn-Cola* billboards, Turfton is a real society with tabloids, rigged zoning boards, celebrity gossip, and quiet existential questions that never get said out loud in a cutscene—they just sit there in the air while you drive.
 
@@ -35,7 +35,7 @@ On paper, Turfton is a cheerful municipal democracy. In practice, power is a fou
 Turfton has a loud, shallow, endlessly entertaining celebrity ecosystem—heard on **Turfton FM**, plastered on bus-stop benches, and whispered about at *The Gnomecino*:
 
 - **Vinnie "Turbo-Sod" Delacroix:** Three-time **Grand Zero-Turn** champion (*Lawn Prix* crossover). Lives in a penthouse flowerpot, endorses **Dandelion Fizz**, and just got banned from *The Gnomecino* for trying to drive a Zero-Turn up the VIP escalator.
-- **Glenda "Matte-Finish" Clay:** Turfton's top glaze-model and lifestyle influencer. Famous for launching a $400 "Unfired Aesthetic" skincare line that is literally just wet mud from Cloverfield Farms. Every billboard downtown has her winking next to a *Kiln-Shield* logo.
+- **Glenda "Matte-Finish" Clay:** Turfton's top glaze-model and lifestyle influencer. Famous for launching a 400-Acorn "Unfired Aesthetic" skincare line that is literally just wet mud from Cloverfield Farms. Every billboard downtown has her winking next to a *Kiln-Shield* logo.
 - **DJ Lawn-Dart:** Host of *99.3 The Blade*'s morning drive show. Nobody has ever seen his face; he broadcasts from a hollowed-out birdbath somewhere downtown and somehow always knows when you've hit 3-Hat Heat before the Watch does.
 - **The Velvet Toadstools:** A washed-up 4-piece surf-rock band from the Greenhouse Strip whose one hit—*"Don't Mow My Baby Down"*—plays endlessly on classic mower rock radio while they argue over royalties at *Chirp & Crumb*.
 - **Sir Reginald "Left-Click" Clayfoot:** A pretentious Fescue-born theatre actor who moved to Turfton to star in gritty indie dramas like *Cracked in the Rain*, while secretly paying his rent doing voiceovers for *Stink-Gro* commercials.

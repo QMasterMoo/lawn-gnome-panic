@@ -1,7 +1,7 @@
 # Gnome Theft Auto: Fictional Brands, Logos & Corporate Rivalries
 
-> **Companion to:** [gnome-theft-auto-story.md](gnome-theft-auto-story.md) · [gnome-theft-auto-world-lore.md](gnome-theft-auto-world-lore.md)  
-> **Setting:** `apocrypha` ([docs/lore/settings.md](../lore/settings.md))
+> **Companion to:** [story.md](story.md) · [world-lore.md](world-lore.md)  
+> **Setting:** `apocrypha` ([docs/lore/settings.md](../../lore/settings.md))
 
 In *Grand Theft Auto*, half the storytelling happens on billboards, bumper stickers, soda cans, and radio ads. In Turfton, every blade of grass is sponsored. All brands below are fictional—inspired by lawn-care gear, garden supplies, and everyday consumer culture, without copying real-world trademarks.
 
@@ -42,7 +42,7 @@ In *Grand Theft Auto*, half the storytelling happens on billboards, bumper stick
 ### **STINK-GRO** *(Neon Lime & Purple)*
 - **Inspired by:** Miracle-brand synthetic plant foods.
 - **Slogan:** *"Grow Twice As Tall By Thursday. Don't Ask How."*
-- **What They Make:** Hyper-concentrated fertilizer pellets, glowing neon-green lawn paint (used by the HOA to fake healthy grass), and **Sponge-Saturator** ammo packs.
+- **What They Make:** Hyper-concentrated fertilizer pellets, glowing neon-green lawn paint (used by the HOA to fake healthy grass), and pressurized **Stink-Gro** fertilizer canisters.
 - **Secret:** Rumored to be distilled from the *Chapel of Mulch*'s leftover runoff.
 
 ### **PURE-LOAM CO-OP** *(Earthy Brown & Hemp)*

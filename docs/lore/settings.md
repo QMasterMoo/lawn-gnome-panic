@@ -86,7 +86,8 @@ Parodies and one-offs. Their lore is theirs; no other game has to agree with it,
 
 - **Games:** `games/gnome-company` (Chapel of Mulch, a *Lethal Company* parody with Omnipresent Gnome Jesus);
   `games/giant-pup` (raise Gnome Company's Giant Goofy Fetch Dog); `games/tribute-schedule` (apartment horror built
-  from chat-bot logs).
+  from chat-bot logs); `games/gnome-theft-auto` (Turfton open-world crime parody with real parody guns, Hat Watch,
+  Fort Sandpit, the Whirligig, and Crop Duster planes; R-015, R-016).
 
 ## `none` No setting
 
