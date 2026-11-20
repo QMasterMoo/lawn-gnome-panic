@@ -445,9 +445,10 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       margin-left: auto;
       max-width: 100%;
+      min-width: 0;
     }
 
     .show-hidden-btn {
@@ -455,6 +456,8 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      flex-shrink: 0;
+      white-space: nowrap;
       min-height: 36px;
       padding: 0 10px;
       border-radius: 9px;
@@ -504,7 +507,9 @@
       position: relative;
       display: flex;
       align-items: center;
-      width: min(260px, 100%);
+      flex: 1 1 260px;
+      min-width: 0;
+      max-width: 260px;
     }
 
     .search-wrap svg {
