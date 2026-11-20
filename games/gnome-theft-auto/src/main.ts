@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { getMyGnome, loadMyGnome } from '@lawn/gnome';
 import { createAchievementTracker } from '@lawn/achievements';
-import { play, setEngine, unlockAudio } from './audio';
+import { play, setEngine, setSkid, unlockAudio } from './audio';
 import { createChaseCamera } from './camera';
 import {
   BAIL_MIN_ALTITUDE, BIOME_NAMES, DEFAULT_LOOK, GUNS, HEAT, MOWER_TINTS, PLAYER, SOAK_LINES, STEAL_LINES, VIEW, WASHED_OUT_TEXT,
@@ -10,6 +10,8 @@ import {
 import { createFx } from './fx';
 import { createHud } from './hud';
 import { createInput } from './input';
+import { SIM_DRIVE, createSimDrive, getTune, setTune, stepSimDrive } from './simdrive';
+import { createSimMenu } from './simmenu';
 import { createNet, VEHICLE_CODES, type NetStatus } from './net';
 import { createNpcs } from './npcs';
 import { createPlayer, setChuteHook } from './player';
@@ -17,7 +19,7 @@ import { createWatch } from './police';
 import { createRemotes } from './remotes';
 import { createTraffic } from './traffic';
 import type { BiomeId, Blip, CameraMode, Vehicle, VehicleKind } from './types';
-import { collideVehicles, createVehicle, stepVehicle, syncVehicleMesh } from './vehicles';
+import { collideVehicles, createVehicle, damageVehicle, repairVehicle, setDamageHook, stepVehicle, syncVehicleMesh } from './vehicles';
 import { createWeapons } from './weapons';
 import { buildWorld } from './world';
 
@@ -50,7 +52,7 @@ const hud = createHud(ui);
 const world = buildWorld(scene, renderer);
 hud.setWorld(world);
 const fx = createFx(scene);
-const input = createInput(canvas, ui);
+const input = createInput(canvas, ui, { handbrake: SIM_DRIVE });
 const chase = createChaseCamera(camera);
 const player = createPlayer(scene, myLook);
 player.respawn(world.spawn.x, world.spawn.z, world.spawn.yaw);
@@ -64,6 +66,13 @@ const achievements = createAchievementTracker({ ui });
 setChuteHook(() => play('chute'));
 
 const pickTint = (): number => MOWER_TINTS[Math.floor(Math.random() * MOWER_TINTS.length)];
+// Crashes dent and wreck mowers (the model swaps through the prefab's damage stages); say so when it is the player's.
+setDamageHook((v, level, name) => {
+  if (v === player.vehicle) {
+    hud.toast(`${v.spec.name}: ${name}!`);
+    play(level > 1 ? 'alarm' : 'bump');
+  }
+});
 const vehicles: Vehicle[] = world.parked.map((s) => createVehicle(scene, s.kind, s.x, s.z, s.yaw, pickTint()));
 for (const s of world.airfield.planeSpots) vehicles.push(createVehicle(scene, 'plane', s.x, s.z, s.yaw));
 const whirligig = createVehicle(scene, 'whirligig', world.base.padX, world.base.padZ, Math.PI);
@@ -88,7 +97,8 @@ const net = createNet({
   onReset() { remotes.clear(); },
 });
 const roomParam = new URLSearchParams(location.search).get('room');
-net.start(me?.name ?? 'Gnome', me?.code ?? 'gnorman', roomParam ? roomParam.toUpperCase() : null);
+// ?drive=sim is a POC: always offline, so nobody sees a sim-driven mower they cannot also drive that way.
+if (!SIM_DRIVE) net.start(me?.name ?? 'Gnome', me?.code ?? 'gnorman', roomParam ? roomParam.toUpperCase() : null);
 
 const stats = { soaked: 0, driven: new Set<VehicleKind>(), whirligigStolen: false, trespassed: false };
 
@@ -134,6 +144,7 @@ function getIn(v: Vehicle): void {
     play('door');
   }
   v.driver = 'player';
+  if (SIM_DRIVE && !v.spec.flies) v.sim = createSimDrive(v);
   player.enter(v);
   weapons.setVisible(false);
   if (!stats.driven.has(v.kind)) {
@@ -173,6 +184,7 @@ function getOut(): void {
   }
   v.driver = 'none';
   v.speed = 0;
+  v.sim = undefined;
   player.exit();
   weapons.setVisible(true);
   play('door');
@@ -213,6 +225,7 @@ function washedOut(): void {
   if (player.vehicle) {
     player.vehicle.driver = 'none';
     player.vehicle.speed = 0;
+    player.vehicle.sim = undefined;
   }
   hud.banner(WASHED_OUT_TEXT, 2500);
   hud.toast('The Glaze Clinic wrung you out and sent you home.');
@@ -230,6 +243,7 @@ const aim = new THREE.Vector3();
 const muzzle = new THREE.Vector3();
 const target = new THREE.Vector3();
 let lastHeatLevel = 0;
+let handbrakeOn = false;
 let last = performance.now();
 
 function frame(now: number): void {
@@ -255,12 +269,24 @@ function frame(now: number): void {
     if (player.chute > 0.5) hadChute = true;
     setEngine(false, 0, false);
   } else if (v) {
-    stepVehicle(v, { throttle: inp.moveY, steer: inp.moveX, lift: inp.lift }, dt, world);
+    if (v.sim) {
+      stepSimDrive(v, v.sim, inp, dt, world);
+      // Handbrake sounds on the edge; the squeal follows rear-tyre slip (angle, or a locked wheel).
+      const pulled = inp.lift > 0;
+      if (pulled !== handbrakeOn) play(pulled ? 'handbrake' : 'handbrake-release');
+      handbrakeOn = pulled;
+      const t = v.sim.ctrl.telemetry;
+      const rear = [t.wheels[2], t.wheels[3]];
+      const slip = Math.max(...rear.map((w) => Math.max(Math.abs(w.slipAngleRad) / 0.25, Math.abs(w.slipRatio) / 0.5)));
+      setSkid(t.speed > 2 ? Math.min(1, Math.max(0, slip - 0.5) * 1.5) : 0);
+    }
+    else stepVehicle(v, { throttle: inp.moveY, steer: inp.moveX, lift: inp.lift }, dt, world);
     player.updateRiding(dt);
     setEngine(true, Math.abs(v.speed) / v.spec.maxSpeed, v.spec.flies, v.spec.kind === 'plane');
   } else {
     player.updateFoot(inp, chase.yaw, dt, world);
     setEngine(false, 0, false);
+    if (SIM_DRIVE) { setSkid(0); handbrakeOn = false; }
   }
 
   if (wasAirborne && !player.airborne) {
@@ -377,10 +403,30 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
-hud.toast('Welcome to Turfton. Mowers are for borrowing.', 4000);
+if (SIM_DRIVE) {
+  createSimMenu(ui, (t) => {
+    setTune(t.id);
+    // Re-create the chassis for the mower being driven, keeping its place, heading and speed.
+    if (player.vehicle?.sim) player.vehicle.sim = createSimDrive(player.vehicle);
+    hud.toast(`Tune: ${t.name}`);
+  });
+}
+
+// ?drive=sim&mount: start already driving a ride-on mower at the south end of the x = 0 road (for demos and scripted checks).
+if (SIM_DRIVE && new URLSearchParams(location.search).has('mount')) {
+  const m = vehicles.find((x) => x.kind === 'ride-on');
+  if (m) {
+    m.x = 0; m.z = -115; m.yaw = 0;
+    player.respawn(m.x + 2, m.z, 0);
+    getIn(m);
+    chase.yaw = 0;
+  }
+}
+
+hud.toast(SIM_DRIVE ? `Sim driving (${getTune().name}), offline. T = tunes, Space or the Handbrake button = handbrake.` : 'Welcome to Turfton. Mowers are for borrowing.', 4000);
 requestAnimationFrame(frame);
 
 // Test hook for scripted checks and demos: ?debug exposes the live objects.
 if (new URLSearchParams(location.search).has('debug')) {
-  (window as unknown as Record<string, unknown>).__gta = { player, vehicles, npcs, watch, world, chase, hud, weapons, aim, muzzle };
+  (window as unknown as Record<string, unknown>).__gta = { damageVehicle, repairVehicle, spawn: (k: VehicleKind, x: number, z: number, yaw: number) => { const nv = createVehicle(scene, k, x, z, yaw, 0xd8342c); vehicles.push(nv); return nv; }, player, vehicles, npcs, watch, world, chase, hud, weapons, aim, muzzle };
 }

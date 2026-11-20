@@ -3,6 +3,7 @@
 // Turning right (clockwise seen from above) DECREASES yaw. The camera sits behind, so screen-right is the gnome's right.
 import type * as THREE from 'three';
 import type { GnomeLook, GnomeModel } from '@lawn/gnome';
+import type { SimDrive } from './simdrive';
 
 export type VehicleKind = 'push-bike' | 'ride-on' | 'zero-turn' | 'combine' | 'whirligig' | 'plane';
 export type GunKind = 'pistol' | 'smg' | 'shotgun' | 'rifle';
@@ -107,6 +108,14 @@ export interface Vehicle {
   /** Animation accumulators. */
   wheelSpin: number;
   steerVis: number;
+  /** Set while the player drives this vehicle under ?drive=sim: the @lawn/vehicle chassis. Cleared on exit. */
+  sim?: SimDrive;
+  /** Hit points 0..1 (1 = new). Crashes take them off; the prefab's damage level follows (see vehicles.ts). */
+  hp: number;
+  /** Applied prefab damage level, 0 = new. */
+  damage: number;
+  /** performance.now() of the last vehicle-vehicle hit, so one bump is not charged every frame. */
+  lastHit: number;
 }
 
 /** Per-frame driving controls. throttle -1..1 (back..forward), steer -1..1 (+1 = right), lift -1..1 (flyers: down..up). */
@@ -132,6 +141,8 @@ export interface InputState {
   /** Camera orbit deltas since the last read, radians (mouse drag / right-side touch drag). +camYaw = orbit left. */
   camYaw: number;
   camPitch: number;
+  /** True when a gamepad is the device being used this frame (the sim treats its steering as analog, not as keys). */
+  pad?: boolean;
 }
 
 export interface Input {
@@ -336,4 +347,4 @@ export interface Hud {
   banner(text: string, ms?: number): void;
 }
 
-export type Sfx = 'squirt' | 'splash' | 'steal' | 'door' | 'alarm' | 'whistle' | 'washed' | 'bump' | 'gunshot' | 'shotgun' | 'reload' | 'chute';
+export type Sfx = 'squirt' | 'splash' | 'steal' | 'door' | 'alarm' | 'whistle' | 'washed' | 'bump' | 'gunshot' | 'shotgun' | 'reload' | 'chute' | 'handbrake' | 'handbrake-release';
