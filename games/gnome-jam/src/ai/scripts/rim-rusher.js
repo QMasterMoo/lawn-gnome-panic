@@ -24,7 +24,7 @@ function decide(state, ctx) {
     if (ctx.role === 'teammate' && ctx.humanInput?.shootPressed) return { shootPressed: true, shootDown: true };
 
     const distHoop = Math.hypot(hx - p.pos[0], p.pos[2]);
-    if (distHoop < 3.5 + p.stats.dunk * 0.18) {
+    if (distHoop < 3.5 + (p.stats.dunk / 10) * 0.18) {
       return { turbo: true, shootPressed: true, shootDown: true };
     }
     return steer(p, hx - dir * 1.0, 0, p.turbo > 15);

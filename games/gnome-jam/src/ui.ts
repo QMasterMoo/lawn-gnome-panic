@@ -13,15 +13,23 @@ import {
   BEARD_SWATCHES,
   CUSTOM_STAT_BUDGET,
   CUSTOM_SWATCHES,
+  POINTS_PER_GAME,
+  POINTS_PER_TOURNAMENT_WIN,
+  POINTS_PER_WIN_BONUS,
   PRO_TEAMS,
   SKIN_SWATCHES,
   STAT_MAX,
   STAT_MIN,
+  awardMatchProgression,
   customGnomeToProfile,
+  getProgressionTier,
+  getRemainingStatPoints,
   getTeamById,
+  getTotalStatBudget,
   loadCustomGnome,
   saveCustomGnome,
 } from './teams';
+import { INITIAL_NET_STATUS, type NetStatus } from './net';
 import {
   createSeason,
   getNextPlayoffMatch,
@@ -58,6 +66,21 @@ export interface JamUIHooks {
   onPauseToggle: () => void;
   onQuitMatch: () => void;
   onSeasonChampion: () => void;
+  isOnlineAvailable: () => boolean;
+  onOnlineQueue: (
+    code: string | null,
+    payload: {
+      teamId: string;
+      useCustom: boolean;
+      duo: [number, number];
+      customGnome: CustomGnomeData;
+      difficulty: Difficulty;
+      quarterSeconds: number;
+    },
+  ) => void;
+  onOnlineLeave: () => void;
+  isBigHead: () => boolean;
+  onToggleBigHead: () => boolean;
 }
 
 const STYLE_CSS = `
@@ -326,6 +349,10 @@ export class JamUI {
   private customGnome: CustomGnomeData;
   private season: SeasonState | null;
   private lastMatchConfig: MatchConfig | null = null;
+  private netStatus: NetStatus = { ...INITIAL_NET_STATUS };
+  private roomCodeInput = '';
+  private inOnlineLobby = false;
+  private pendingSeasonContext: MatchConfig['seasonContext'] | null = null;
 
   // HUD live nodes
   private hudHomeLbl!: HTMLElement;
@@ -489,11 +516,46 @@ export class JamUI {
   // =========================================================================
   // 1. TITLE SCREEN
   // =========================================================================
+  private renderCareerStatsCard(g: CustomGnomeData): string {
+    const p = g.progression;
+    const c = p.career;
+    const gp = Math.max(1, p.gamesPlayed);
+    const ppg = (c.pts / gp).toFixed(1);
+    const rpg = (c.rebounds / gp).toFixed(1);
+    const spg = (c.steals / gp).toFixed(1);
+    const bpg = (c.blocks / gp).toFixed(1);
+    const fgPct = c.fga > 0 ? Math.round((c.fgm / c.fga) * 100) : 0;
+    const tpPct = c.tpa > 0 ? Math.round((c.tpm / c.tpa) * 100) : 0;
+    return `
+      <div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.16);border-radius:10px;padding:10px;margin:10px 0;font-size:12px">
+        <div style="font-weight:900;color:#8fd3ff;margin-bottom:6px">📊 CAREER STATS (${p.gamesPlayed} GP · ${p.wins}-${Math.max(0, p.gamesPlayed - p.wins)} · ${p.tournamentWins} 🏆)</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center">
+          <div><div style="font-size:15px;font-weight:900;color:#ffd21f">${ppg}</div><div style="font-size:10px;color:#b8c4e0">PPG (${c.pts})</div></div>
+          <div><div style="font-size:15px;font-weight:900">${fgPct}%</div><div style="font-size:10px;color:#b8c4e0">FG (${c.fgm}/${c.fga})</div></div>
+          <div><div style="font-size:15px;font-weight:900">${tpPct}%</div><div style="font-size:10px;color:#b8c4e0">3PT (${c.tpm}/${c.tpa})</div></div>
+          <div><div style="font-size:15px;font-weight:900;color:#ff9944">${c.dunks}</div><div style="font-size:10px;color:#b8c4e0">DUNKS</div></div>
+          <div><div style="font-size:14px;font-weight:800">${rpg}</div><div style="font-size:10px;color:#b8c4e0">RPG (${c.rebounds})</div></div>
+          <div><div style="font-size:14px;font-weight:800">${spg}</div><div style="font-size:10px;color:#b8c4e0">SPG (${c.steals})</div></div>
+          <div><div style="font-size:14px;font-weight:800">${bpg}</div><div style="font-size:10px;color:#b8c4e0">BPG (${c.blocks})</div></div>
+          <div><div style="font-size:14px;font-weight:800;color:#44ff88">+${p.bonusPoints}</div><div style="font-size:10px;color:#b8c4e0">EARNED PTS</div></div>
+        </div>
+      </div>
+    `;
+  }
+
   showTitle(): void {
+    this.inOnlineLobby = false;
+    this.pendingSeasonContext = null;
     this.showHUD(false);
     this.hooks.onPreviewGnome(null);
     const saved = loadSeason();
     this.season = saved;
+    this.customGnome = loadCustomGnome();
+    const unspent = getRemainingStatPoints(this.customGnome);
+    const totalBudget = getTotalStatBudget(this.customGnome);
+    const tier = getProgressionTier(totalBudget);
+    const prog = this.customGnome.progression;
+    const bigHeadOn = this.hooks.isBigHead();
 
     this.screenSlot.innerHTML = `
       <div class="jam-screen" id="jam-title">
@@ -503,10 +565,23 @@ export class JamUI {
           <div class="jam-sub">2-ON-2 GNOMERENA ARCADE BASKETBALL</div>
           <div style="display:flex;flex-direction:column;gap:10px;margin:14px 0">
             <button id="jam-quick-btn" class="jam-btn primary">⚡ QUICK JAM (EXHIBITION)</button>
+            <button id="jam-online-btn" class="jam-btn" style="background:linear-gradient(180deg,#1e64d8,#133e8a);border-color:#7fb5ff">🌐 ONLINE MULTIPLAYER</button>
             <button id="jam-season-btn" class="jam-btn green">🏆 ${saved && saved.phase !== 'complete' ? 'CONTINUE GBA SEASON' : 'GBA SEASON & TOP-6 PLAYOFFS'}</button>
-            <button id="jam-custom-btn" class="jam-btn">🎨 CUSTOM GNOME CREATOR</button>
+            <button id="jam-custom-btn" class="jam-btn">
+              🎨 CUSTOM GNOME CREATOR
+              ${unspent > 0 ? `<span style="background:#ffd21f;color:#111;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:900">+${unspent} PTS</span>` : ''}
+            </button>
           </div>
-          <div style="font-size:12px;color:#b8c4e0;line-height:1.5;margin-top:12px;background:rgba(0,0,0,0.28);padding:10px;border-radius:8px">
+          <div style="font-size:12px;color:#ffd21f;font-weight:800;margin-bottom:8px">
+            <span style="color:${tier.color}">${tier.label}</span> &nbsp;|&nbsp; ${this.customGnome.name}: ${prog.gamesPlayed} GP · ${prog.wins} W · ${prog.tournamentWins} 🏆 &nbsp;|&nbsp; Budget: ${totalBudget} pts
+          </div>
+          <div class="jam-row" style="justify-content:center;margin:8px 0">
+            <input id="jam-cheat-in" type="text" maxlength="12" placeholder="CHEAT CODE"
+              style="width:130px;min-height:44px;border-radius:8px;border:1px solid rgba(255,255,255,0.28);background:#11152c;color:#fff;padding:6px 10px;font-weight:800;text-transform:uppercase;text-align:center;font-size:12px" />
+            <button id="jam-cheat-btn" class="jam-btn small">🎮 Apply</button>
+            ${bigHeadOn ? `<button id="jam-bighead-badge" class="jam-btn small active">🗿 BIGHEAD: ON</button>` : ''}
+          </div>
+          <div style="font-size:12px;color:#b8c4e0;line-height:1.5;margin-top:8px;background:rgba(0,0,0,0.28);padding:10px;border-radius:8px">
             <strong>Controls (P1):</strong> WASD / Arrows Move &nbsp;•&nbsp; <strong>Space / J</strong> Shoot, Dunk &amp; Block &nbsp;•&nbsp; <strong>K / E</strong> Pass, Steal &amp; Shove &nbsp;•&nbsp; <strong>Shift / L</strong> Turbo<br/>
             <strong>Mobile:</strong> Virtual Joystick + On-Screen Action Buttons &nbsp;•&nbsp; <strong>2P Local:</strong> Arrows + N/M/Comma
           </div>
@@ -517,6 +592,10 @@ export class JamUI {
     this.screenSlot.querySelector('#jam-quick-btn')!.addEventListener('click', () => {
       this.hooks.onClickSound();
       this.showTeamSelect('exhibition');
+    });
+    this.screenSlot.querySelector('#jam-online-btn')!.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      this.showOnlineLobby();
     });
     this.screenSlot.querySelector('#jam-season-btn')!.addEventListener('click', () => {
       this.hooks.onClickSound();
@@ -529,6 +608,27 @@ export class JamUI {
     this.screenSlot.querySelector('#jam-custom-btn')!.addEventListener('click', () => {
       this.hooks.onClickSound();
       this.showCustomCreator('title');
+    });
+
+    const cheatIn = this.screenSlot.querySelector('#jam-cheat-in') as HTMLInputElement;
+    const tryCheat = () => {
+      const code = cheatIn.value.trim().toUpperCase();
+      if (code === 'BIGHEAD') {
+        this.hooks.onToggleBigHead();
+        this.showTitle();
+      }
+    };
+    this.screenSlot.querySelector('#jam-cheat-btn')!.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      tryCheat();
+    });
+    cheatIn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') tryCheat();
+    });
+    this.screenSlot.querySelector('#jam-bighead-badge')?.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      this.hooks.onToggleBigHead();
+      this.showTitle();
     });
   }
 
@@ -557,8 +657,8 @@ export class JamUI {
     const statBar = (label: string, val: number) => `
       <div style="display:flex;align-items:center;gap:6px;font-size:11px;margin-top:3px">
         <span style="width:36px;color:#b8c4e0">${label}</span>
-        <div class="jam-stat-bar"><div class="jam-stat-fill" style="width:${(val / 9) * 100}%"></div></div>
-        <span style="width:14px;text-align:right;font-weight:800">${val}</span>
+        <div class="jam-stat-bar"><div class="jam-stat-fill" style="width:${(val / STAT_MAX) * 100}%"></div></div>
+        <span style="width:26px;text-align:right;font-weight:800">${val}</span>
       </div>
     `;
 
@@ -780,13 +880,15 @@ export class JamUI {
   // =========================================================================
   // 3. CUSTOM GNOME CREATOR (LIVE 3D PREVIEW)
   // =========================================================================
-  showCustomCreator(returnTo: 'title' | 'exhibition' | 'season'): void {
+  showCustomCreator(returnTo: 'title' | 'exhibition' | 'season' | 'online'): void {
+    this.inOnlineLobby = false;
     this.showHUD(false);
     const g = this.customGnome;
     this.hooks.onPreviewGnome(g.look);
 
-    const usedPoints = g.stats.speed + g.stats.threePt + g.stats.dunk + g.stats.defense;
-    const remaining = CUSTOM_STAT_BUDGET - usedPoints;
+    const totalBudget = getTotalStatBudget(g);
+    const remaining = getRemainingStatPoints(g);
+    const tier = getProgressionTier(totalBudget);
 
     const swatches = (list: readonly number[], current: number | null, key: string) =>
       list
@@ -797,12 +899,14 @@ export class JamUI {
         .join('');
 
     const statControl = (key: keyof CustomGnomeData['stats'], label: string) => `
-      <div style="display:flex;align-items:center;gap:8px;margin:6px 0">
-        <span style="width:74px;font-weight:800;font-size:13px">${label}</span>
-        <button type="button" class="jam-btn small" data-stat-dec="${key}">−</button>
+      <div style="display:flex;align-items:center;gap:5px;margin:6px 0">
+        <span style="width:66px;font-weight:800;font-size:12px">${label}</span>
+        <button type="button" class="jam-btn small" style="min-width:44px;padding:4px 6px" data-stat-delta="-5" data-stat-key="${key}">−5</button>
+        <button type="button" class="jam-btn small" style="min-width:44px;padding:4px 6px" data-stat-delta="-1" data-stat-key="${key}">−1</button>
         <div class="jam-stat-bar"><div class="jam-stat-fill" style="width:${(g.stats[key] / STAT_MAX) * 100}%"></div></div>
-        <span style="width:18px;text-align:center;font-weight:900">${g.stats[key]}</span>
-        <button type="button" class="jam-btn small" data-stat-inc="${key}">+</button>
+        <span style="width:30px;text-align:center;font-weight:900;font-size:13px">${g.stats[key]}</span>
+        <button type="button" class="jam-btn small" style="min-width:44px;padding:4px 6px" data-stat-delta="1" data-stat-key="${key}">+1</button>
+        <button type="button" class="jam-btn small" style="min-width:44px;padding:4px 6px" data-stat-delta="5" data-stat-key="${key}">+5</button>
       </div>
     `;
 
@@ -842,12 +946,18 @@ export class JamUI {
           </div>
 
           <div style="font-size:12px;font-weight:800;color:#ffd21f;margin:12px 0 4px">
-            STAT POINTS (REMAINING: ${remaining})
+            STAT POINTS (0–100) — UNSPENT: ${remaining} / ${totalBudget}
+          </div>
+          <div style="font-size:11px;color:#b8c4e0;margin-bottom:6px">
+            <strong style="color:${tier.color}">${tier.label}</strong> &nbsp;|&nbsp;
+            Career: ${g.progression.gamesPlayed} GP · ${g.progression.wins} W · ${g.progression.tournamentWins} 🏆 &nbsp;|&nbsp;
+            +${POINTS_PER_GAME}/game · +${POINTS_PER_WIN_BONUS} win · +${POINTS_PER_TOURNAMENT_WIN} tourney
           </div>
           ${statControl('speed', 'SPEED')}
           ${statControl('threePt', '3-POINT')}
           ${statControl('dunk', 'DUNK')}
           ${statControl('defense', 'DEFENSE')}
+          ${this.renderCareerStatsCard(g)}
         </div>
       </div>
     `;
@@ -895,23 +1005,24 @@ export class JamUI {
       this.showCustomCreator(returnTo);
     });
 
-    this.screenSlot.querySelectorAll('[data-stat-inc]').forEach((el) => {
+    this.screenSlot.querySelectorAll('[data-stat-delta]').forEach((el) => {
       el.addEventListener('click', () => {
-        const key = (el as HTMLElement).dataset.statInc as keyof CustomGnomeData['stats'];
-        if (remaining > 0 && g.stats[key] < STAT_MAX) {
-          this.hooks.onClickSound();
-          g.stats[key]++;
-          this.showCustomCreator(returnTo);
-        }
-      });
-    });
-    this.screenSlot.querySelectorAll('[data-stat-dec]').forEach((el) => {
-      el.addEventListener('click', () => {
-        const key = (el as HTMLElement).dataset.statDec as keyof CustomGnomeData['stats'];
-        if (g.stats[key] > STAT_MIN) {
-          this.hooks.onClickSound();
-          g.stats[key]--;
-          this.showCustomCreator(returnTo);
+        const key = (el as HTMLElement).dataset.statKey as keyof CustomGnomeData['stats'];
+        const rawDelta = Number((el as HTMLElement).dataset.statDelta);
+        if (rawDelta > 0) {
+          const add = Math.min(rawDelta, remaining, STAT_MAX - g.stats[key]);
+          if (add > 0) {
+            this.hooks.onClickSound();
+            g.stats[key] += add;
+            this.showCustomCreator(returnTo);
+          }
+        } else {
+          const sub = Math.min(-rawDelta, g.stats[key] - STAT_MIN);
+          if (sub > 0) {
+            this.hooks.onClickSound();
+            g.stats[key] -= sub;
+            this.showCustomCreator(returnTo);
+          }
         }
       });
     });
@@ -922,7 +1033,252 @@ export class JamUI {
       this.useCustom = true;
       this.hooks.onPreviewGnome(null);
       if (returnTo === 'title') this.showTitle();
+      else if (returnTo === 'online') this.showOnlineLobby();
       else this.showTeamSelect(returnTo);
+    });
+  }
+
+  // =========================================================================
+  // 3B. ONLINE MULTIPLAYER LOBBY
+  // =========================================================================
+  updateOnlineStatus(status: NetStatus): void {
+    this.netStatus = status;
+    if (this.inOnlineLobby) {
+      this.showOnlineLobby();
+    }
+  }
+
+  showOnlineDisconnected(reason: string): void {
+    this.showHUD(false);
+    this.inOnlineLobby = false;
+    this.screenSlot.innerHTML = `
+      <div class="jam-screen" id="jam-online-lost">
+        <div class="jam-panel" style="max-width:440px;text-align:center">
+          <h2 style="margin:0 0 8px;color:#ff8866">🌐 MATCH ENDED</h2>
+          <div style="font-size:14px;color:#dce4f7;margin-bottom:16px">${reason}</div>
+          <div class="jam-row" style="justify-content:center">
+            <button id="ol-retry" class="jam-btn primary">🌐 Online Lobby</button>
+            <button id="ol-menu" class="jam-btn">🏠 Main Menu</button>
+          </div>
+        </div>
+      </div>
+    `;
+    this.screenSlot.querySelector('#ol-retry')!.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      this.showOnlineLobby();
+    });
+    this.screenSlot.querySelector('#ol-menu')!.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      this.showTitle();
+    });
+  }
+
+  showOnlineLobby(): void {
+    this.inOnlineLobby = true;
+    this.showHUD(false);
+    this.hooks.onPreviewGnome(null);
+    const homeTeam = getTeamById(this.homeTeamId);
+    const customProfile = customGnomeToProfile(this.customGnome, homeTeam);
+    const available = this.hooks.isOnlineAvailable();
+    const st = this.netStatus;
+    const isQueuing = st.status === 'connecting' || st.status === 'queued' || st.status === 'starting';
+
+    const statBar = (label: string, val: number) => `
+      <div style="display:flex;align-items:center;gap:6px;font-size:11px;margin-top:3px">
+        <span style="width:36px;color:#b8c4e0">${label}</span>
+        <div class="jam-stat-bar"><div class="jam-stat-fill" style="width:${(val / STAT_MAX) * 100}%"></div></div>
+        <span style="width:26px;text-align:right;font-weight:800">${val}</span>
+      </div>
+    `;
+
+    const renderPlayerCard = (p: GnomePlayerProfile, idx: number, selected: boolean) => `
+      <div class="jam-player-card ${selected ? 'selected' : ''}" data-ol-duo="${idx}">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong style="font-size:14px">#${p.number} ${p.name}</strong>
+          <span style="font-size:10px;background:rgba(255,210,31,0.2);color:#ffd21f;padding:2px 6px;border-radius:6px;font-weight:800">${p.nickname}</span>
+        </div>
+        ${statBar('SPD', p.stats.speed)}
+        ${statBar('3PT', p.stats.threePt)}
+        ${statBar('DNK', p.stats.dunk)}
+        ${statBar('DEF', p.stats.defense)}
+      </div>
+    `;
+
+    this.screenSlot.innerHTML = `
+      <div class="jam-screen" id="jam-online-lobby">
+        <div class="jam-panel">
+          <div class="jam-row" style="justify-content:space-between;margin-bottom:8px">
+            <h2 style="margin:0;font-size:22px;color:#7fb5ff">🌐 ONLINE MULTIPLAYER (1v1 + AI TEAMMATES)</h2>
+            <button id="ol-back" class="jam-btn small">← ${this.pendingSeasonContext ? 'Back to Season' : 'Back'}</button>
+          </div>
+
+          ${
+            this.pendingSeasonContext
+              ? `<div style="background:rgba(255,210,31,0.14);border:1px solid rgba(255,210,31,0.55);border-radius:10px;padding:10px;margin:8px 0;font-size:13px">
+                  🏆 <strong style="color:#ffd21f">CAREER MODE MATCH:</strong> ${this.pendingSeasonContext.label} — Result will count toward your GBA Season!
+                </div>`
+              : ''
+          }
+
+          ${
+            !available
+              ? `<div style="background:rgba(255,90,90,0.16);border:1px solid #ff6666;border-radius:10px;padding:12px;margin:10px 0;font-size:13px">
+                  Online matchmaking server is not configured for this build. Run <code>npm run dev -w packages/mp-server</code> locally or pass <code>?mp=ws://host/ws</code>.
+                </div>`
+              : ''
+          }
+
+          ${
+            isQueuing
+              ? `<div style="background:rgba(30,100,216,0.22);border:2px solid #7fb5ff;border-radius:12px;padding:16px;text-align:center;margin:10px 0">
+                  <div style="font-size:20px;font-weight:900;color:#ffd21f">${st.message}</div>
+                  <div style="font-size:13px;color:#dce4f7;margin:6px 0">
+                    Players in room: <strong>${st.waiting}/2</strong>
+                    ${st.startsInS > 0 ? ` &nbsp;•&nbsp; Timeout in <strong>${st.startsInS}s</strong>` : ''}
+                  </div>
+                  ${st.code ? `<div style="font-size:13px;margin:6px 0">Share Room Code: <strong style="color:#ffd21f;letter-spacing:2px;font-size:16px">${st.code}</strong></div>` : ''}
+                  <button id="ol-cancel" class="jam-btn" style="margin-top:10px;background:#7a1c1c;border-color:#ff7777">✖ Cancel Search</button>
+                </div>`
+              : `
+                ${st.status === 'error' && st.message ? `<div style="background:rgba(255,90,90,0.2);border:1px solid #ff6666;border-radius:8px;padding:10px;margin:8px 0;font-size:13px;color:#ffb4b4">${st.message}</div>` : ''}
+
+                <div style="font-weight:800;font-size:13px;color:#8fd3ff">1. YOUR TEAM</div>
+                <div class="jam-grid-teams">
+                  ${PRO_TEAMS.map(
+                    (t) => `
+                      <button type="button" class="jam-team-card ${t.id === this.homeTeamId ? 'selected' : ''}" data-ol-team="${t.id}">
+                        <div class="jam-badge" style="background:${t.primaryHex};border-color:${t.secondaryHex}">${t.emblem}</div>
+                        <div>
+                          <div style="font-weight:900;font-size:13px">${t.city} ${t.name}</div>
+                          <div style="font-size:11px;color:#b8c4e0">${t.motto}</div>
+                        </div>
+                      </button>
+                    `,
+                  ).join('')}
+                </div>
+
+                <div class="jam-row" style="justify-content:space-between;margin-top:8px">
+                  <div style="font-weight:800;font-size:13px;color:#8fd3ff">2. YOUR DUO</div>
+                  <div class="jam-row">
+                    <button id="ol-toggle-custom" class="jam-btn small ${this.useCustom ? 'active' : ''}">
+                      ${this.useCustom ? '✅ Custom Gnome: ON' : '➕ Use Custom Gnome'}
+                    </button>
+                    <button id="ol-edit-custom" class="jam-btn small">🎨 Edit Custom</button>
+                  </div>
+                </div>
+                <div class="jam-roster-grid">
+                  ${this.useCustom ? renderPlayerCard(customProfile, -1, true) : ''}
+                  ${homeTeam.roster
+                    .map((p, idx) => {
+                      const isSel = this.useCustom ? this.homeDuo[1] === idx : this.homeDuo.includes(idx);
+                      return renderPlayerCard(p, idx, isSel);
+                    })
+                    .join('')}
+                </div>
+
+                <div class="jam-row" style="justify-content:space-between;margin-top:10px;border-top:1px solid rgba(255,255,255,0.12);padding-top:12px">
+                  <div class="jam-row">
+                    <button id="ol-quick" class="jam-btn primary" ${!available ? 'disabled' : ''}>⚡ QUICK MATCH</button>
+                  </div>
+                  <div class="jam-row">
+                    <input id="ol-code" type="text" maxlength="8" value="${this.roomCodeInput}" placeholder="ROOM CODE"
+                      style="width:130px;min-height:44px;border-radius:8px;border:1px solid #7fb5ff;background:#11152c;color:#fff;padding:6px 10px;font-weight:900;text-transform:uppercase;letter-spacing:1.5px" />
+                    <button id="ol-rand" class="jam-btn small" title="Random Room Code">🎲</button>
+                    <button id="ol-join" class="jam-btn green" ${!available ? 'disabled' : ''}>🚪 JOIN / HOST ROOM</button>
+                  </div>
+                </div>
+              `
+          }
+        </div>
+      </div>
+    `;
+
+    this.screenSlot.querySelector('#ol-back')!.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      if (isQueuing) this.hooks.onOnlineLeave();
+      if (this.pendingSeasonContext && this.season) {
+        this.pendingSeasonContext = null;
+        this.showSeasonHub();
+      } else {
+        this.showTitle();
+      }
+    });
+
+    this.screenSlot.querySelector('#ol-cancel')?.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      this.hooks.onOnlineLeave();
+    });
+
+    this.screenSlot.querySelectorAll('[data-ol-team]').forEach((el) => {
+      el.addEventListener('click', () => {
+        this.hooks.onClickSound();
+        this.homeTeamId = (el as HTMLElement).dataset.olTeam!;
+        this.showOnlineLobby();
+      });
+    });
+
+    this.screenSlot.querySelector('#ol-toggle-custom')?.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      this.useCustom = !this.useCustom;
+      this.showOnlineLobby();
+    });
+
+    this.screenSlot.querySelector('#ol-edit-custom')?.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      this.showCustomCreator('online');
+    });
+
+    this.screenSlot.querySelectorAll('[data-ol-duo]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const idx = Number((el as HTMLElement).dataset.olDuo);
+        if (idx < 0) return;
+        this.hooks.onClickSound();
+        if (this.useCustom) this.homeDuo = [0, idx];
+        else if (!this.homeDuo.includes(idx)) this.homeDuo = [this.homeDuo[1], idx];
+        this.showOnlineLobby();
+      });
+    });
+
+    const codeEl = this.screenSlot.querySelector('#ol-code') as HTMLInputElement | null;
+    codeEl?.addEventListener('input', () => {
+      this.roomCodeInput = codeEl.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+      codeEl.value = this.roomCodeInput;
+    });
+
+    this.screenSlot.querySelector('#ol-rand')?.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let c = '';
+      for (let i = 0; i < 4; i++) c += chars[Math.floor(Math.random() * chars.length)];
+      this.roomCodeInput = c;
+      if (codeEl) codeEl.value = c;
+    });
+
+    const queueWith = (code: string | null) => {
+      this.hooks.onOnlineQueue(code, {
+        teamId: this.homeTeamId,
+        useCustom: this.useCustom,
+        duo: this.homeDuo,
+        customGnome: this.customGnome,
+        difficulty: this.difficulty,
+        quarterSeconds: this.quarterSeconds,
+      });
+    };
+
+    this.screenSlot.querySelector('#ol-quick')?.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      queueWith(null);
+    });
+
+    this.screenSlot.querySelector('#ol-join')?.addEventListener('click', () => {
+      const cleaned = this.roomCodeInput.trim().toUpperCase();
+      if (!/^[A-Z0-9]{4,8}$/.test(cleaned)) {
+        this.netStatus = { ...this.netStatus, status: 'error', message: 'Room code must be 4–8 letters or numbers (A-Z, 0-9).' };
+        this.showOnlineLobby();
+        return;
+      }
+      this.hooks.onClickSound();
+      queueWith(cleaned);
     });
   }
 
@@ -974,9 +1330,11 @@ export class JamUI {
               </div>
               <div class="jam-row">
                 <button id="sh-sim" class="jam-btn small">⏭ Sim Game</button>
+                <button id="sh-play-online" class="jam-btn small" style="background:linear-gradient(180deg,#1e64d8,#133e8a);border-color:#7fb5ff">🌐 Play Online</button>
                 <button id="sh-play" class="jam-btn primary">🏀 PLAY GAME</button>
               </div>
             </div>
+            ${this.renderCareerStatsCard(this.customGnome)}
 
             <div style="font-size:12px;color:#b8c4e0;margin-top:8px">
               Top <strong>6</strong> teams advance to the Knockout Tournament. Top <strong>2</strong> earn a <strong>First-Round Bye</strong> straight into the Semifinals!
@@ -1032,6 +1390,16 @@ export class JamUI {
         if (!nextGame) return;
         this.hooks.onClickSound();
         this.launchSeasonMatch(s, oppId, {
+          phase: 'regular',
+          roundIndex: s.currentRound,
+          matchId: nextGame.id,
+          label: `Regular Season — Round ${s.currentRound + 1}`,
+        });
+      });
+      this.screenSlot.querySelector('#sh-play-online')!.addEventListener('click', () => {
+        if (!nextGame) return;
+        this.hooks.onClickSound();
+        this.openSeasonOnlineLobby(s, {
           phase: 'regular',
           roundIndex: s.currentRound,
           matchId: nextGame.id,
@@ -1101,6 +1469,7 @@ export class JamUI {
                 </div>
               </div>
               <div class="jam-row">
+                ${playerHasMatch ? `<button id="po-play-online" class="jam-btn small" style="background:linear-gradient(180deg,#1e64d8,#133e8a);border-color:#7fb5ff">🌐 Play Online</button>` : ''}
                 ${playerHasMatch ? `<button id="po-play" class="jam-btn primary">🏀 PLAY PLAYOFF GAME</button>` : ''}
                 ${nextPO ? `<button id="po-sim" class="jam-btn small">⏭ Sim Next</button>` : ''}
               </div>
@@ -1150,6 +1519,16 @@ export class JamUI {
         label: nextPO.label,
       });
     });
+    this.screenSlot.querySelector('#po-play-online')?.addEventListener('click', () => {
+      if (!nextPO) return;
+      this.hooks.onClickSound();
+      this.openSeasonOnlineLobby(s, {
+        phase: 'playoffs',
+        roundIndex: nextPO.round,
+        matchId: nextPO.id,
+        label: nextPO.label,
+      });
+    });
     this.screenSlot.querySelector('#po-sim')?.addEventListener('click', () => {
       if (!nextPO || !nextPO.homeTeamId || !nextPO.awayTeamId) return;
       this.hooks.onClickSound();
@@ -1159,6 +1538,19 @@ export class JamUI {
       saveSeason(s);
       this.showSeasonHub();
     });
+  }
+
+  private openSeasonOnlineLobby(
+    s: SeasonState,
+    ctx: NonNullable<MatchConfig['seasonContext']>,
+  ): void {
+    this.homeTeamId = s.playerTeamId;
+    this.useCustom = s.useCustomGnome;
+    this.homeDuo = s.playerDuoIndices;
+    this.difficulty = s.difficulty;
+    this.quarterSeconds = s.quarterSeconds;
+    this.pendingSeasonContext = ctx;
+    this.showOnlineLobby();
   }
 
   private launchSeasonMatch(
@@ -1182,6 +1574,7 @@ export class JamUI {
   }
 
   private launchMatch(config: MatchConfig): void {
+    this.inOnlineLobby = false;
     this.lastMatchConfig = config;
     this.clearScreens();
     this.showHUD(true);
@@ -1196,13 +1589,14 @@ export class JamUI {
       this.clearScreens();
       return;
     }
+    const isOnline = this.lastMatchConfig?.opponentMode === 'online';
     this.screenSlot.innerHTML = `
       <div class="jam-screen" id="jam-pause">
         <div class="jam-panel" style="max-width:400px;text-align:center">
-          <h2 style="margin:0 0 12px;color:#ffd21f">⏸ PAUSED</h2>
+          <h2 style="margin:0 0 12px;color:#ffd21f">${isOnline ? '🌐 ONLINE MENU (LIVE)' : '⏸ PAUSED'}</h2>
           <div style="display:flex;flex-direction:column;gap:10px">
             <button id="p-resume" class="jam-btn primary">▶ Resume Game</button>
-            <button id="p-quit" class="jam-btn">🏠 Quit to Menu</button>
+            <button id="p-quit" class="jam-btn">🏠 ${isOnline ? 'Leave Match' : 'Quit to Menu'}</button>
           </div>
         </div>
       </div>
@@ -1220,45 +1614,61 @@ export class JamUI {
   }
 
   showPostGame(result: MatchResult, config: MatchConfig): void {
+    this.inOnlineLobby = false;
     this.showHUD(false);
     const home = getTeamById(result.homeTeamId);
     const away = getTeamById(result.awayTeamId);
     const winTeam = result.winner === 0 ? home : away;
+    const myTeam = config.onlineContext?.myTeam ?? 0;
+    const playerWon = result.winner === myTeam;
+    const myScore = myTeam === 0 ? result.homeScore : result.awayScore;
+    const oppScore = myTeam === 0 ? result.awayScore : result.homeScore;
+    const seasonCtx = config.seasonContext ?? this.pendingSeasonContext ?? undefined;
+    this.pendingSeasonContext = null;
+    let tournamentWon = false;
 
     // Record into season if applicable!
-    if (config.seasonContext && this.season) {
-      if (config.seasonContext.phase === 'regular') {
-        const game = this.season.schedule.find((g) => g.id === config.seasonContext!.matchId);
+    if (seasonCtx && this.season) {
+      if (seasonCtx.phase === 'regular') {
+        const game = this.season.schedule.find((g) => g.id === seasonCtx.matchId);
         if (game) {
           const isPlayerHomeInSched = game.homeTeamId === this.season.playerTeamId;
           recordRegularGameResult(
             this.season,
             game.id,
-            isPlayerHomeInSched ? result.homeScore : result.awayScore,
-            isPlayerHomeInSched ? result.awayScore : result.homeScore,
+            isPlayerHomeInSched ? myScore : oppScore,
+            isPlayerHomeInSched ? oppScore : myScore,
           );
         }
-      } else if (config.seasonContext.phase === 'playoffs' && this.season.bracket) {
+      } else if (seasonCtx.phase === 'playoffs' && this.season.bracket) {
         const b = this.season.bracket;
         const m = [b.qf1, b.qf2, b.sf1, b.sf2, b.finals].find(
-          (x) => x.id === config.seasonContext!.matchId,
+          (x) => x.id === seasonCtx.matchId,
         );
         if (m) {
           const isPlayerHomeInMatch = m.homeTeamId === this.season.playerTeamId;
           recordPlayoffResult(
             this.season,
             m.id,
-            isPlayerHomeInMatch ? result.homeScore : result.awayScore,
-            isPlayerHomeInMatch ? result.awayScore : result.homeScore,
+            isPlayerHomeInMatch ? myScore : oppScore,
+            isPlayerHomeInMatch ? oppScore : myScore,
           );
           simReadyCpuPlayoffMatches(this.season);
           if (this.season.bracket.championTeamId === this.season.playerTeamId) {
+            tournamentWon = true;
             this.hooks.onSeasonChampion();
           }
         }
       }
       saveSeason(this.season);
     }
+
+    const myRoster = myTeam === 0 ? config.homeRoster : config.awayRoster;
+    const myBox =
+      result.boxScore.find((b) => b.team === myTeam && b.name === myRoster[0].name) ??
+      result.boxScore.find((b) => b.team === myTeam);
+    const prog = awardMatchProgression(this.customGnome, { won: playerWon, tournamentWon, box: myBox });
+    const unspent = getRemainingStatPoints(this.customGnome);
 
     this.screenSlot.innerHTML = `
       <div class="jam-screen" id="jam-postgame">
@@ -1270,6 +1680,14 @@ export class JamUI {
             <span style="color:${home.primaryHex}">${home.emblem} ${home.abbr} ${result.homeScore}</span>
             <span style="color:#888">—</span>
             <span style="color:${away.primaryHex}">${result.awayScore} ${away.abbr} ${away.emblem}</span>
+          </div>
+
+          <div style="background:rgba(255,210,31,0.12);border:1px solid rgba(255,210,31,0.55);border-radius:10px;padding:10px;margin:0 0 12px;font-size:13px">
+            <strong style="color:#ffd21f">+${prog.earned} STAT POINTS EARNED!</strong>
+            <span style="color:#dce4f7"> (+${prog.gamePoints} Game${prog.winPoints ? ` · +${prog.winPoints} Win` : ''}${prog.tournamentPoints ? ` · +${prog.tournamentPoints} Tournament Win!` : ''})</span>
+            <div style="font-size:12px;color:#8fd3ff;margin-top:4px">
+              ${this.customGnome.name} Unspent Points: <strong>${unspent}</strong> &nbsp;•&nbsp; Budget: ${getTotalStatBudget(this.customGnome)}
+            </div>
           </div>
 
           <table class="jam-table">
@@ -1294,12 +1712,16 @@ export class JamUI {
 
           <div class="jam-row" style="justify-content:center;margin-top:14px">
             ${
-              config.seasonContext
+              seasonCtx
                 ? `<button id="pg-season" class="jam-btn primary">🏆 Continue Season</button>`
-                : `<button id="pg-rematch" class="jam-btn primary">🔁 Rematch</button>`
+                : config.onlineContext
+                  ? `<button id="pg-online" class="jam-btn primary">🌐 New Online Match</button>`
+                  : `<button id="pg-rematch" class="jam-btn primary">🔁 Rematch</button>`
             }
+            <button id="pg-upgrade" class="jam-btn green">🎨 Upgrade Gnome (${unspent})</button>
             <button id="pg-menu" class="jam-btn">🏠 Main Menu</button>
           </div>
+          ${this.renderCareerStatsCard(this.customGnome)}
         </div>
       </div>
     `;
@@ -1308,9 +1730,17 @@ export class JamUI {
       this.hooks.onClickSound();
       this.showSeasonHub();
     });
+    this.screenSlot.querySelector('#pg-online')?.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      this.showOnlineLobby();
+    });
     this.screenSlot.querySelector('#pg-rematch')?.addEventListener('click', () => {
       this.hooks.onClickSound();
       this.launchMatch(config);
+    });
+    this.screenSlot.querySelector('#pg-upgrade')!.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      this.showCustomCreator('title');
     });
     this.screenSlot.querySelector('#pg-menu')!.addEventListener('click', () => {
       this.hooks.onClickSound();

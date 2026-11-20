@@ -91,12 +91,12 @@ export function decideClassicBot(state: GameStateSnapshot, ctx: BotDecisionConte
 
     const distHoop = Math.hypot(hx - p.pos[0], p.pos[2]);
     const preferThree =
-      p.stats.threePt >= 8 &&
+      p.stats.threePt >= 80 &&
       Math.abs(p.pos[2]) > 2.0 &&
       distHoop < 7.2 &&
       distHoop > state.court.threePtRadius + 0.3;
 
-    if (distHoop < 3.4 + p.stats.dunk * 0.16) {
+    if (distHoop < 3.4 + (p.stats.dunk / 10) * 0.16) {
       out.turbo = true;
       out.shootPressed = true;
       out.shootDown = true;
@@ -129,7 +129,7 @@ export function decideClassicBot(state: GameStateSnapshot, ctx: BotDecisionConte
   if (teamHasBall) {
     const wantZ = mate.pos[2] >= 0 ? -3.0 : 3.0;
     const wantX =
-      p.stats.dunk >= 7
+      p.stats.dunk >= 70
         ? hx - attackDir * 2.6
         : hx - attackDir * (state.court.threePtRadius + 0.7);
     steerToward(p, wantX, wantZ, out, Math.hypot(wantX - p.pos[0], wantZ - p.pos[2]) > 3.5);

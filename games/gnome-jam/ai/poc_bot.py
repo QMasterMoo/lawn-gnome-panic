@@ -82,12 +82,12 @@ def decide(state: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
 
         dist_hoop = math.hypot(hoop_x - p["pos"][0], p["pos"][2])
         # Drive in and dunk when close
-        if dist_hoop < 3.4 + p["stats"]["dunk"] * 0.16:
+        if dist_hoop < 3.4 + (p["stats"]["dunk"] / 10.0) * 0.16:
             return {"turbo": True, "shootPressed": True, "shootDown": True}
 
         # Pull up for 3 if high 3pt stat and open on the wing
         if (
-            p["stats"]["threePt"] >= 7
+            p["stats"]["threePt"] >= 70
             and abs(p["pos"][2]) > 2.0
             and three_r + 0.3 < dist_hoop < 7.2
             and random.random() < 0.04
@@ -107,7 +107,7 @@ def decide(state: dict[str, Any], ctx: dict[str, Any]) -> dict[str, Any]:
         want_z = -3.2 if mate["pos"][2] >= 0 else 3.2
         want_x = (
             hoop_x - attack_dir * 2.6
-            if p["stats"]["dunk"] >= 7
+            if p["stats"]["dunk"] >= 70
             else hoop_x - attack_dir * (three_r + 0.7)
         )
         dist = math.hypot(want_x - p["pos"][0], want_z - p["pos"][2])

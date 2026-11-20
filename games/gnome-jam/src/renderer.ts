@@ -34,6 +34,8 @@ export class JamRenderer {
   private shake = 0;
   private elapsed = 0;
   private mode: 'attract' | 'preview' | 'match' = 'attract';
+  private bigHead = false;
+  private bigHeadOverlays = new WeakMap<GnomeModel, THREE.Group>();
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -114,6 +116,79 @@ export class JamRenderer {
     for (const r of this.playerRings) r.visible = mode === 'match';
   }
 
+  isBigHead(): boolean {
+    return this.bigHead;
+  }
+
+  setBigHead(enabled: boolean): void {
+    this.bigHead = enabled;
+    for (const m of this.playerModels) {
+      this.applyBigHeadToModel(m);
+    }
+    if (this.previewGnome) {
+      this.applyBigHeadToModel(this.previewGnome);
+    }
+  }
+
+  private applyBigHeadToModel(model: GnomeModel, look?: GnomeLook): void {
+    const hat = model.hat;
+    const parent = hat?.parent ?? model.object;
+    let overlay = this.bigHeadOverlays.get(model);
+    if (!this.bigHead) {
+      if (overlay) overlay.visible = false;
+      if (hat) {
+        hat.scale.setScalar(1);
+        hat.position.set(0, 1.12, -0.02);
+      }
+      return;
+    }
+
+    if (!overlay) {
+      overlay = new THREE.Group();
+      const skinColor = look?.skin ?? 0xf1c27d;
+      const headMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.41, 18, 14),
+        new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.72 }),
+      );
+      headMesh.position.set(0, 0.94, 0);
+      headMesh.castShadow = true;
+
+      const eyeGeo = new THREE.SphereGeometry(0.055, 10, 8);
+      const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111118, roughness: 0.3 });
+      const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+      leftEye.position.set(-0.14, 0.98, 0.36);
+      const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+      rightEye.position.set(0.14, 0.98, 0.36);
+
+      const nose = new THREE.Mesh(
+        new THREE.SphereGeometry(0.085, 12, 10),
+        new THREE.MeshStandardMaterial({ color: 0xe68a7c, roughness: 0.65 }),
+      );
+      nose.position.set(0, 0.9, 0.41);
+
+      overlay.add(headMesh, leftEye, rightEye, nose);
+
+      if (look?.beard !== null && look?.beard !== undefined) {
+        const beard = new THREE.Mesh(
+          new THREE.ConeGeometry(0.32, 0.44, 12),
+          new THREE.MeshStandardMaterial({ color: look.beard, roughness: 0.88 }),
+        );
+        beard.rotation.x = Math.PI - 0.15;
+        beard.position.set(0, 0.66, 0.25);
+        overlay.add(beard);
+      }
+
+      parent.add(overlay);
+      this.bigHeadOverlays.set(model, overlay);
+    }
+
+    overlay.visible = true;
+    if (hat) {
+      hat.scale.setScalar(2.1);
+      hat.position.set(0, 1.56, -0.04);
+    }
+  }
+
   showPreviewGnome(look: GnomeLook): void {
     if (this.previewGnome) {
       this.previewGroup.remove(this.previewGnome.object);
@@ -123,6 +198,21 @@ export class JamRenderer {
     model.object.scale.setScalar(1.8);
     this.previewGroup.add(model.object);
     this.previewGnome = model;
+    this.applyBigHeadToModel(model, look);
+  }
+
+  refreshPlayerLooks(sim: JamSimulation): void {
+    for (let idx = 0; idx < sim.players.length; idx++) {
+      const oldModel = this.playerModels[idx];
+      if (!oldModel) continue;
+      this.scene.remove(oldModel.object);
+      const newModel = createGnomeModel(sim.players[idx].profile.look, { overrideEquipment: ['hand'] });
+      newModel.object.scale.setScalar(1.25);
+      newModel.object.visible = this.mode === 'match';
+      this.scene.add(newModel.object);
+      this.playerModels[idx] = newModel;
+      this.applyBigHeadToModel(newModel, sim.players[idx].profile.look);
+    }
   }
 
   mountMatch(sim: JamSimulation, home: ProTeam, away: ProTeam): void {
@@ -139,6 +229,7 @@ export class JamRenderer {
       model.object.scale.setScalar(1.25);
       this.scene.add(model.object);
       this.playerModels.push(model);
+      this.applyBigHeadToModel(model, p.profile.look);
 
       const ringColor = p.team === 0 ? home.primary : away.primary;
       const ring = new THREE.Mesh(
@@ -276,7 +367,7 @@ export class JamRenderer {
       // Ground indicator ring (bright gold for P1, cyan for P2, subtle for AI)
       ring.position.set(p.pos.x, 0.03, p.pos.z);
       const isP1 = idx === sim.p1ControlIdx;
-      const isP2 = sim.config.opponentMode === 'local2p' && idx === sim.p2ControlIdx;
+      const isP2 = (sim.config.opponentMode === 'local2p' || sim.config.opponentMode === 'online') && idx === sim.p2ControlIdx;
       const ringMat = ring.material as THREE.MeshBasicMaterial;
       if (isP1) {
         ringMat.color.setHex(0xffd21f);

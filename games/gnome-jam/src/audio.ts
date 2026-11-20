@@ -4,6 +4,7 @@ import { HipHopBeatEngine, type BeatMode } from './music';
 
 export class JamAudio {
   private ctx: AudioContext | null = null;
+  private sfxLimiter: DynamicsCompressorNode | null = null;
   private beat: HipHopBeatEngine;
   readonly volume: VolumeStore;
 
@@ -22,7 +23,22 @@ export class JamAudio {
     if (this.ctx.state === 'suspended') {
       this.ctx.resume().catch(() => {});
     }
+    if (!this.sfxLimiter) {
+      const comp = this.ctx.createDynamicsCompressor();
+      comp.threshold.value = -5;
+      comp.knee.value = 6;
+      comp.ratio.value = 12;
+      comp.attack.value = 0.002;
+      comp.release.value = 0.08;
+      comp.connect(this.ctx.destination);
+      this.sfxLimiter = comp;
+    }
     return this.ctx;
+  }
+
+  private sfxOut(): AudioNode | null {
+    const ctx = this.ensure();
+    return ctx ? (this.sfxLimiter ?? ctx.destination) : null;
   }
 
   private sfxGain(): number {
@@ -41,25 +57,28 @@ export class JamAudio {
     const g = this.sfxGain();
     if (g <= 0.001) return;
     const ctx = this.ensure();
-    if (!ctx) return;
+    const out = this.sfxOut();
+    if (!ctx || !out) return;
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
     osc.frequency.setValueAtTime(165, now);
     osc.frequency.exponentialRampToValueAtTime(62, now + 0.085);
-    gain.gain.setValueAtTime(0.18 * g, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
-    osc.connect(gain).connect(ctx.destination);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.18 * g, now + 0.003);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.09);
+    osc.connect(gain).connect(out);
     osc.start(now);
-    osc.stop(now + 0.095);
+    osc.stop(now + 0.098);
   }
 
   playSwish(isThree = false): void {
     const g = this.sfxGain();
     if (g <= 0.001) return;
     const ctx = this.ensure();
-    if (!ctx) return;
+    const out = this.sfxOut();
+    if (!ctx || !out) return;
     const now = ctx.currentTime;
     // Filtered noise swish
     const len = Math.floor(ctx.sampleRate * 0.22);
@@ -74,9 +93,10 @@ export class JamAudio {
     filter.frequency.exponentialRampToValueAtTime(900, now + 0.2);
     filter.Q.value = 1.6;
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.32 * g, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
-    src.connect(filter).connect(gain).connect(ctx.destination);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.3 * g, now + 0.005);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.22);
+    src.connect(filter).connect(gain).connect(out);
     src.start(now);
 
     // Celebratory chime for 3-pointer
@@ -98,7 +118,8 @@ export class JamAudio {
     const g = this.sfxGain();
     if (g <= 0.001) return;
     const ctx = this.ensure();
-    if (!ctx) return;
+    const out = this.sfxOut();
+    if (!ctx || !out) return;
     const now = ctx.currentTime;
     // Heavy sub-bass rim slam
     const osc = ctx.createOscillator();
@@ -106,15 +127,16 @@ export class JamAudio {
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(onFire ? 170 : 140, now);
     osc.frequency.exponentialRampToValueAtTime(34, now + 0.32);
-    gain.gain.setValueAtTime(0.55 * g, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
-    osc.connect(gain).connect(ctx.destination);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(0.45 * g, now + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.34);
+    osc.connect(gain).connect(out);
     osc.start(now);
     osc.stop(now + 0.35);
 
     // Metallic rim rattle
-    this.tone(420, 0.12, 0.2 * g, 'square', 0.02);
-    this.tone(280, 0.16, 0.18 * g, 'sawtooth', 0.05);
+    this.tone(420, 0.12, 0.18 * g, 'square', 0.02);
+    this.tone(280, 0.16, 0.16 * g, 'sawtooth', 0.05);
     this.playCrowdCheer(onFire ? 1.0 : 0.75);
   }
 
@@ -122,7 +144,8 @@ export class JamAudio {
     const g = this.sfxGain();
     if (g <= 0.001) return;
     const ctx = this.ensure();
-    if (!ctx) return;
+    const out = this.sfxOut();
+    if (!ctx || !out) return;
     const now = ctx.currentTime;
     const dur = 0.55 + intensity * 0.45;
     const len = Math.floor(ctx.sampleRate * dur);
@@ -140,8 +163,8 @@ export class JamAudio {
     filter.frequency.setValueAtTime(750 + intensity * 350, now);
     filter.Q.value = 0.9;
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.24 * intensity * g, now);
-    src.connect(filter).connect(gain).connect(ctx.destination);
+    gain.gain.setValueAtTime(0.22 * intensity * g, now);
+    src.connect(filter).connect(gain).connect(out);
     src.start(now);
   }
 
@@ -219,6 +242,14 @@ export class JamAudio {
     this.beat.stop();
   }
 
+  setMonoMix(enabled: boolean): void {
+    this.beat.setMonoMix(enabled);
+  }
+
+  isMonoMix(): boolean {
+    return this.beat.isMonoMix();
+  }
+
   private tone(
     freq: number,
     dur: number,
@@ -228,7 +259,8 @@ export class JamAudio {
     endFreq?: number,
   ): void {
     const ctx = this.ensure();
-    if (!ctx || vol <= 0.001) return;
+    const out = this.sfxOut();
+    if (!ctx || !out || vol <= 0.001) return;
     const now = ctx.currentTime + delay;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -237,10 +269,12 @@ export class JamAudio {
     if (endFreq !== undefined) {
       osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), now + dur);
     }
-    gain.gain.setValueAtTime(vol, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-    osc.connect(gain).connect(ctx.destination);
+    const attack = Math.min(0.003, dur * 0.2);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(vol, now + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + dur);
+    osc.connect(gain).connect(out);
     osc.start(now);
-    osc.stop(now + dur + 0.01);
+    osc.stop(now + dur + 0.015);
   }
 }
