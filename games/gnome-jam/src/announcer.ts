@@ -1,20 +1,26 @@
-// Stadium PA announcer powered by EasySpeech (male voice, pitched down)
-// + WebAudio stadium sound system (compression, stadium crunch, stadium reverb)
-// with dynamic envelope shapes modulating the PA effects per callout.
-import EasySpeech from 'easy-speech';
+// Stadium PA announcer using SamJs (mobile-friendly, zero-model PCM TTS)
+// routed directly through WebAudio pitch-shift, compression, stadium crunch,
+// and stadium reverb, with dynamic envelope shapes modulating the PA effects.
+import SamJs from 'sam-js';
 import type { AnnouncerEvent } from './types';
 
 export type EnvelopeShape = 'punchy' | 'swell' | 'staccato' | 'epic';
 
 export interface AnnouncerProfile {
   shape: EnvelopeShape;
-  pitch: number;
-  rate: number;
+  /** SamJs pitch parameter (higher = deeper male voice; default 64). */
+  samPitch: number;
+  /** SamJs speed parameter (lower = faster). */
+  samSpeed: number;
+  /** SamJs throat/mouth formants for a chesty male announcer timbre. */
+  samThroat: number;
+  samMouth: number;
+  /** WebAudio playbackRate (< 1.0 pitch-shifts down further). */
+  playbackRate: number;
   crunchDrive: number;
   reverbMix: number;
   hornBoostDb: number;
   duckGain: number;
-  durationSec: number;
 }
 
 export interface EnvelopeSample {
@@ -24,77 +30,26 @@ export interface EnvelopeSample {
   filterNorm: number;
 }
 
-const MALE_VOICE_HINTS = [
-  'david', 'mark', 'george', 'daniel', 'alex', 'fred', 'guy', 'james',
-  'paul', 'richard', 'sean', 'thomas', 'ryan', 'andrew', 'christopher',
-  'eric', 'roger', 'steffan', 'aaron', 'arthur', 'oliver', 'brian',
-  'matthew', 'william', 'male', 'baritone', 'bass', 'man',
-];
+const SAM_SAMPLE_RATE = 22050;
 
-const FEMALE_VOICE_HINTS = [
-  'zira', 'samantha', 'victoria', 'karen', 'susan', 'hazel', 'libby',
-  'sonia', 'aria', 'jenny', 'claire', 'fiona', 'moira', 'tessa',
-  'veena', 'kate', 'serena', 'female', 'woman', 'girl',
-];
-
-/** Scores and selects the best available male English voice for the stadium PA. */
-export function pickMaleVoice<T extends { name: string; lang: string; localService?: boolean }>(
-  voices: readonly T[],
-): T | undefined {
-  if (!voices.length) return undefined;
-
-  let best: T | undefined;
-  let bestScore = -Infinity;
-
-  for (const v of voices) {
-    const name = v.name.toLowerCase();
-    const lang = v.lang.toLowerCase();
-    let score = 0;
-
-    if (lang.startsWith('en-us')) score += 20;
-    else if (lang.startsWith('en')) score += 14;
-    else score -= 15;
-
-    if (v.localService) score += 4;
-
-    for (const hint of MALE_VOICE_HINTS) {
-      if (name.includes(hint)) {
-        score += 35;
-        break;
-      }
-    }
-    for (const hint of FEMALE_VOICE_HINTS) {
-      if (name.includes(hint)) {
-        score -= 40;
-        break;
-      }
-    }
-
-    if (score > bestScore) {
-      bestScore = score;
-      best = v;
-    }
-  }
-
-  return best;
-}
-
-/** Converts an AnnouncerEvent into natural spoken arcade announcer copy. */
+/** Converts an AnnouncerEvent into crisp phonetic-friendly arcade announcer text. */
 export function formatAnnouncerSpeech(ev: AnnouncerEvent): string {
   const clean = (s: string): string =>
     s
       .replace(/!+/g, '!')
       .replace(/\+(\d+)/g, 'plus $1')
       .replace(/(\d+)\s*-\s*(\d+)/g, '$1 to $2')
+      .replace(/[^a-zA-Z0-9\s.,!?'-]/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
 
   const main = clean(ev.text);
   const sub = ev.subtext ? clean(ev.subtext) : '';
   if (!sub) return main;
-  return `${main} ${sub}`;
+  return `${main}. ${sub}`;
 }
 
-/** Classifies an AnnouncerEvent into a dynamic PA envelope & pitch profile. */
+/** Classifies an AnnouncerEvent into a dynamic PA envelope & male-voice pitch profile. */
 export function classifyAnnouncerProfile(ev: AnnouncerEvent): AnnouncerProfile {
   const upper = `${ev.text} ${ev.subtext ?? ''}`.toUpperCase();
 
@@ -106,13 +61,15 @@ export function classifyAnnouncerProfile(ev: AnnouncerEvent): AnnouncerProfile {
   ) {
     return {
       shape: 'epic',
-      pitch: 0.72,
-      rate: 1.02,
-      crunchDrive: 0.88,
-      reverbMix: 0.78,
+      samPitch: 88,
+      samSpeed: 68,
+      samThroat: 110,
+      samMouth: 106,
+      playbackRate: 0.86,
+      crunchDrive: 0.9,
+      reverbMix: 0.82,
       hornBoostDb: 6.5,
-      duckGain: 0.38,
-      durationSec: 1.9,
+      duckGain: 0.36,
     };
   }
 
@@ -128,13 +85,15 @@ export function classifyAnnouncerProfile(ev: AnnouncerEvent): AnnouncerProfile {
   ) {
     return {
       shape: 'punchy',
-      pitch: 0.76,
-      rate: 1.07,
-      crunchDrive: 0.74,
-      reverbMix: 0.58,
+      samPitch: 84,
+      samSpeed: 64,
+      samThroat: 112,
+      samMouth: 108,
+      playbackRate: 0.89,
+      crunchDrive: 0.78,
+      reverbMix: 0.62,
       hornBoostDb: 5.5,
-      duckGain: 0.46,
-      durationSec: 1.4,
+      duckGain: 0.44,
     };
   }
 
@@ -147,25 +106,29 @@ export function classifyAnnouncerProfile(ev: AnnouncerEvent): AnnouncerProfile {
   ) {
     return {
       shape: 'staccato',
-      pitch: 0.82,
-      rate: 1.12,
-      crunchDrive: 0.56,
-      reverbMix: 0.42,
-      hornBoostDb: 4.0,
-      duckGain: 0.55,
-      durationSec: 1.1,
+      samPitch: 78,
+      samSpeed: 60,
+      samThroat: 114,
+      samMouth: 110,
+      playbackRate: 0.93,
+      crunchDrive: 0.62,
+      reverbMix: 0.46,
+      hornBoostDb: 4.5,
+      duckGain: 0.52,
     };
   }
 
   return {
     shape: 'swell',
-    pitch: 0.78,
-    rate: 1.0,
-    crunchDrive: 0.48,
-    reverbMix: 0.62,
-    hornBoostDb: 3.5,
-    duckGain: 0.52,
-    durationSec: 1.6,
+    samPitch: 82,
+    samSpeed: 68,
+    samThroat: 112,
+    samMouth: 108,
+    playbackRate: 0.9,
+    crunchDrive: 0.54,
+    reverbMix: 0.66,
+    hornBoostDb: 4.0,
+    duckGain: 0.48,
   };
 }
 
@@ -175,51 +138,70 @@ export function evaluateEnvelope(shape: EnvelopeShape, tNorm: number): EnvelopeS
 
   switch (shape) {
     case 'punchy': {
-      const attack = t < 0.07 ? t / 0.07 : 1;
-      const decay = t < 0.07 ? 1 : Math.pow(1 - (t - 0.07) / 0.93, 1.85);
-      const amp = attack * decay;
+      const attack = t < 0.06 ? t / 0.06 : 1;
+      const decay = t < 0.06 ? 1 : Math.pow(1 - (t - 0.06) / 0.94, 1.45);
+      const amp = 0.55 + 0.45 * attack * decay;
       return {
         amp,
-        crunch: 0.35 + 0.65 * Math.pow(amp, 0.8),
-        reverb: 0.35 + 0.5 * (1 - t * 0.5),
-        filterNorm: 0.3 + 0.7 * amp,
+        crunch: 0.35 + 0.65 * Math.pow(attack * decay, 0.8),
+        reverb: 0.35 + 0.55 * (1 - t * 0.45),
+        filterNorm: 0.3 + 0.7 * (attack * decay),
       };
     }
     case 'swell': {
       const rise = t < 0.35 ? Math.sin((t / 0.35) * Math.PI * 0.5) : 1;
-      const fall = t > 0.65 ? Math.cos(((t - 0.65) / 0.35) * Math.PI * 0.5) : 1;
-      const amp = Math.max(0, rise * fall);
+      const fall = t > 0.7 ? Math.cos(((t - 0.7) / 0.3) * Math.PI * 0.5) : 1;
+      const shapeVal = Math.max(0, rise * fall);
       return {
-        amp,
-        crunch: 0.25 + 0.5 * amp,
+        amp: 0.65 + 0.35 * shapeVal,
+        crunch: 0.25 + 0.55 * shapeVal,
         reverb: 0.45 + 0.45 * Math.sin(t * Math.PI),
-        filterNorm: 0.25 + 0.6 * amp,
+        filterNorm: 0.25 + 0.6 * shapeVal,
       };
     }
     case 'staccato': {
-      // Two crisp percussive syllables/pulses followed by tight gate
-      const pulse1 = Math.exp(-Math.pow((t - 0.14) / 0.11, 2));
-      const pulse2 = 0.82 * Math.exp(-Math.pow((t - 0.48) / 0.13, 2));
-      const amp = Math.min(1, pulse1 + pulse2);
+      const pulse1 = Math.exp(-Math.pow((t - 0.16) / 0.14, 2));
+      const pulse2 = 0.88 * Math.exp(-Math.pow((t - 0.56) / 0.16, 2));
+      const shapeVal = Math.min(1, pulse1 + pulse2);
       return {
-        amp,
-        crunch: 0.4 + 0.55 * amp,
-        reverb: 0.25 + 0.35 * amp,
-        filterNorm: 0.4 + 0.6 * amp,
+        amp: 0.6 + 0.4 * shapeVal,
+        crunch: 0.4 + 0.55 * shapeVal,
+        reverb: 0.25 + 0.38 * shapeVal,
+        filterNorm: 0.4 + 0.6 * shapeVal,
       };
     }
     case 'epic': {
-      const attack = t < 0.08 ? t / 0.08 : 1;
-      const sustain = t < 0.55 ? 0.85 + 0.15 * Math.sin((t / 0.55) * Math.PI) : 1;
-      const tail = t >= 0.55 ? Math.pow(1 - (t - 0.55) / 0.45, 1.3) : 1;
-      const amp = attack * sustain * tail;
+      const attack = t < 0.07 ? t / 0.07 : 1;
+      const sustain = t < 0.6 ? 0.88 + 0.12 * Math.sin((t / 0.6) * Math.PI) : 1;
+      const tail = t >= 0.6 ? Math.pow(1 - (t - 0.6) / 0.4, 1.2) : 1;
+      const shapeVal = attack * sustain * tail;
       return {
-        amp,
-        crunch: 0.5 + 0.5 * amp,
+        amp: 0.7 + 0.3 * shapeVal,
+        crunch: 0.5 + 0.5 * shapeVal,
         reverb: 0.6 + 0.4 * Math.sin(Math.min(1, t * 1.15) * Math.PI * 0.85),
-        filterNorm: 0.35 + 0.65 * amp,
+        filterNorm: 0.35 + 0.65 * shapeVal,
       };
     }
+  }
+}
+
+/** Synthesizes raw mono Float32Array PCM speech at 22050 Hz using SamJs. */
+export function synthesizeSpeechPcm(text: string, profile: AnnouncerProfile): Float32Array | null {
+  if (!text.trim()) return null;
+  try {
+    const sam = new SamJs({
+      pitch: profile.samPitch,
+      speed: profile.samSpeed,
+      throat: profile.samThroat,
+      mouth: profile.samMouth,
+    });
+    const out = sam.buf32(text);
+    if (out instanceof Float32Array && out.length > 0) {
+      return out;
+    }
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -227,11 +209,10 @@ export function evaluateEnvelope(shape: EnvelopeShape, tNorm: number): EnvelopeS
 export function createStadiumCrunchCurve(driveAmount: number): Float32Array<ArrayBuffer> {
   const n = 1024;
   const curve = new Float32Array(new ArrayBuffer(n * 4));
-  const k = 4 + driveAmount * 22;
+  const k = 4 + driveAmount * 24;
   for (let i = 0; i < n; i++) {
     const x = (i * 2) / n - 1;
-    // Slight asymmetry models driven PA horn driver compression/crunch
-    const bias = x > 0 ? 1.06 : 0.94;
+    const bias = x > 0 ? 1.07 : 0.93;
     curve[i] = ((1 + k) * x * bias) / (1 + k * Math.abs(x));
   }
   return curve;
@@ -242,7 +223,7 @@ export function createStadiumReverbBuffer(ctx: BaseAudioContext): AudioBuffer {
   const dur = 2.0;
   const len = Math.floor(ctx.sampleRate * dur);
   const buf = ctx.createBuffer(2, len, ctx.sampleRate);
-  const tapTimesSec = [0.038, 0.082, 0.135, 0.195];
+  const tapTimesSec = [0.036, 0.079, 0.132, 0.192];
 
   for (let ch = 0; ch < 2; ch++) {
     const data = buf.getChannelData(ch);
@@ -250,17 +231,16 @@ export function createStadiumReverbBuffer(ctx: BaseAudioContext): AudioBuffer {
     for (let i = 0; i < len; i++) {
       const tSec = i / ctx.sampleRate;
       const tNorm = i / len;
-      const attack = Math.min(1, tSec / 0.025);
-      const decay = Math.pow(1 - tNorm, 2.2);
+      const attack = Math.min(1, tSec / 0.02);
+      const decay = Math.pow(1 - tNorm, 2.15);
       const white = Math.random() * 2 - 1;
       lp = lp * 0.58 + white * 0.42;
-      data[i] = lp * attack * decay * 0.55;
+      data[i] = lp * attack * decay * 0.58;
     }
-    // Distinct arena bowl early reflections
     for (let k = 0; k < tapTimesSec.length; k++) {
       const idx = Math.floor((tapTimesSec[k] + ch * 0.009) * ctx.sampleRate);
       if (idx < len) {
-        data[idx] += (0.42 - k * 0.08) * (ch === 0 ? 1 : -0.92);
+        data[idx] += (0.45 - k * 0.08) * (ch === 0 ? 1 : -0.92);
       }
     }
   }
@@ -271,14 +251,8 @@ export class StadiumAnnouncer {
   private readonly getSfxGain: () => number;
   private readonly onDuckMusic?: (mult: number) => void;
 
-  private initialized = false;
-  private initPromise: Promise<boolean> | null = null;
-  private voice: SpeechSynthesisVoice | undefined;
-
   private lastSpeakMs = 0;
-  private duckReleaseTimer: number | null = null;
-  private activeProfile: AnnouncerProfile | null = null;
-  private activeStartTime = 0;
+  private activeSource: AudioBufferSourceNode | null = null;
 
   // Stadium PA WebAudio graph
   private ctx: AudioContext | null = null;
@@ -294,25 +268,9 @@ export class StadiumAnnouncer {
     this.onDuckMusic = onDuckMusic;
   }
 
-  /** Initializes EasySpeech and selects the male announcer voice. */
+  /** Kept for lifecycle symmetry with JamAudio.unlock(). */
   async init(): Promise<boolean> {
-    if (this.initialized) return true;
-    if (this.initPromise) return this.initPromise;
-    if (typeof window === 'undefined' || typeof window.speechSynthesis === 'undefined') {
-      return false;
-    }
-
-    this.initPromise = EasySpeech.init({ maxTimeout: 3000, interval: 100, quiet: true })
-      .then((ok) => {
-        if (ok) {
-          this.initialized = true;
-          this.voice = pickMaleVoice(EasySpeech.voices());
-        }
-        return ok;
-      })
-      .catch(() => false);
-
-    return this.initPromise;
+    return true;
   }
 
   private ensureGraph(ctx: AudioContext): void {
@@ -322,24 +280,24 @@ export class StadiumAnnouncer {
     this.paInput = ctx.createGain();
     this.paInput.gain.value = 1.0;
 
-    // PA Horn EQ: tight low cut, nasal arena presence, rolled-off top
+    // PA Horn EQ: tight low cut, arena horn presence, rolled-off top
     const hornHp = ctx.createBiquadFilter();
     hornHp.type = 'highpass';
-    hornHp.frequency.value = 175;
+    hornHp.frequency.value = 165;
 
     this.hornPresence = ctx.createBiquadFilter();
     this.hornPresence.type = 'peaking';
-    this.hornPresence.frequency.value = 1850;
-    this.hornPresence.Q.value = 1.4;
-    this.hornPresence.gain.value = 4.0;
+    this.hornPresence.frequency.value = 1750;
+    this.hornPresence.Q.value = 1.35;
+    this.hornPresence.gain.value = 4.5;
 
     this.hornLp = ctx.createBiquadFilter();
     this.hornLp.type = 'lowpass';
-    this.hornLp.frequency.value = 3800;
+    this.hornLp.frequency.value = 3900;
 
     // Broadcast/PA compressor
     const compressor = ctx.createDynamicsCompressor();
-    compressor.threshold.value = -18;
+    compressor.threshold.value = -20;
     compressor.knee.value = 6;
     compressor.ratio.value = 10;
     compressor.attack.value = 0.003;
@@ -347,35 +305,35 @@ export class StadiumAnnouncer {
 
     // Stadium crunch stage
     this.crunchDrive = ctx.createGain();
-    this.crunchDrive.gain.value = 1.4;
+    this.crunchDrive.gain.value = 1.6;
 
     const crunchShaper = ctx.createWaveShaper();
-    crunchShaper.curve = createStadiumCrunchCurve(0.65);
+    crunchShaper.curve = createStadiumCrunchCurve(0.7);
     crunchShaper.oversample = '2x';
 
     const crunchMakeup = ctx.createGain();
-    crunchMakeup.gain.value = 0.65;
+    crunchMakeup.gain.value = 0.72;
 
     // Dry + Stadium Reverb parallel buses
     const dryGain = ctx.createGain();
-    dryGain.gain.value = 0.72;
+    dryGain.gain.value = 0.78;
 
     this.reverbSend = ctx.createGain();
-    this.reverbSend.gain.value = 0.55;
+    this.reverbSend.gain.value = 0.6;
 
     const convolver = ctx.createConvolver();
     convolver.buffer = createStadiumReverbBuffer(ctx);
 
     const revHp = ctx.createBiquadFilter();
     revHp.type = 'highpass';
-    revHp.frequency.value = 210;
+    revHp.frequency.value = 200;
 
     const revLp = ctx.createBiquadFilter();
     revLp.type = 'lowpass';
-    revLp.frequency.value = 2900;
+    revLp.frequency.value = 3000;
 
     const revReturn = ctx.createGain();
-    revReturn.gain.value = 0.52;
+    revReturn.gain.value = 0.58;
 
     this.paMaster = ctx.createGain();
     this.paMaster.gain.value = Math.max(0, Math.min(1, this.getSfxGain()));
@@ -401,22 +359,16 @@ export class StadiumAnnouncer {
     this.paMaster.connect(ctx.destination);
   }
 
-  /** Applies dynamic envelope automation to the stadium PA chain and fires mic-open transient. */
-  private triggerStadiumEnvelope(ctx: AudioContext, profile: AnnouncerProfile, vol: number): void {
-    this.ensureGraph(ctx);
+  private applyDynamicEnvelope(ctx: AudioContext, profile: AnnouncerProfile, durSec: number, vol: number): void {
     if (!this.paInput || !this.crunchDrive || !this.reverbSend || !this.hornPresence || !this.hornLp || !this.paMaster) {
       return;
     }
 
     const now = ctx.currentTime;
-    const dur = profile.durationSec;
-    this.activeProfile = profile;
-    this.activeStartTime = now;
+    this.paMaster.gain.setTargetAtTime(vol * 1.15, now, 0.01);
 
-    this.paMaster.gain.setTargetAtTime(vol, now, 0.01);
-
-    // Sample the envelope shape into WebAudio automation steps
-    const steps = 12;
+    const steps = 14;
+    this.paInput.gain.cancelScheduledValues(now);
     this.crunchDrive.gain.cancelScheduledValues(now);
     this.reverbSend.gain.cancelScheduledValues(now);
     this.hornPresence.gain.cancelScheduledValues(now);
@@ -424,83 +376,34 @@ export class StadiumAnnouncer {
 
     for (let i = 0; i <= steps; i++) {
       const tNorm = i / steps;
-      const t = now + tNorm * dur;
+      const t = now + tNorm * durSec;
       const env = evaluateEnvelope(profile.shape, tNorm);
-      const driveVal = 0.9 + env.crunch * profile.crunchDrive * 1.9;
-      const revVal = 0.18 + env.reverb * profile.reverbMix * 0.9;
+      const inVal = 0.75 + env.amp * 0.45;
+      const driveVal = 1.0 + env.crunch * profile.crunchDrive * 2.1;
+      const revVal = 0.2 + env.reverb * profile.reverbMix * 0.95;
       const hornDb = 1.5 + env.filterNorm * profile.hornBoostDb;
-      const lpHz = 2300 + env.filterNorm * 2300;
+      const lpHz = 2200 + env.filterNorm * 2400;
 
       if (i === 0) {
+        this.paInput.gain.setValueAtTime(inVal, t);
         this.crunchDrive.gain.setValueAtTime(driveVal, t);
         this.reverbSend.gain.setValueAtTime(revVal, t);
         this.hornPresence.gain.setValueAtTime(hornDb, t);
         this.hornLp.frequency.setValueAtTime(lpHz, t);
       } else {
+        this.paInput.gain.linearRampToValueAtTime(inVal, t);
         this.crunchDrive.gain.linearRampToValueAtTime(driveVal, t);
         this.reverbSend.gain.linearRampToValueAtTime(revVal, t);
         this.hornPresence.gain.linearRampToValueAtTime(hornDb, t);
         this.hornLp.frequency.linearRampToValueAtTime(lpHz, t);
       }
     }
-
-    // Subtle PA mic-open thump + stadium air carrier fed through compressor/crunch/reverb
-    const thumpOsc = ctx.createOscillator();
-    const thumpGain = ctx.createGain();
-    thumpOsc.type = 'triangle';
-    thumpOsc.frequency.setValueAtTime(115, now);
-    thumpOsc.frequency.exponentialRampToValueAtTime(48, now + 0.08);
-    thumpGain.gain.setValueAtTime(0.0001, now);
-    thumpGain.gain.linearRampToValueAtTime(0.16, now + 0.004);
-    thumpGain.gain.exponentialRampToValueAtTime(0.0005, now + 0.09);
-    thumpOsc.connect(thumpGain).connect(this.paInput);
-    thumpOsc.start(now);
-    thumpOsc.stop(now + 0.1);
   }
 
-  /** Pulses a subtle PA horn-body resonance on word boundaries so stadium reverb breathes with speech. */
-  private pulseBoundary(ctx: AudioContext): void {
-    if (!this.paInput || !this.activeProfile) return;
-    const now = ctx.currentTime;
-    const tNorm = Math.min(1, Math.max(0, (now - this.activeStartTime) / this.activeProfile.durationSec));
-    const env = evaluateEnvelope(this.activeProfile.shape, tNorm);
-    if (env.amp <= 0.03) return;
-
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sawtooth';
-    const baseHz = 130 * this.activeProfile.pitch;
-    osc.frequency.setValueAtTime(baseHz, now);
-    osc.frequency.exponentialRampToValueAtTime(baseHz * 0.85, now + 0.075);
-
-    const peak = 0.055 * env.amp;
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.linearRampToValueAtTime(peak, now + 0.008);
-    gain.gain.exponentialRampToValueAtTime(0.0004, now + 0.085);
-
-    osc.connect(gain).connect(this.paInput);
-    osc.start(now);
-    osc.stop(now + 0.095);
-  }
-
-  private setDuck(mult: number, releaseMs?: number): void {
-    if (this.duckReleaseTimer !== null && typeof window !== 'undefined') {
-      window.clearTimeout(this.duckReleaseTimer);
-      this.duckReleaseTimer = null;
-    }
-    this.onDuckMusic?.(mult);
-    if (releaseMs !== undefined && typeof window !== 'undefined') {
-      this.duckReleaseTimer = window.setTimeout(() => {
-        this.duckReleaseTimer = null;
-        this.onDuckMusic?.(1.0);
-      }, releaseMs);
-    }
-  }
-
-  /** Voices an announcer event through EasySpeech + the stadium PA sound system. */
+  /** Synthesizes and plays an announcer event through the stadium PA WebAudio graph. */
   announce(ctx: AudioContext | null, ev: AnnouncerEvent): void {
     const sfx = this.getSfxGain();
-    if (sfx <= 0.001) return;
+    if (!ctx || sfx <= 0.001) return;
 
     const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (!ev.big && nowMs - this.lastSpeakMs < 420) return;
@@ -508,55 +411,53 @@ export class StadiumAnnouncer {
 
     const profile = classifyAnnouncerProfile(ev);
     const text = formatAnnouncerSpeech(ev);
-    if (!text) return;
+    const pcm = synthesizeSpeechPcm(text, profile);
+    if (!pcm) return;
 
-    if (ctx) {
-      this.triggerStadiumEnvelope(ctx, profile, sfx);
+    if (ev.big && this.activeSource) {
+      try {
+        this.activeSource.stop();
+      } catch {
+        // ignore already stopped
+      }
+      this.activeSource = null;
     }
 
-    this.setDuck(profile.duckGain, Math.round(profile.durationSec * 1000) + 500);
+    this.ensureGraph(ctx);
+    if (!this.paInput) return;
 
-    if (typeof window === 'undefined' || typeof window.speechSynthesis === 'undefined') {
-      return;
-    }
+    const audioBuf = ctx.createBuffer(1, pcm.length, SAM_SAMPLE_RATE);
+    audioBuf.getChannelData(0).set(pcm);
 
-    void this.init().then((ok) => {
-      if (!ok) return;
-      if (!this.voice) {
-        this.voice = pickMaleVoice(EasySpeech.voices());
+    const src = ctx.createBufferSource();
+    src.buffer = audioBuf;
+    src.playbackRate.value = profile.playbackRate;
+
+    const durSec = audioBuf.duration / profile.playbackRate;
+    this.applyDynamicEnvelope(ctx, profile, durSec, sfx);
+
+    this.onDuckMusic?.(profile.duckGain);
+    this.activeSource = src;
+    src.onended = () => {
+      if (this.activeSource === src) {
+        this.activeSource = null;
+        this.onDuckMusic?.(1.0);
       }
-      if (ev.big) {
-        EasySpeech.cancel();
-      }
-      void EasySpeech.speak({
-        text,
-        voice: this.voice,
-        pitch: profile.pitch,
-        rate: profile.rate,
-        volume: Math.min(1, sfx),
-        boundary: () => {
-          if (this.ctx) this.pulseBoundary(this.ctx);
-        },
-        end: () => {
-          this.setDuck(1.0);
-        },
-        error: () => {
-          this.setDuck(1.0);
-        },
-      }).catch(() => {
-        this.setDuck(1.0);
-      });
-    });
+    };
+
+    src.connect(this.paInput);
+    src.start(ctx.currentTime);
   }
 
   stop(): void {
-    if (typeof window !== 'undefined' && typeof window.speechSynthesis !== 'undefined') {
+    if (this.activeSource) {
       try {
-        EasySpeech.cancel();
+        this.activeSource.stop();
       } catch {
-        // ignore if not initialized
+        // ignore
       }
+      this.activeSource = null;
     }
-    this.setDuck(1.0);
+    this.onDuckMusic?.(1.0);
   }
 }

@@ -4,36 +4,19 @@ import {
   createStadiumCrunchCurve,
   evaluateEnvelope,
   formatAnnouncerSpeech,
-  pickMaleVoice,
+  synthesizeSpeechPcm,
   type EnvelopeShape,
 } from './announcer';
-
-describe('pickMaleVoice', () => {
-  it('prefers English male voices over female or non-English voices', () => {
-    const voices = [
-      { name: 'Microsoft Zira Desktop', lang: 'en-US', localService: true },
-      { name: 'Google Deutsch', lang: 'de-DE', localService: false },
-      { name: 'Microsoft David Desktop', lang: 'en-US', localService: true },
-      { name: 'Google UK English Female', lang: 'en-GB', localService: false },
-    ];
-    const picked = pickMaleVoice(voices);
-    expect(picked?.name).toBe('Microsoft David Desktop');
-  });
-
-  it('returns undefined when no voices are available', () => {
-    expect(pickMaleVoice([])).toBeUndefined();
-  });
-});
 
 describe('formatAnnouncerSpeech', () => {
   it('normalizes score deltas and scores for natural speech', () => {
     expect(
       formatAnnouncerSpeech({ text: 'FROM DOWNTOWN!', subtext: 'Barnaby +3', color: '#44ff88', big: true }),
-    ).toBe('FROM DOWNTOWN! Barnaby plus 3');
+    ).toBe('FROM DOWNTOWN!. Barnaby plus 3');
 
     expect(
       formatAnnouncerSpeech({ text: 'END OF QUARTER 1', subtext: '14 - 10', color: '#ffd21f', big: true }),
-    ).toBe('END OF QUARTER 1 14 to 10');
+    ).toBe('END OF QUARTER 1. 14 to 10');
   });
 });
 
@@ -41,20 +24,29 @@ describe('classifyAnnouncerProfile', () => {
   it('assigns pitched-down male delivery and distinct envelope shapes per callout', () => {
     const fire = classifyAnnouncerProfile({ text: "HE'S ON FIRE!!", color: '#ff5500', big: true });
     expect(fire.shape).toBe('epic');
-    expect(fire.pitch).toBeLessThan(0.8);
-    expect(fire.reverbMix).toBeGreaterThan(0.7);
+    expect(fire.playbackRate).toBeLessThan(0.95);
+    expect(fire.samPitch).toBeGreaterThan(75);
+    expect(fire.reverbMix).toBeGreaterThan(0.75);
     expect(fire.crunchDrive).toBeGreaterThan(0.8);
 
     const block = classifyAnnouncerProfile({ text: 'REJECTED!', color: '#44ccff', big: true });
     expect(block.shape).toBe('punchy');
-    expect(block.pitch).toBeLessThan(0.85);
+    expect(block.playbackRate).toBeLessThan(0.95);
 
     const steal = classifyAnnouncerProfile({ text: 'PICKPOCKET!', color: '#44ff88' });
     expect(steal.shape).toBe('staccato');
-    expect(steal.rate).toBeGreaterThan(1.05);
 
     const quarter = classifyAnnouncerProfile({ text: 'QUARTER 2', subtext: 'TIP-OFF!', color: '#ffd21f' });
     expect(quarter.shape).toBe('swell');
+  });
+});
+
+describe('synthesizeSpeechPcm', () => {
+  it('renders non-empty Float32Array PCM audio via SamJs without external models', () => {
+    const profile = classifyAnnouncerProfile({ text: 'REJECTED!', color: '#44ccff', big: true });
+    const pcm = synthesizeSpeechPcm('REJECTED!', profile);
+    expect(pcm).toBeInstanceOf(Float32Array);
+    expect(pcm!.length).toBeGreaterThan(2000);
   });
 });
 
@@ -76,10 +68,8 @@ describe('evaluateEnvelope', () => {
       }
     }
 
-    // Punchy peaks early; swell peaks in the middle
-    expect(evaluateEnvelope('punchy', 0.08).amp).toBeGreaterThan(evaluateEnvelope('punchy', 0.8).amp);
-    expect(evaluateEnvelope('swell', 0.5).amp).toBeGreaterThan(evaluateEnvelope('swell', 0.05).amp);
-    // Epic maintains higher reverb late in the tail than staccato
+    expect(evaluateEnvelope('punchy', 0.08).amp).toBeGreaterThan(evaluateEnvelope('punchy', 0.85).amp);
+    expect(evaluateEnvelope('swell', 0.5).amp).toBeGreaterThan(evaluateEnvelope('swell', 0.02).amp);
     expect(evaluateEnvelope('epic', 0.7).reverb).toBeGreaterThan(evaluateEnvelope('staccato', 0.7).reverb);
   });
 });
