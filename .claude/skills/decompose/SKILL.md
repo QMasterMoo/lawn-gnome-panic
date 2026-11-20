@@ -42,6 +42,10 @@ A dependency inside an epic is a last resort, since it turns parallel work back 
 - Scenes talk through **scene keys** and **data objects** passed to `this.scene.start(key, data)`; systems talk through **exported functions** or **events** on `this.events` / `this.game.events`. Put the exact key strings and payload types in `src/config.ts` in the foundation epic.
 - Assets are a contract too: texture keys, frame sizes, animation keys. Either generate them in code (Graphics → `generateTexture`) or download them in the foundation epic, so no parallel worker waits on art.
 - Tuning numbers (speeds, spawn rates) go in `config.ts` so the human can tweak them without reading gameplay code.
+- Write the simulation as pure functions of plain data (no `Ctx`, no DOM at import time) and keep mesh building in functions that take a `scene`, not a whole `Ctx`. That keeps a party slice a small issue later instead of a refactor.
+- **Mobile by default:** input is a system like any other. Put touch controls (on-screen buttons or gestures for every action) and a phone-sized layout in the plan, in their own issue if they are big. "Done when" for UI issues includes a phone viewport check.
+- **Online by default, where it fits:** plan multiplayer on `@lawn/mp` (`packages/mp/README.md`): a `net` system with its message types in the game's `net/protocol.ts`, the game added to `GAMES`, one browser as host. Keep the simulation pure so the host can run it and guests only render. If online play doesn't fit yet, skip it and record why in the roadmap and the PR.
+- A party slice issue owns `games/<name>/src/minigames/` plus the few modules it refactors once (name them). It pastes the size rules, the `MinigameDef` contract from `packages/party/src/types.ts`, and a Design section like `docs/roadmaps/gnome-party/2H-golf-slice.md`. Done when: `npm test -w games/<name>` (includes `testMinigame`), the game's build, and the base game unchanged.
 
 ## Sizing an issue
 
@@ -86,7 +90,13 @@ Nearby files the worker must not touch, especially files another issue owns.
 
 ## Before you decompose
 
-Read the code first. Every path and signature in an issue should be one you confirmed. Read `CLAUDE.md` and `SOUL.md`. If the goal is ambiguous in a way that would change how you cut it, ask before planning.
+Read the code first. Every path and signature in an issue should be one you confirmed. Read `AGENTS.md` and `SOUL.md`. If the goal is ambiguous in a way that would change how you cut it, ask before planning.
+
+Party slice check (no need to ask the user):
+
+- **New game:** decide whether a party-sized round of it fits the size rules in `packages/party/README.md` (20-60 s, one verb, four at once, small JSON state). If it fits, add a slice issue to the last epic. If not, add a backlog row saying why or "later".
+- **Feature for a game that has `src/minigames/`:** every issue that changes a module the slice imports puts `npm test -w games/<name>` under "Done when".
+- **Feature for a game without a slice:** add a slice issue only when the backlog row says it fits and the feature already makes the needed modules callable on their own. Never retrofit other games.
 
 ## Check the plan
 
@@ -103,4 +113,5 @@ For each epic:
 2. For each epic in order, launch one `haiku-worker` Agent call per issue **in a single message** so they run in parallel. Paste the full issue text into the prompt; the worker cannot see the roadmap file unless you name it.
 3. When an epic's workers report, run the end-of-epic check yourself (`npm run build -w games/<name>`). Fix small breakage directly; for larger breakage write a fix issue.
 4. Before the next epic, re-check its issues against the code as it now stands and correct their text.
-5. Report the shape: how many epics, issues per epic, any dependency with its reason, and what failed.
+5. After the last epic: commit, push the branch and open a pull request (see "Finishing work" in `AGENTS.md`). Workers never commit.
+6. Report the shape: how many epics, issues per epic, any dependency with its reason, what failed, and the PR link.

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0284c7" />
+  <!-- Summit flag -->
+  <rect x="31" y="9" width="2.5" height="14" fill="#f8fafc" />
+  <polygon points="33.5,9 46,13.5 33.5,18" fill="#ef4444" />
+  <!-- Mountain -->
+  <polygon points="4,58 32,19 60,58" fill="#475569" />
+  <polygon points="32,19 60,58 32,58" fill="#334155" />
+  <!-- Snow cap -->
+  <polygon points="32,19 22,33 27,31 32,35 37,31 42,33" fill="#f8fafc" />
+</svg>

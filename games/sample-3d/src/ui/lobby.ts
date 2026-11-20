@@ -1,8 +1,10 @@
+import { createVolumeButton } from '@arcade/volume';
 import type { CharacterId } from '../config';
 import type { GameMode, LobbyCallbacks, LobbyUI, MetaSave, MetaUpgradeDef } from '../config';
 import type { VisualMode } from '../config';
-import { CHARACTERS, CHARACTER_ORDER, LOCKED_CHARACTER_NAMES, META_UPGRADES, SOLO_LEVELS, TUNING, upgradeCost } from '../config';
+import { CHARACTERS, CHARACTER_ORDER, LOCKED_CHARACTER_NAMES, META_UPGRADES, SOLO_LEVELS, TUNING, upgradeCost, isLevelUnlocked, levelInWorld } from '../config';
 import { checkName, NAME_MAX } from '../net/textFilter';
+import { volume } from '../volume';
 
 /** The lobby's modes: the two game modes, plus ONLINE (matchmaking, not a local run). */
 type LobbyMode = GameMode | 'online';
@@ -19,6 +21,20 @@ const CSS = `
   background: rgba(10,4,30,.6); pointer-events: none;
 }
 .lb-logo { color: #ffd54a; font-size: 26px; line-height: 1; text-shadow: 0 3px 0 #000; white-space: nowrap; }
+.lb-season {
+  position: absolute; left: 18px; bottom: 22px; max-width: 290px; z-index: 5; box-sizing: border-box; pointer-events: none; transform: rotate(-6deg); transform-origin: left bottom;
+  background: linear-gradient(135deg, #ff7a1a, #e8432c 55%, #8e2a8f); border: 4px solid #ffd54a; border-radius: 14px;
+  padding: 10px 18px 12px; box-shadow: 0 6px 0 #000, 0 0 28px rgba(255,140,40,.7);
+  animation: lb-season-pulse 1.6s ease-in-out infinite;
+}
+.lb-season-big { font-size: 46px; line-height: 1; white-space: nowrap; color: #fff4c2; text-shadow: 0 4px 0 #5a1400, 0 0 12px #ffb300; letter-spacing: 2px; }
+.lb-season-sub { font-size: 10px; color: #fff; letter-spacing: 1px; margin-top: 4px; line-height: 1.3; }
+@keyframes lb-season-pulse { 0%, 100% { transform: rotate(-6deg) scale(1); } 50% { transform: rotate(-6deg) scale(1.05); } }
+@media (max-width: 700px) {
+  .lb-season { left: auto; right: 8px; bottom: auto; top: 46px; max-width: none; padding: 3px 8px 4px; border-width: 2px; border-radius: 8px; box-shadow: 0 3px 0 #000; }
+  .lb-season-big { font-size: 18px; }
+  .lb-season-sub { display: none; }
+}
 .lb-tag { font-size: 10px; color: #d8c8ff; letter-spacing: 1px; margin-top: 4px; white-space: nowrap; }
 .lb-nav { flex: 1; display: flex; justify-content: center; gap: 22px; }
 .lb-tab {
@@ -35,6 +51,15 @@ const CSS = `
   background: #ffb300; color: #2a1400; border-radius: 999px; padding: 6px 14px;
   font-size: 15px; white-space: nowrap;
 }
+.lb-vol-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(20,8,50,.85); color: #fff; border: 1px solid rgba(255,255,255,.35);
+  border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px;
+  cursor: pointer; pointer-events: auto; white-space: nowrap;
+}
+.lb-vol-btn:hover { background: rgba(40,18,90,.95); }
+.lb-vol-btn .vb-icon { font-size: 15px; line-height: 1; }
+.lb-vol-btn .vb-label { font-size: 12px; letter-spacing: 1px; color: #ffd54a; }
 .lb-h {
   font-size: 20px; font-style: italic; text-transform: uppercase; margin: 0 0 8px;
   text-shadow: 0 3px 0 #000, 0 0 14px rgba(0,0,0,.7);
@@ -105,8 +130,8 @@ const CSS = `
 }
 .lb-buy:disabled { background: #555; color: #999; cursor: not-allowed; opacity: .6; }
 .lb-stats {
-  position: absolute; left: 24px; bottom: 24px; font-size: 13px; letter-spacing: 1px;
-  text-shadow: 0 2px 0 #000; max-width: 560px;
+  position: absolute; left: 330px; bottom: 24px; font-size: 13px; letter-spacing: 1px;
+  text-shadow: 0 2px 0 #000; max-width: min(520px, calc(100vw - 700px));
 }
 .lb-tip { margin-top: 6px; font-family: system-ui, sans-serif; font-style: italic; font-size: 14px; color: #ffd9a0; }
 .lb-play {
@@ -162,6 +187,10 @@ const CSS = `
   filter: grayscale(1); cursor: not-allowed;
 }
 .lb-level-wrap { margin-bottom: 8px; pointer-events: auto; }
+.lb-world-tag {
+  flex: 0 0 auto; align-self: center; white-space: nowrap; padding-right: 2px;
+  font-size: 11px; font-weight: bold; letter-spacing: 1px; color: #ffd9a0; text-shadow: 0 2px 0 #000;
+}
 .lb-level-cap {
   margin-top: 4px; font-size: 11px; font-style: italic; color: #ffd9a0; text-align: center; text-shadow: 0 2px 0 #000;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -298,7 +327,11 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   // Top bar
   const top = h('div', 'lb-top');
   const brand = h('div');
-  brand.append(h('div', 'lb-logo', 'LAWN GNOME PANIC'), h('div', 'lb-tag', 'SEASON 1: THE LAWN REMEMBERS'));
+  brand.append(h('div', 'lb-logo', 'LAWN GNOME PANIC'), h('div', 'lb-tag', 'SEASON 2: THE DESERT REMEMBERS'));
+  // SEASON 2 corner badge (bottom-left): World 2 is out.
+  const season = h('div', 'lb-season');
+  season.append(h('div', 'lb-season-big', 'SEASON 2'), h('div', 'lb-season-sub', 'WORLD 2: THE ARIZONA YARD. NEW DESERT POWERS.'));
+  screen.appendChild(season);
   const nav = h('div', 'lb-nav');
   for (const name of NAV) {
     const tab = h('button', name === 'PLAY' ? 'lb-tab on' : 'lb-tab', name);
@@ -322,7 +355,14 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   privacy.rel = 'noopener';
   privacy.title = 'What the game collects (anonymous reports, no names or chat)';
   privacy.addEventListener('pointerdown', (e) => e.stopPropagation());
-  top.append(brand, nav, acorns, privacy, gh);
+  top.append(brand, nav, acorns);
+  const volBtn = createVolumeButton(top, volume, {
+    buttonClassName: 'lb-vol-btn',
+    title: 'Audio',
+    theme: { accent: '#ffd54a', bg: 'rgba(14, 6, 40, .96)', border: 'rgba(255,255,255,.25)' },
+  });
+  volBtn.button.title = 'Volume settings (M toggles music)';
+  top.append(privacy, gh);
 
   // Character column
   const chars = h('div', 'lb-chars');
@@ -462,39 +502,48 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
   }
   // Solo level picker, directly above the mode row (shown in SOLO only)
   let level = 1;                          // 1-based solo level
-  let unlocked = 1;                       // solo levels the save has unlocked
-  let seenUnlocked: number | null = null; // levelsUnlocked at the last render
+  let open: boolean[] = SOLO_LEVELS.map((_d, i) => levelInWorld(i).pos === 0); // unlocked, by SOLO_LEVELS index
+  let seenOpen: boolean[] | null = null;  // `open` at the last render
   const levelWrap = h('div', 'lb-level-wrap');
-  const levelRow = h('div', 'lb-mode');
   const levelBtns: HTMLButtonElement[] = [];
-  SOLO_LEVELS.forEach((_def, i) => {
-    const cell = h('div', 'lb-mode-cell');
-    const btn = h('button', 'lb-mode-btn', `LV ${i + 1}`);
-    btn.type = 'button';
-    btn.onclick = () => {
-      if (i + 1 > unlocked) {
-        showToast(`Beat Level ${i} to unlock.`);
-        return;
-      }
-      setLevel(i + 1);
-    };
-    levelBtns.push(btn);
-    cell.appendChild(btn);
-    levelRow.appendChild(cell);
-  });
+  // One row per world: a 'WORLD n' tag, then that world's level buttons. levelBtns stays indexed by SOLO_LEVELS.
+  const worlds = SOLO_LEVELS.map((d) => d.world).filter((w, i, all) => all.indexOf(w) === i);
+  for (const world of worlds) {
+    const levelRow = h('div', 'lb-mode');
+    levelRow.appendChild(h('div', 'lb-world-tag', `WORLD ${world}`));
+    SOLO_LEVELS.forEach((def, i) => {
+      if (def.world !== world) return;
+      const cell = h('div', 'lb-mode-cell');
+      const btn = h('button', 'lb-mode-btn', def.label);
+      btn.type = 'button';
+      btn.onclick = () => {
+        if (!open[i]) {
+          showToast(`Beat ${SOLO_LEVELS[i - 1].label} to unlock.`);
+          return;
+        }
+        setLevel(i + 1);
+      };
+      levelBtns[i] = btn;
+      cell.appendChild(btn);
+      levelRow.appendChild(cell);
+    });
+    levelWrap.appendChild(levelRow);
+  }
   const levelCap = h('div', 'lb-level-cap');
-  levelWrap.append(levelRow, levelCap);
+  levelWrap.appendChild(levelCap);
 
   function applyLevels(): void {
     levelBtns.forEach((btn, i) => {
-      const locked = i + 1 > unlocked;
+      const locked = !open[i];
       btn.classList.toggle('locked', locked);
       btn.classList.toggle('on', !locked && i + 1 === level);
-      btn.textContent = `${locked ? '\u{1F512} ' : ''}LV ${i + 1}`;
+      btn.textContent = `${locked ? '\u{1F512} ' : ''}${SOLO_LEVELS[i].label}`;
     });
     const def = SOLO_LEVELS[level - 1];
     const name = def.name.slice(def.name.indexOf(':') + 2);
-    levelCap.textContent = `${name} · Boss: ${def.bossCount} combine${def.bossCount === 1 ? '' : 's'}`;
+    const noun = def.theme === 'desert' ? 'giant armadillo' : 'combine';
+    const bossNoun = def.bossCount === 1 ? noun : `${noun}s`;
+    levelCap.textContent = `${name} · Boss: ${def.bossCount} ${bossNoun}`;
   }
 
   function setLevel(n: number): void {
@@ -503,14 +552,16 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
     updatePlaySub();
   }
 
-  /** Re-reads the unlock count. A newly unlocked level is selected; a selection that is now locked falls back to the highest unlocked. */
+  /** Re-reads the unlocks. A newly unlocked level is selected; a selection that is now locked falls back to its world's first level. */
   function syncLevels(save: MetaSave): void {
-    const count = Math.min(Math.max(save.levelsUnlocked, 1), SOLO_LEVELS.length);
-    const prev = seenUnlocked;
-    seenUnlocked = count;
-    unlocked = count;
-    if (prev !== null && count > prev) level = count;
-    if (level > unlocked) level = unlocked;
+    const prev = seenOpen;
+    open = SOLO_LEVELS.map((_d, i) => isLevelUnlocked(save, i));
+    seenOpen = open;
+    if (prev) {
+      const fresh = open.findIndex((o, i) => o && !prev[i]);
+      if (fresh >= 0) level = fresh + 1;
+    }
+    if (!open[level - 1]) level = level - levelInWorld(level - 1).pos;
     applyLevels();
   }
 
@@ -715,6 +766,7 @@ export function createLobbyUI(root: HTMLElement, cb: LobbyCallbacks): LobbyUI {
       render(save, true);
     },
     hide() {
+      volBtn.close();
       visible = false;
       matchBox.style.display = 'none';
       screen.style.display = 'none';

@@ -122,24 +122,88 @@ export const TUNING = {
   levelBreatherS: 8,         // no spawns for this long after a level clear
 } as const;
 
+/** Which yard a level is played in. World 1 is the front lawn; world 2 is a desert house yard. */
+export type WorldTheme = 'lawn' | 'desert';
+
 /** A solo level: the waves replay with these multipliers, then the boss fight ends the level. */
 export interface LevelDef {
+  world: 1 | 2;
+  theme: WorldTheme;
+  label: string;         // short lobby label, e.g. '2-1' (world-level)
   name: string;
   sub: string;
   speedMult: number;
   hpMult: number;
   spawnMult: number;     // multiplies the wave spawn interval (lower = more often)
   maxAliveMult: number;
-  bossCount: number;     // combines in the boss fight
+  rampMult: number;      // the wave clock runs this much faster (1 = WAVES as written; 2 = the horde arrives in half the time)
+  bossCount: number;     // combines (or giant armadillos) in the boss fight
   bossHpMult: number;
   bossAtS: number;       // seconds into the level when the boss fight starts
 }
 
-/** Solo levels, picked in the lobby. Each is its own run that is won by beating its boss fight; beating one unlocks the next. */
+/**
+ * Solo levels, picked in the lobby: 3 in world 1, then 3 in world 2. Each is its own run that is won by beating
+ * its boss fight; beating one unlocks the next (beating 1-3 unlocks 2-1). World 2 starts harder than 1-3
+ * and each step is bigger, and its wave clock runs faster so the late tiers arrive sooner.
+ */
 export const SOLO_LEVELS: readonly LevelDef[] = [
-  { name: 'LEVEL 1: THE FRONT LAWN', sub: 'Mow or be mowed.', speedMult: 1, hpMult: 1, spawnMult: 1, maxAliveMult: 1, bossCount: 1, bossHpMult: 1, bossAtS: 300 },
-  { name: 'LEVEL 2: MOW HARDER', sub: 'Same mowers. Faster, tougher, and more of them. They are upset.', speedMult: 1.15, hpMult: 1.7, spawnMult: 0.8, maxAliveMult: 1.3, bossCount: 2, bossHpMult: 1.3, bossAtS: 330 },
-  { name: 'LEVEL 3: MOW HARDEST WITH A VENGEANCE', sub: 'Three combines are coming. This is fine.', speedMult: 1.3, hpMult: 2.6, spawnMult: 0.65, maxAliveMult: 1.6, bossCount: 3, bossHpMult: 1.6, bossAtS: 360 },
+  { world: 1, theme: 'lawn', label: '1-1', name: 'LEVEL 1: THE FRONT LAWN', sub: 'Mow or be mowed.', speedMult: 1, hpMult: 1, spawnMult: 1, maxAliveMult: 1, rampMult: 1, bossCount: 1, bossHpMult: 1, bossAtS: 300 },
+  { world: 1, theme: 'lawn', label: '1-2', name: 'LEVEL 2: MOW HARDER', sub: 'Same mowers. Faster, tougher, and more of them. They are upset.', speedMult: 1.15, hpMult: 1.7, spawnMult: 0.8, maxAliveMult: 1.3, rampMult: 1, bossCount: 2, bossHpMult: 1.3, bossAtS: 330 },
+  { world: 1, theme: 'lawn', label: '1-3', name: 'LEVEL 3: MOW HARDEST WITH A VENGEANCE', sub: 'Three combines are coming. This is fine.', speedMult: 1.3, hpMult: 2.6, spawnMult: 0.65, maxAliveMult: 1.6, rampMult: 1, bossCount: 3, bossHpMult: 1.6, bossAtS: 360 },
+  { world: 2, theme: 'desert', label: '2-1', name: 'WORLD 2-1: THE DRY YARD', sub: 'No grass to mow. The locals are armored and they want your shade.', speedMult: 1.3, hpMult: 2.4, spawnMult: 0.65, maxAliveMult: 1.6, rampMult: 1.5, bossCount: 2, bossHpMult: 1.7, bossAtS: 240 },
+  { world: 2, theme: 'desert', label: '2-2', name: 'WORLD 2-2: HIGH NOON', sub: 'Faster lizards. Rounder armadillos. Fewer excuses.', speedMult: 1.45, hpMult: 3.4, spawnMult: 0.55, maxAliveMult: 1.85, rampMult: 1.75, bossCount: 3, bossHpMult: 2.1, bossAtS: 250 },
+  { world: 2, theme: 'desert', label: '2-3', name: 'WORLD 2-3: THE ARMADILLO MOON', sub: 'Four giant armadillos. They roll. You run.', speedMult: 1.6, hpMult: 4.6, spawnMult: 0.47, maxAliveMult: 2.1, rampMult: 2, bossCount: 4, bossHpMult: 2.5, bossAtS: 260 },
+];
+
+/** The worlds in SOLO_LEVELS order, e.g. [1, 2]. */
+export const WORLDS: readonly number[] = SOLO_LEVELS.map((d) => d.world).filter((w, i, all) => all.indexOf(w) === i);
+
+/** Position of a level inside its world (0-based) and its world's level count. */
+export function levelInWorld(idx: number): { world: number; pos: number; count: number } {
+  const world = SOLO_LEVELS[idx].world;
+  const first = SOLO_LEVELS.findIndex((d) => d.world === world);
+  return { world, pos: idx - first, count: SOLO_LEVELS.filter((d) => d.world === world).length };
+}
+
+/** Every world's first level is open; later levels open by beating the one before them in the same world. */
+export function isLevelUnlocked(save: MetaSave, idx: number): boolean {
+  if (idx < 0 || idx >= SOLO_LEVELS.length) return false;
+  const { world, pos } = levelInWorld(idx);
+  return pos < (save.worldUnlocked[world - 1] ?? 1);
+}
+
+/** After beating level idx: unlocks the next level of the same world. Returns its 1-based SOLO_LEVELS number, or null. */
+export function unlockAfter(save: MetaSave, idx: number): number | null {
+  const { world, pos, count } = levelInWorld(idx);
+  if (pos + 1 >= count) return null;
+  const have = save.worldUnlocked[world - 1] ?? 1;
+  if (have >= pos + 2) return null;
+  save.worldUnlocked[world - 1] = pos + 2;
+  return idx + 2;
+}
+
+/** Display names for the enemies of each theme ('Killed by: <name>'). The lawn uses MOWER_TIERS[tier].name. */
+export const DESERT_ENEMY_NAMES: Record<MowerTier, string> = {
+  reel: 'a Baby Gecko (it is small and it is furious)',
+  green: 'an Armadillo',
+  yellow: 'a Horned Lizard',
+  red: 'a Racing Lizard (the fast one)',
+  combine: 'THE GIANT ARMADILLO',
+};
+
+/** The name of an enemy tier in a theme. */
+export function enemyName(tier: MowerTier, theme: WorldTheme): string {
+  return theme === 'desert' ? DESERT_ENEMY_NAMES[tier] : MOWER_TIERS[tier].name;
+}
+
+/** Wave banners for the first desert level, by WAVES index (the lawn uses WAVES[i].banner). */
+export const DESERT_WAVE_BANNERS: readonly ({ title: string; sub: string } | undefined)[] = [
+  undefined,
+  { title: 'ARMADILLOS', sub: 'Small tanks with ears. They do not stop for gnomes.' },
+  { title: 'HORNED LIZARDS', sub: 'They are pointy on purpose.' },
+  { title: 'RACING LIZARDS', sub: 'The desert has a fast one too. Of course it does.' },
+  { title: 'STAMPEDE', sub: 'Everything that lives out here, all at once.' },
 ];
 
 export interface MowerDifficulty {
@@ -151,7 +215,9 @@ export interface MowerDifficulty {
 
 export type ObstacleKind =
   | 'stump' | 'rock' | 'bush' | 'birdbath' | 'brick' | 'flowerpot' | 'bucket'
-  | 'pool' | 'statue' | 'flower' | 'tree' | 'wateringCan';
+  | 'pool' | 'statue' | 'flower' | 'tree' | 'wateringCan'
+  // desert yard (world 2)
+  | 'cactus' | 'tumbleweed';
 
 /** A vertical cylinder from y=0 to y=height. Nothing may enter it from the side; the player may stand on top. */
 export interface Obstacle {
@@ -218,6 +284,34 @@ const SCATTER: readonly { kind: ObstacleKind; weight: number; r: [number, number
   { kind: 'birdbath', weight: 0.5, r: [1.4, 1.4], h: [3.8, 3.8] },
 ];
 
+/**
+ * The desert yard (world 2): the lawn's hand-placed core with cacti for trees and flowers, tumbleweeds for bushes,
+ * and no stumps. A 'cactus' taller than 12 is a saguaro (arms, can't be climbed); shorter ones are barrel cacti.
+ */
+const DESERT_CORE: readonly Obstacle[] = CORE_OBSTACLES.map((o): Obstacle => {
+  switch (o.kind) {
+    case 'tree': return { ...o, kind: 'cactus', radius: o.radius * 0.6, height: o.height * 0.5 };
+    case 'flower': return { ...o, kind: 'cactus', radius: 1.1, height: o.height * 0.3 };
+    case 'bush': return { ...o, kind: 'tumbleweed', radius: o.radius * 0.7, height: o.height * 0.8 };
+    case 'stump': return { ...o, kind: 'rock' };
+    case 'wateringCan': return { ...o, kind: 'cactus', radius: 1.2, height: 2.2 };
+    default: return o;
+  }
+});
+
+const DESERT_SCATTER: readonly { kind: ObstacleKind; weight: number; r: [number, number]; h: [number, number] }[] = [
+  { kind: 'rock', weight: 6, r: [1.3, 2.6], h: [0.6, 1.4] },
+  { kind: 'cactus', weight: 5, r: [1.8, 2.8], h: [22, 34] },   // saguaros
+  { kind: 'cactus', weight: 4, r: [0.9, 1.4], h: [1.4, 2.4] }, // barrel cacti
+  { kind: 'tumbleweed', weight: 3, r: [1.4, 2.2], h: [1.4, 2.0] },
+  { kind: 'brick', weight: 2, r: [1.0, 1.0], h: [1.1, 1.1] },
+  { kind: 'flowerpot', weight: 2, r: [1.0, 1.5], h: [1.2, 2.2] },
+  { kind: 'bucket', weight: 0.5, r: [1.4, 1.8], h: [2.4, 2.8] },
+  { kind: 'statue', weight: 0.5, r: [1.0, 1.0], h: [6, 6] },
+  { kind: 'pool', weight: 0.3, r: [5, 7], h: [1.6, 1.6] },
+  { kind: 'birdbath', weight: 0.3, r: [1.4, 1.4], h: [3.8, 3.8] },
+];
+
 /** Deterministic PRNG so the yard is the same every run. */
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -230,13 +324,17 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-function scatterObstacles(count: number, seed: number): Obstacle[] {
+function scatterObstacles(
+  count: number, seed: number,
+  core: readonly Obstacle[] = CORE_OBSTACLES, table: typeof SCATTER = SCATTER,
+): Obstacle[] {
+  const SCATTER = table;
   const rnd = mulberry32(seed);
-  const out: Obstacle[] = [...CORE_OBSTACLES];
+  const out: Obstacle[] = [...core];
   const total = SCATTER.reduce((a, s) => a + s.weight, 0);
   const lerp = (r: [number, number]) => r[0] + (r[1] - r[0]) * rnd();
   let tries = 0;
-  while (out.length < CORE_OBSTACLES.length + count && tries < count * 20) {
+  while (out.length < core.length + count && tries < count * 20) {
     tries++;
     let pick = rnd() * total;
     let def = SCATTER[0];
@@ -252,7 +350,21 @@ function scatterObstacles(count: number, seed: number): Obstacle[] {
   return out;
 }
 
-export const OBSTACLES: readonly Obstacle[] = scatterObstacles(240, 1337)
+const LAWN_OBSTACLES: readonly Obstacle[] = scatterObstacles(240, 1337);
+const DESERT_OBSTACLES: readonly Obstacle[] = scatterObstacles(240, 2020, DESERT_CORE, DESERT_SCATTER);
+
+/**
+ * The obstacles of the yard in play. One array whose contents setObstacleTheme() swaps in place,
+ * so every module that imported it sees the current yard. Starts as the lawn.
+ */
+export const OBSTACLES: readonly Obstacle[] = [...LAWN_OBSTACLES];
+
+/** Makes OBSTACLES the given theme's yard. */
+export function setObstacleTheme(theme: WorldTheme): void {
+  const list = OBSTACLES as Obstacle[];
+  list.length = 0;
+  list.push(...(theme === 'desert' ? DESERT_OBSTACLES : LAWN_OBSTACLES));
+}
 
 // =====================================================================
 // Player stats (meta upgrades + in-run passives feed these)
@@ -349,7 +461,7 @@ export interface GnomeLook {
   glasses: boolean;                                      // round glasses
 }
 
-export type CharacterId = 'gnorman' | 'gnancy';
+export type CharacterId = 'gnorman' | 'gnancy' | 'mine';
 
 export interface CharacterDef {
   id: CharacterId;
@@ -372,17 +484,24 @@ export const CHARACTERS: Record<CharacterId, CharacterDef> = {
     look: { hat: 0x7e57c2, shirt: 0x2e8b57, pants: 0x5d4037, skin: 0xf8dcc8, boots: 0x6d4c41, beard: null, hair: { color: 0xe2571e, style: 'pigtails' }, freckles: true, dress: true, glasses: true },
     startingWeapons: { slingshot: 1 },
   },
+  // Filled from the player's saved Gnome Creator look at start-up (see main.ts); the default is a placeholder.
+  mine: {
+    id: 'mine', name: 'MY GNOME', rarity: 'CUSTOM-MADE', flavour: 'Made in the Gnome Creator. Same slingshot, better hat.',
+    look: { hat: 0xd93636, shirt: 0x2f64c9, pants: 0x6b4a2e, skin: 0xf1c27d, boots: 0x222222, beard: 0xf4f4f4, hair: null, freckles: false, dress: false, glasses: false },
+    startingWeapons: { slingshot: 1 },
+  },
 };
 
-/** Lobby order. Names not in CHARACTERS are shown as locked "COMING SOON" cards. */
-export const CHARACTER_ORDER: readonly CharacterId[] = ['gnorman', 'gnancy'];
+/** Lobby order. Names not in CHARACTERS are shown as locked "COMING SOON" cards. 'mine' is pushed at start-up only when the player has a gnome. */
+export const CHARACTER_ORDER: CharacterId[] = ['gnorman', 'gnancy'];
 export const LOCKED_CHARACTER_NAMES: readonly string[] = ['GNOAH', 'SIR GNOMESALOT'];
 
 export interface MetaSave {
   version: 1;
   name: string;              // online display name, passed checkName()
   character: CharacterId;    // the selected character
-  levelsUnlocked: number;    // solo levels available in the lobby (1..SOLO_LEVELS.length)
+  /** Levels unlocked per world: index 0 = world 1, 1 = world 2. Each starts at 1 (every world's first level is open). */
+  worldUnlocked: number[];
   acorns: number;            // bankable currency
   totalAcornsEarned: number;
   runs: number;              // completed runs (deaths + victories)
@@ -399,14 +518,20 @@ export const SAVE_KEY = 'sample-3d.save.v1';
 
 export type WeaponId =
   | 'slingshot' | 'trowels' | 'sprinkler' | 'mushrooms'
-  | 'stormOfDaggers' | 'leafPileFireball' | 'hoseMissile' | 'windChimeLullaby' | 'leafBlower' | 'pitchfork';
-export type PassiveId = 'fertilizer' | 'compost' | 'comfyBoots' | 'rake' | 'thickBeard' | 'sneakers' | 'luckyClover' | 'mulchArmor';
+  | 'stormOfDaggers' | 'leafPileFireball' | 'hoseMissile' | 'windChimeLullaby' | 'leafBlower' | 'pitchfork'
+  // World 2 (desert) only
+  | 'saguaroSpines' | 'haboob' | 'monsoon';
+export type PassiveId = 'fertilizer' | 'compost' | 'comfyBoots' | 'rake' | 'thickBeard' | 'sneakers' | 'luckyClover' | 'mulchArmor'
+  // World 2 (desert) only
+  | 'pricklyPear' | 'boloTie';
 
 export interface WeaponDef {
   id: WeaponId;
   name: string;
   blurb: string;
   levelText: readonly string[]; // index 0 = level 1 text; length = max level
+  /** Only offered on level-up cards in desert (World 2) levels. */
+  desertOnly?: boolean;
 }
 
 export const WEAPON_DEFS: Record<WeaponId, WeaponDef> = {
@@ -460,6 +585,22 @@ export const WEAPON_DEFS: Record<WeaponId, WeaponDef> = {
     blurb: 'Stabs forward in a three-pronged rectangle, and every third stab is declared royal, nobody asked.',
     levelText: ["Stabs the area in front of you. Regularly.", "Wider prongs, more damage.", "Longer reach. Royal stabs hit harder.", "Faster stabs, longer reach.", "Royal stabs hit four times as hard. Long reach. MAX."],
   },
+  // ---- World 2 (desert, Arizona) only ----
+  saguaroSpines: {
+    id: 'saguaroSpines', name: 'Saguaro Spine Burst', desertOnly: true,
+    blurb: 'A pocket saguaro. It is 150 years old and it has had enough.',
+    levelText: ['Bursts a ring of 8 cactus spines outward.', '+4 spines, more damage.', 'Spines pierce 2 critters, fly farther.', '+4 spines, bursts more often.', '24 spines, pierce 4. The whole Sonoran. MAX.'],
+  },
+  haboob: {
+    id: 'haboob', name: 'Pocket Haboob', desertOnly: true,
+    blurb: 'A wall of dust follows you around. Phoenix calls this Tuesday.',
+    levelText: ['A dust storm swirls around you, grinding and slowing critters inside.', 'Wider storm, more damage.', 'Grinds faster, slows harder.', 'Wider, harder.', 'Full monsoon-season haboob. Visibility zero. MAX.'],
+  },
+  monsoon: {
+    id: 'monsoon', name: 'Monsoon Lightning', desertOnly: true,
+    blurb: 'July in Arizona: a clear sky, then suddenly the sky is very much not clear.',
+    levelText: ['Lightning strikes 1 critter near you every few seconds.', '+1 strike, more damage.', 'Each bolt chains to 2 more critters.', '+1 strike, strikes more often.', '4 strikes, chains to 4, big splash. MAX.'],
+  },
 };
 
 export interface PassiveDef {
@@ -469,6 +610,8 @@ export interface PassiveDef {
   effect: string;
   maxLevel: number;
   perLevel: number;
+  /** Only offered on level-up cards in desert (World 2) levels. */
+  desertOnly?: boolean;
 }
 
 export const PASSIVE_DEFS: Record<PassiveId, PassiveDef> = {
@@ -480,6 +623,9 @@ export const PASSIVE_DEFS: Record<PassiveId, PassiveDef> = {
   sneakers: { id: 'sneakers', name: 'Light-Up Sneakers', blurb: 'They blink when you run. You run longer out of pride.', effect: '+0.6s sprint', maxLevel: 4, perLevel: 0.6 },
   luckyClover: { id: 'luckyClover', name: 'Four-Leaf Clover', blurb: 'Mowers drop acorns more often. Statistically suspicious.', effect: '+40% acorn drops', maxLevel: 3, perLevel: 0.4 },
   mulchArmor: { id: 'mulchArmor', name: 'Mulch Armor', blurb: 'Soft, damp, protective. Longer invincibility after a hit.', effect: '+0.3s invincibility', maxLevel: 3, perLevel: 0.3 },
+  // ---- World 2 (desert, Arizona) only ----
+  pricklyPear: { id: 'pricklyPear', name: 'Prickly Pear Lemonade', desertOnly: true, blurb: 'Bright pink, very cold, mostly sugar. You run on it now.', effect: '+10% move speed, +0.4s sprint', maxLevel: 4, perLevel: 0.1 },
+  boloTie: { id: 'boloTie', name: 'Turquoise Bolo Tie', desertOnly: true, blurb: 'Official state neckwear. Critters respect it. They are wrong to.', effect: '+12% damage, +0.5m pickup range', maxLevel: 4, perLevel: 0.12 },
 };
 
 export interface SlingshotLevel { damage: number; cooldownS: number; projectiles: number; speed: number; pierce: number; range: number }
@@ -602,6 +748,55 @@ export interface PitchforkLevel {
   royalEvery: number; // every Nth thrust is royal (count)
   royalMult: number;  // royal thrust damage = damage × royalMult
 }
+// ---- World 2 (desert) weapons ----
+export interface SaguaroSpinesLevel {
+  cooldownS: number; // seconds between bursts
+  count: number;     // spines per burst, evenly spaced around the gnome
+  damage: number;    // per hit
+  speed: number;     // units/s
+  range: number;     // a spine is removed after flying this far
+  pierce: number;    // extra critters a spine passes through (0 = stops at the first)
+}
+export const SAGUARO_SPINES_LEVELS: readonly SaguaroSpinesLevel[] = [
+  { cooldownS: 2.4, count: 8, damage: 14, speed: 16, range: 10, pierce: 0 },
+  { cooldownS: 2.3, count: 12, damage: 18, speed: 16, range: 10, pierce: 0 },
+  { cooldownS: 2.2, count: 12, damage: 22, speed: 18, range: 13, pierce: 2 },
+  { cooldownS: 1.8, count: 16, damage: 26, speed: 18, range: 13, pierce: 2 },
+  { cooldownS: 1.5, count: 24, damage: 32, speed: 20, range: 16, pierce: 4 },
+];
+
+export interface HaboobLevel {
+  radius: number;     // storm radius around the gnome, units
+  tickS: number;      // seconds between damage ticks
+  damage: number;     // per tick, per critter inside
+  slowFactor: number; // speed multiplier on critters inside
+  slowS: number;      // how long the slow lasts after a tick
+}
+export const HABOOB_LEVELS: readonly HaboobLevel[] = [
+  { radius: 3.0, tickS: 0.6, damage: 5, slowFactor: 0.75, slowS: 0.7 },
+  { radius: 3.6, tickS: 0.6, damage: 7, slowFactor: 0.75, slowS: 0.7 },
+  { radius: 3.9, tickS: 0.45, damage: 9, slowFactor: 0.6, slowS: 0.8 },
+  { radius: 4.6, tickS: 0.45, damage: 12, slowFactor: 0.6, slowS: 0.8 },
+  { radius: 5.5, tickS: 0.35, damage: 15, slowFactor: 0.5, slowS: 1.0 },
+];
+
+export interface MonsoonLevel {
+  cooldownS: number;    // seconds between volleys
+  strikes: number;      // bolts per volley, each on a different critter
+  damage: number;       // per bolt (chained hits deal 60%)
+  range: number;        // only critters within this of the gnome are struck
+  chains: number;       // extra critters each bolt jumps to
+  chainRange: number;   // max jump distance
+  splashRadius: number; // damage radius around each bolt's ground point
+}
+export const MONSOON_LEVELS: readonly MonsoonLevel[] = [
+  { cooldownS: 3.2, strikes: 1, damage: 40, range: 14, chains: 0, chainRange: 5, splashRadius: 1.2 },
+  { cooldownS: 3.0, strikes: 2, damage: 50, range: 14, chains: 0, chainRange: 5, splashRadius: 1.3 },
+  { cooldownS: 2.8, strikes: 2, damage: 60, range: 16, chains: 2, chainRange: 6, splashRadius: 1.4 },
+  { cooldownS: 2.3, strikes: 3, damage: 70, range: 16, chains: 2, chainRange: 6, splashRadius: 1.6 },
+  { cooldownS: 1.9, strikes: 4, damage: 85, range: 18, chains: 4, chainRange: 7, splashRadius: 2.2 },
+];
+
 export const PITCHFORK_LEVELS: readonly PitchforkLevel[] = [
   { cooldownS: 1.8, reach: 3.0, halfWidth: 0.9, damage: 16, royalEvery: 3, royalMult: 2 },
   { cooldownS: 1.7, reach: 3.2, halfWidth: 1.0, damage: 20, royalEvery: 3, royalMult: 2 },
@@ -818,6 +1013,8 @@ export interface MowerSystem {
   reset(): void;
   /** Headlights for every mower, including ones spawned later. */
   setNight(night01: number): void;
+  /** Lawn: mower models. Desert: armadillo and lizard models (createCritterModel). Applies to mowers spawned after the call. */
+  setTheme(theme: WorldTheme): void;
   /** Online host: every living mower, compact, numbers rounded to 2 decimals. */
   snapshot(): MowerSnap[];
   /**
@@ -830,7 +1027,7 @@ export interface MowerSystem {
 }
 
 export interface MowerModel {
-  /** 0 = day (headlights off) .. 1 = night (headlights fully on). */
+  /** 0 = day (headlights off) .. 1 = night (headlights fully on; critters: eyes glow). */
   setNight(night01: number): void;
   group: THREE.Group;           // built facing +z, base at y = 0
   setFlash(on: boolean): void;  // white hit flash
@@ -1047,11 +1244,15 @@ export interface Scenery {
   update(dt: number, focus: THREE.Vector3): void;
   /** Sky colours, stars, moon and cloud tint for the time of day. */
   setSky(s: DayNightState): void;
+  /** Lawn: the leafy trees beyond the fences. Desert: mesas and saguaros instead. */
+  setTheme(theme: WorldTheme): void;
 }
 
 /** Lights in the giant house: windows glow at night. */
 export interface HouseLights {
   setNight(night01: number): void;
+  /** Lawn: the cream siding house. Desert: the same house in adobe colours. */
+  setTheme(theme: WorldTheme): void;
 }
 
 // =====================================================================
@@ -1081,6 +1282,8 @@ export interface DayNight {
   state(): DayNightState;
   /** Jumps to a time of day (0..1). */
   setTime(t: number): void;
+  /** Desert: a hotter, paler sky by day. */
+  setTheme(theme: WorldTheme): void;
 }
 
 export interface HudData {
@@ -1097,6 +1300,8 @@ export interface HudData {
   runNumber: number;
   /** e.g. 'LEVEL 2' in solo, '' otherwise. */
   levelLabel: string;
+  /** The boss bar's name for one boss, e.g. 'THE COMBINE' or 'THE GIANT ARMADILLO' (an S is added for several). */
+  bossName: string;
   /** Active timed buffs, e.g. Triple Espresso. */
   buffs: readonly { label: string; remaining01: number }[];
 }
@@ -1167,6 +1372,7 @@ export interface PuppetState {
   alive: boolean;
   character: CharacterId | null; // null = bot: hat and shirt colours picked from a hash of the name
   color: number | null;     // player colour (PLAYER_COLORS): hat and name tag; null = default look
+  look?: GnomeLook;         // a custom gnome from @lawn/gnome; wins over `character`
 }
 
 export interface PuppetSystem {

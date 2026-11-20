@@ -1,10 +1,12 @@
 import { heightAt } from './terrain';
+import { whileHidden } from '@lawn/mp/background';
 import * as THREE from 'three';
 import {
   COLORS, OBSTACLES, PLAYER_RADIUS, PEDESTAL_HEIGHT, MOWER_TIERS, TUNING, WAVES,
   type GamePhase, type InputState, type MowerTier, type RunSummary, type UpgradeChoice,
   type Weapon, type WeaponContext, type WeaponId, type MetaUpgradeId, type VisualMode, type ItemKind, type GameMode,
-  ITEM_DEFS, CHICKEN_HEAL, CAMERA_VIEWS, SOLO_LEVELS, CHARACTERS, type CharacterId, type LobbyCallbacks,
+  ITEM_DEFS, CHICKEN_HEAL, CAMERA_VIEWS, SOLO_LEVELS, CHARACTERS, CHARACTER_ORDER, type CharacterId, type LobbyCallbacks,
+  DESERT_WAVE_BANNERS, enemyName, setObstacleTheme, isLevelUnlocked, unlockAfter, type WorldTheme,
 } from './config';
 import { createInput } from './input';
 import { createTouchControls } from './ui/touch';
@@ -25,7 +27,7 @@ import { computeStats } from './stats';
 import { createRun, addXp, rollChoices, applyChoice } from './run';
 import { WEAPON_FACTORIES } from './weapons';
 import { playSfx, setEngineLevel } from './audio';
-import { startMusic, startMenuMusic, pauseMusic, resumeMusic, stopMusic, isMusicMuted, setMusicMuted } from './music';
+import { startMusic, startMenuMusic, muffleMusic, stopMusic, isMusicMuted, setMusicMuted } from './music';
 import { loadFlags, saveFlags } from './flags';
 import { createPostFX } from './postfx';
 import { buildProp } from './props';
@@ -51,6 +53,15 @@ import { createPuppetSystem } from './net/puppets';
 import { checkName } from './net/textFilter';
 import { MIN_PLAYERS, NET_SEND_HZ, type GameMsg, type KillSnap, type PlayerInfo, type ServerMsg } from './net/protocol';
 import type { KillEvent, MowerKill, NetClient } from './config';
+import { loadMyGnome, getMyGnome, resolveLook, prefetchLooks } from '@lawn/gnome';
+
+// A saved Gnome Creator look becomes the 'mine' card. Must run before createLobbyUI builds the cards.
+const mine = await loadMyGnome();
+if (mine) {
+  CHARACTERS.mine.look = mine.look;
+  CHARACTERS.mine.name = mine.name.toUpperCase();
+  CHARACTER_ORDER.push('mine');
+}
 
 // ---------- no browser zoom on phones ----------
 // CSS touch-action handles most browsers; iOS Safari ignores user-scalable=no, so also cancel its
@@ -94,11 +105,18 @@ const touch = createTouchControls(uiRoot);
 const input = createInput(canvas, touch);
 const rig = createCameraRig(camera);
 const world = buildWorld(scene);
-const props = OBSTACLES.map((o) => {
+let props = OBSTACLES.map((o) => {
   const obj = buildProp(o);
   scene.add(obj);
   return { o, obj };
 });
+/** Frees a prop's merged geometry. Prefab subtrees share @lawn/prefabs' cached geometry, so they are skipped. */
+function disposeProp(obj: THREE.Object3D): void {
+  if (obj.userData.prefab) return;
+  const mesh = obj as THREE.Mesh;
+  if (mesh.isMesh) mesh.geometry.dispose();
+  for (const child of obj.children) disposeProp(child);
+}
 let cullTimer = 0;
 /** Hides props far from the player; the fog hides the pop-in. */
 function cullProps(dt: number, focus: THREE.Vector3): void {
@@ -116,6 +134,29 @@ const houseLights = buildHouse(scene);
 const dayNight = createDayNight();
 let lastDayPhase = dayNight.state().phase;
 const scenery = buildScenery(scene);
+let theme: WorldTheme = 'lawn';
+
+/** Switches the yard: obstacles (and their meshes), ground, backdrop, house, sky and enemy models. */
+function applyTheme(t: WorldTheme): void {
+  if (t === theme) return;
+  theme = t;
+  setObstacleTheme(t);
+  for (const p of props) {
+    scene.remove(p.obj);
+    disposeProp(p.obj);
+  }
+  props = OBSTACLES.map((o) => {
+    const obj = buildProp(o);
+    scene.add(obj);
+    return { o, obj };
+  });
+  cullTimer = 0;
+  world.setSand(t === 'desert');
+  scenery.setTheme(t);
+  houseLights.setTheme(t);
+  dayNight.setTheme(t);
+  mowers.setTheme(t);
+}
 let gnome = createGnomeModel(CHARACTERS.gnorman.look);
 
 /** Swaps the player's model to a character's look (lobby selection). */
@@ -149,7 +190,6 @@ const royaleHud = createRoyaleHud(uiRoot);
 const viewBtn = createViewButton(uiRoot, cycleView);
 const pauseBtn = createPauseButton(uiRoot, () => pauseGame());
 const muteBtn = createMuteButton(uiRoot, isMusicMuted, () => setMusicMuted(!isMusicMuted()));
-muteBtn.show();
 const nowPlaying = createNowPlaying(uiRoot);
 const pauseUI = createPauseUI(uiRoot);
 const puppets = createPuppetSystem(scene);
@@ -163,9 +203,10 @@ function pauseGame(): void {
   touch.setVisible(false);
   viewBtn.hide();
   pauseBtn.hide();
+  muteBtn.hide();
   spectateBar.hide();
   setEngineLevel(0);
-  pauseMusic();
+  muffleMusic(true);
   pauseUI.show({
     mode,
     runNumber: save.runs + 1,
@@ -188,11 +229,12 @@ function resumeGame(): void {
   if (phase !== 'paused') return;
   pauseUI.hide();
   phase = 'playing';
-  resumeMusic();
+  muffleMusic(false);
   input.setPointerLockAllowed(true);
   touch.setVisible(true);
   viewBtn.show();
   pauseBtn.show();
+  muteBtn.show();
   if (online?.spectating && !online.over) spectateBar.show();
 }
 
@@ -285,6 +327,9 @@ const lobbyUI = createLobbyUI(uiRoot, lobbyCallbacks);
 
 // ---------- state ----------
 const save = loadSave();
+if (!mine && save.character === 'mine') save.character = 'gnorman'; // the gnome was cleared since the last visit
+// The character sent on the wire: a custom gnome travels as its look code.
+function wireCharacter(): string { return save.character === 'mine' ? (getMyGnome()?.code ?? 'gnorman') : save.character; }
 // Anonymous usage and error reports to the matchmaking server (off without a server, with Do Not Track, or ?telemetry=0).
 initTelemetry(serverUrl());
 const flags = loadFlags();
@@ -304,6 +349,7 @@ let victoryTimer = -1;
 // Solo levels: the waves replay each level with harder mowers, ending in a boss fight.
 let levelIdx = 0;
 let levelStartS = 0;        // run time when the current level's wave clock started
+let demoSandbox = false;    // ?sandbox (demo recording): no mowers, waves or boss
 let levelBossSpawned = false;
 let bossDone = false;       // royale: its single boss is finished
 let levelsCleared = 0;
@@ -361,6 +407,7 @@ function clearField(): void {
 function goLobby(): void {
   phase = 'lobby';
   sandbox = false;
+  applyTheme('lawn');
   world.setSand(false);
   if (online) {
     net?.leave();
@@ -377,6 +424,9 @@ function goLobby(): void {
   gnome.object.visible = true;
   lobbyStage.setVisible(true);
   hud.hide();
+  viewBtn.hide();
+  pauseBtn.hide();
+  muteBtn.hide();
   levelUp.hide();
   results.hide();
   lobbyUI.show(save);
@@ -399,7 +449,9 @@ function startRun(m: GameMode = 'solo', level = 1): void {
   pendingLevelUps = 0;
   waveIndex = -1;
   victoryTimer = -1;
-  levelIdx = Math.min(SOLO_LEVELS.length, Math.max(1, Math.min(level, save.levelsUnlocked))) - 1;
+  levelIdx = Math.min(SOLO_LEVELS.length, Math.max(1, level)) - 1;
+  if (!isLevelUnlocked(save, levelIdx)) levelIdx = 0;
+  applyTheme(m === 'solo' && !online ? SOLO_LEVELS[levelIdx].theme : 'lawn');
   track('run_start', { mode: online ? 'online' : m, level: m === 'solo' ? levelIdx + 1 : 1 });
   levelStartS = 0;
   levelBossSpawned = false;
@@ -419,6 +471,7 @@ function startRun(m: GameMode = 'solo', level = 1): void {
   viewBtn.setView(flags.view);
   viewBtn.show();
   pauseBtn.show();
+  muteBtn.show();
   hud.show();
   if (mode === 'royale' && online) {
     // Players stand on a ring in join order. Online matches are humans only (no bots).
@@ -448,7 +501,8 @@ function startRun(m: GameMode = 'solo', level = 1): void {
   touch.setVisible(true);
   playSfx('start');
   // Online matches share the server's seed, so everyone gets the same track (not beat-synced).
-  const song = startMusic(online ? online.seed : undefined);
+  const runTheme: WorldTheme = mode === 'solo' && !online ? SOLO_LEVELS[levelIdx].theme : 'lawn';
+  const song = startMusic(online ? online.seed : undefined, runTheme);
   if (!isMusicMuted()) nowPlaying.show(song);
 }
 
@@ -457,6 +511,7 @@ function startSandbox(): void {
   if (phase !== 'lobby' || online || queueing) return;
   sandbox = true;
   mode = 'solo';
+  applyTheme('lawn');
   dayNight.setTime(TUNING.dayStartT);
   lastDayPhase = dayNight.state().phase;
   lobbyUI.hide();
@@ -475,6 +530,7 @@ function startSandbox(): void {
   viewBtn.setView(flags.view);
   viewBtn.show();
   pauseBtn.show();
+  muteBtn.show();
   hud.hide();
   juice.toast('I HATE GRASS', 'No grass. No mowers. No acorns. Just sand. (Esc to leave.)', '#d9c18c');
   phase = 'playing';
@@ -496,10 +552,11 @@ function openLevelUp(): void {
   phase = 'levelup';
   viewBtn.hide();
   pauseBtn.hide();
+  muteBtn.hide();
   touch.setVisible(false);
   input.setPointerLockAllowed(false);
   setEngineLevel(0);
-  choices = rollChoices(run, stats.choiceCount);
+  choices = rollChoices(run, stats.choiceCount, theme);
   levelUp.show(choices, run.rerollsLeft, onPick, onReroll);
 }
 
@@ -520,13 +577,14 @@ function onPick(index: number): void {
     touch.setVisible(true);
     viewBtn.show();
     pauseBtn.show();
+    muteBtn.show();
   }
 }
 
 function onReroll(): void {
   if (run.rerollsLeft <= 0 || phase !== 'levelup') return;
   run.rerollsLeft--;
-  choices = rollChoices(run, stats.choiceCount);
+  choices = rollChoices(run, stats.choiceCount, theme);
   levelUp.show(choices, run.rerollsLeft, onPick, onReroll);
 }
 
@@ -542,6 +600,7 @@ function endRun(victory: boolean): void {
   pauseUI.hide();
   viewBtn.hide();
   pauseBtn.hide();
+  muteBtn.hide();
   rig.view = 'third'; // see your gnome's fate on the results screen
   input.setPointerLockAllowed(false);
   setEngineLevel(0);
@@ -565,17 +624,14 @@ function endRun(victory: boolean): void {
   save.bossKills += levelsCleared;
   // Solo victory unlocks the next level (picked in the lobby).
   let unlockedLevel: number | null = null;
-  if (victory && mode === 'solo' && levelIdx + 2 <= SOLO_LEVELS.length && save.levelsUnlocked < levelIdx + 2) {
-    save.levelsUnlocked = levelIdx + 2;
-    unlockedLevel = save.levelsUnlocked;
-  }
+  if (victory && mode === 'solo') unlockedLevel = unlockAfter(save, levelIdx);
   writeSave(save);
 
   const summary: RunSummary = {
     runNumber: save.runs, victory, elapsedS: run.elapsedS, kills: run.kills, level: run.level,
     acornsCollected: run.acorns, survivalBonus, bossBonus, totalEarned, newBestTime,
     killedBy: victory ? null : killedBy,
-    killedByText: victory ? null : killedByText,
+    killedByText: victory ? null : killedByText ?? (killedBy && theme !== 'lawn' ? enemyName(killedBy, theme) : null),
     levelsCleared,
     soloLevel: mode === 'solo' ? levelIdx + 1 : null,
     unlockedLevel,
@@ -599,10 +655,15 @@ function clearLevel(): void {
   // Solo: beating the level's boss fight wins the run.
   run.bossDefeated = true;
   victoryTimer = TUNING.victoryDelayS;
-  const last = levelIdx >= SOLO_LEVELS.length - 1;
+  const L = SOLO_LEVELS[levelIdx];
+  const next = SOLO_LEVELS[levelIdx + 1];
+  const lastOfWorld = !next || next.world !== L.world;
+  const bossWord = L.theme === 'desert' ? 'GIANT ARMADILLOS' : 'COMBINES';
   hud.banner(
-    last ? 'THE COMBINES ARE DEFEATED' : `LEVEL ${levelIdx + 1} CLEAR!`,
-    last ? 'Three combines. One gnome. The lawn is yours (until it grows back).' : `Level ${levelIdx + 2} is now unlocked in the lobby.`,
+    lastOfWorld ? `WORLD ${L.world} CLEAR! THE ${bossWord} ARE DEFEATED` : `LEVEL ${L.label} CLEAR!`,
+    !next ? 'The desert is yours. It was always going to be hot.'
+      : lastOfWorld ? `World ${next.world} waits in the lobby. Pack sunscreen.`
+      : `Level ${next.label} is now unlocked in the lobby.`,
     3,
   );
 }
@@ -663,23 +724,27 @@ function tickRun(dt: number, inp: InputState): void {
   // Waves and bosses. Solo replays the waves each level with harder mowers; royale is a single level.
   const L = mode === 'solo' ? SOLO_LEVELS[levelIdx] : null;
   const levelTime = Math.max(0, run.elapsedS - levelStartS);
-  const wi = waveIndexAt(levelTime);
-  if (wi !== waveIndex) {
+  const waveTime = levelTime * (L ? L.rampMult : 1); // world 2's wave clock runs faster
+  const wi = waveIndexAt(waveTime);
+  if (wi !== waveIndex && !demoSandbox) {
     waveIndex = wi;
-    const b = WAVES[wi].banner;
-    if (b && levelIdx === 0) hud.banner(b.title, b.sub, 3.5); // tier banners only the first time through
+    // Tier banners only the first time through each world.
+    const firstOfWorld = levelIdx === 0 || (L !== null && SOLO_LEVELS[levelIdx - 1].world !== L.world);
+    const b = theme === 'desert' ? DESERT_WAVE_BANNERS[wi] : WAVES[wi].banner;
+    if (b && firstOfWorld) hud.banner(b.title, b.sub, 3.5);
   }
   if (L && levelBannerAt > 0 && run.elapsedS >= levelBannerAt) {
     levelBannerAt = -1;
     hud.banner(L.name, L.sub, 4);
   }
-  if (sim && !levelBossSpawned && !bossDone && levelTime >= (L ? L.bossAtS : TUNING.bossAtS)) {
+  if (sim && !demoSandbox && !levelBossSpawned && !bossDone && levelTime >= (L ? L.bossAtS : TUNING.bossAtS)) {
     levelBossSpawned = true;
     run.bossSpawned = true;
     const count = L ? L.bossCount : 1;
     mowers.spawnBoss(count, L ? L.bossHpMult : 1);
     playSfx('bossWarning');
-    if (count === 1) hud.banner('A COMBINE APPROACHES', 'Of course there is a boss fight. This is a roguelike.', 4);
+    if (theme === 'desert') hud.banner(`${count} GIANT ARMADILLOS ROLL IN`, count >= 4 ? 'Four. Rolling. At you. Good luck.' : 'They are the size of a car and they are not sorry.', 4);
+    else if (count === 1) hud.banner('A COMBINE APPROACHES', 'Of course there is a boss fight. This is a roguelike.', 4);
     else if (count === 2) hud.banner('TWO COMBINES APPROACH', 'It brought a friend. Rude.', 4);
     else hud.banner(`${count} COMBINES APPROACH`, 'Just triple it. Absolutely unfair. Good luck.', 4);
   }
@@ -692,7 +757,7 @@ function tickRun(dt: number, inp: InputState): void {
     targets.push(...others);
   }
   for (const c of bots.contestants()) if (c.alive) targets.push(c.pos);
-  let kills: MowerKill[] = mowers.update(dt, levelTime, targets, OBSTACLES, (x, z) => world.markMowed(x, z));
+  let kills: MowerKill[] = demoSandbox ? [] : mowers.update(dt, waveTime, targets, OBSTACLES, (x, z) => world.markMowed(x, z));
   if (online) {
     if (online.isHost) for (const k of kills) online.kills.push([r2(k.x), r2(k.z), k.tier, k.by ?? -1]);
     else kills = online.netKills.splice(0);
@@ -808,7 +873,8 @@ function tickRun(dt: number, inp: InputState): void {
     acorns: run.acorns,
     boss: mowers.bossHp(),
     runNumber: save.runs + 1,
-    levelLabel: mode === 'solo' ? `LEVEL ${levelIdx + 1}` : '',
+    levelLabel: mode === 'solo' ? `LEVEL ${SOLO_LEVELS[levelIdx].label}` : '',
+    bossName: theme === 'desert' ? 'THE GIANT ARMADILLO' : 'THE COMBINE',
     buffs: espressoS > 0 ? [{ label: 'TRIPLE ESPRESSO', remaining01: espressoS / TUNING.espressoS }] : [],
   });
 
@@ -927,12 +993,12 @@ async function findMatch(code: string | null): Promise<void> {
   lobbyUI.setMatchStatus('CONNECTING TO THE LAWN...');
   try {
     if (!net) {
-      net = createNetClient(url, { name: save.name, character: save.character });
+      net = createNetClient(url, { name: save.name, character: wireCharacter() });
       net.onMessage(onServerMsg);
       net.onClose(onNetClose);
     }
     await net.connect();
-    net.queue(code, save.character, save.name);
+    net.queue(code, wireCharacter(), save.name);
     track('online_queue', { private: code !== null });
     queueing = true;
     void setAwake(true);
@@ -968,6 +1034,7 @@ function startOnline(m: Extract<ServerMsg, { t: 'match' }>): void {
     players.set(p.id, p);
     if (p.id !== m.you) humansAlive.set(p.id, true);
   }
+  void prefetchLooks(m.players);
   const myColor = m.players.find((p) => p.id === m.you)?.color ?? 0xffffff;
   online = {
     me: m.you, hostId: m.hostId, isHost: m.hostId === m.you, myColor, seed: m.seed,
@@ -1091,6 +1158,7 @@ const BACKGROUND_LEAVE_MS = 6000; // tab hidden this long mid-match: everyone el
 
 let queueing = false;
 let hiddenAt = 0;
+let lastHiddenTickAt = 0; // last time the background ticker ran the match while the tab was hidden
 
 /** Leaving online play (cancelled, back in the lobby, disconnected): chat off, the screen may sleep
  *  again, and the socket closes so an idle tab does not keep the server machine awake. PLAY reconnects. */
@@ -1140,11 +1208,14 @@ async function setAwake(on: boolean): Promise<void> {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     hiddenAt = performance.now();
+    // Solo, a hidden tab pauses the run. Online, the match keeps running (whileHidden drives it).
+    if (!online && phase === 'playing') pauseGame();
     return;
   }
   if (wakeWanted) void setAwake(true);
-  // My game was frozen while hidden; the others saw me stand still. Leave rather than play on out of sync.
-  if (online && !online.over && performance.now() - hiddenAt > BACKGROUND_LEAVE_MS) {
+  // Leave only if the background ticker did not keep the match going while hidden (e.g. a phone suspended the page):
+  // then everyone else saw me freeze, so leaving beats playing on out of sync.
+  if (online && !online.over && performance.now() - Math.max(hiddenAt, lastHiddenTickAt) > BACKGROUND_LEAVE_MS) {
     finishOnline('THE GAME WENT TO SLEEP (phone locked or app switched)');
   }
 });
@@ -1157,8 +1228,9 @@ function onGameMsg(from: number, d: GameMsg): void {
       if (!p) return;
       puppets.set({
         key: 'p' + from, name: p.name, x: d.x, y: d.y, z: d.z, facing: d.facing, alive: d.alive,
-        character: Object.prototype.hasOwnProperty.call(CHARACTERS, p.character) ? (p.character as CharacterId) : 'gnorman',
+        character: p.character !== 'mine' && Object.prototype.hasOwnProperty.call(CHARACTERS, p.character) ? (p.character as CharacterId) : 'gnorman',
         color: p.color,
+        look: resolveLook(p) ?? undefined,
       });
       if (!d.alive && online.humansAlive.get(from)) online.humansAlive.set(from, false);
       break;
@@ -1211,7 +1283,7 @@ function becomeSpectator(): void {
   online.spectating = true;
   // Host: alive was just counted without me. Client: the last snap still counted me.
   online.placement = online.isHost ? online.alive + 1 : online.alive;
-  const cause = killedByText ?? (killedBy ? MOWER_TIERS[killedBy].name : 'a lawn mower');
+  const cause = killedByText ?? (killedBy ? enemyName(killedBy, theme) : 'a lawn mower');
   if (online.isHost) {
     const ev = { victim: save.name, cause, color: online.myColor };
     royaleHud.feed(ev);
@@ -1390,17 +1462,49 @@ goLobby();
   // ?autostart=online[&code=ABCD] goes straight into matchmaking.
   if (auto === 'online') lobbyCallbacks.onFindMatch(params.get('code')?.toUpperCase() ?? null);
   if (auto === 'solo' || auto === 'royale') {
+    // &sandbox: an empty lawn for recording demos (tools/record-demo.mjs). No mowers, waves or boss.
+    demoSandbox = auto === 'solo' && params.has('sandbox');
     startRun(auto);
     // &level=2|3 starts a solo run on that level; &boss brings its boss fight in now.
     const lv = parseInt(params.get('level') ?? '', 10);
     if (auto === 'solo' && lv >= 2 && lv <= SOLO_LEVELS.length) {
       levelIdx = lv - 1;
       mowers.setDifficulty(SOLO_LEVELS[levelIdx]);
+      applyTheme(SOLO_LEVELS[levelIdx].theme);
+      if (SOLO_LEVELS[levelIdx].theme !== 'lawn') {
+        const song = startMusic(undefined, SOLO_LEVELS[levelIdx].theme);
+        if (!isMusicMuted()) nowPlaying.show(song);
+      }
+      hud.banner(SOLO_LEVELS[levelIdx].name, SOLO_LEVELS[levelIdx].sub, 4);
     }
     if (auto === 'solo' && params.has('boss')) levelStartS = -SOLO_LEVELS[levelIdx].bossAtS;
+    // &give=haboob:3,monsoon starts holding these weapons (level after ':' , default 1). For testing and demos.
+    for (const part of (params.get('give') ?? '').split(',').filter(Boolean)) {
+      const [id, lvRaw] = part.split(':');
+      if (!Object.prototype.hasOwnProperty.call(WEAPON_FACTORIES, id)) continue;
+      run.weapons[id as WeaponId] = Math.max(1, Math.min(5, parseInt(lvRaw ?? '1', 10) || 1));
+    }
+    syncWeapons();
     // &at=x,z drops the gnome at that point on the terrain (for looking at hills).
     const at = (params.get('at') ?? '').split(',').map(Number);
     if (at.length === 2 && at.every(Number.isFinite)) player.position.set(at[0], heightAt(at[0], at[1]), at[1]);
+    // &facing=<degrees> turns the gnome (0 faces the default camera's forward).
+    const facingDeg = parseFloat(params.get('facing') ?? '');
+    if (Number.isFinite(facingDeg)) player.facing = (facingDeg * Math.PI) / 180;
+    // &cam=back|side|front|top|first, or &cam=<degrees> round the gnome from behind.
+    const cam = params.get('cam');
+    if (cam) {
+      const offsets: Record<string, number> = { back: 0, side: 90, front: 180 };
+      const deg = cam in offsets ? offsets[cam] : parseFloat(cam);
+      rig.view = cam === 'top' || cam === 'first' ? cam : 'third';
+      rig.reset(player.facing + (Number.isFinite(deg) ? (deg * Math.PI) / 180 : 0));
+    }
+    // &nohud hides every UI module's container (not #ui itself) for clean recordings.
+    if (params.has('nohud')) {
+      const style = document.createElement('style');
+      style.textContent = '#ui > * { display: none !important; }';
+      document.head.append(style);
+    }
     if (params.has('pause')) setTimeout(() => pauseGame(), 1500);
   }
   // &time=0..1 jumps the clock (0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight).
@@ -1458,4 +1562,13 @@ renderer.setAnimationLoop(() => {
   world.update(dt, focus);
   scenery.update(dt, focus);
   postfx.render(dt);
+});
+
+// Hidden tab: requestAnimationFrame stops, so a background ticker keeps the match going. Online, a hidden host keeps
+// simulating and sending snapshots, and a hidden member keeps relaying (the server drops silent members after 8 s).
+whileHidden((dt) => {
+  lastHiddenTickAt = performance.now();
+  if (online && !online.over && (phase === 'playing' || phase === 'levelup' || phase === 'paused')) tickRun(dt, NO_INPUT);
+  watchConnection();
+  if (online && !online.over) netTick(dt);
 });

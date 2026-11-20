@@ -1,5 +1,6 @@
-import type { HouseLights } from './config';
+import type { HouseLights, WorldTheme } from './config';
 import * as THREE from 'three';
+import { buildPrefab } from '@lawn/prefabs';
 import { HOUSE_FRONT_Z } from './config';
 
 type V3 = [number, number, number];
@@ -73,7 +74,8 @@ export function buildHouse(scene: THREE.Scene): HouseLights {
   if (slabs.instanceColor) slabs.instanceColor.needsUpdate = true;
 
   // ---- Walls, foundation, siding lines ----
-  add(new THREE.BoxGeometry(96, 38, 60), std(siding), 0, 19, C, true);
+  const sidingMat = std(siding);
+  add(new THREE.BoxGeometry(96, 38, 60), sidingMat, 0, 19, C, true);
   add(new THREE.BoxGeometry(97, 2.5, 61), std(0x8d8d8d), 0, 1.25, C, true);
   const sidingLines: V3[] = [];
   for (let k = 1; k <= 15; k++) sidingLines.push([0, 2.5 * k, F + 0.05]);
@@ -100,7 +102,7 @@ export function buildHouse(scene: THREE.Scene): HouseLights {
   gableShape.closePath();
   const gableGeo = new THREE.ExtrudeGeometry(gableShape, { depth: 1, bevelEnabled: false });
   for (const x of [48, -49]) {
-    const gable = add(gableGeo, std(siding), x, 0, C, true);
+    const gable = add(gableGeo, sidingMat, x, 0, C, true);
     gable.rotation.y = Math.PI / 2;
   }
 
@@ -189,19 +191,18 @@ export function buildHouse(scene: THREE.Scene): HouseLights {
   add(new THREE.CylinderGeometry(0.4, 0.4, 37, 8), gutterMat, -46, 18.5, F + 0.6);
 
   // ---- Silly touches ----
-  // Hose reel on the wall, with green coils
+  // Hose reel on the wall, with green coils. Prefab 'hose-reel' is built at half size, so scale 2 gives the house size.
+  // Its centre sits 1.375 above its base (2.75 at scale 2), so the base goes 2.75 under the wall height.
   const reelX = -38;
   const reelY = 5;
-  const reel = add(new THREE.CylinderGeometry(2.2, 2.2, 1.4, 16), std(0x8a9399, { metalness: 0.4, roughness: 0.5 }), reelX, reelY, F + 1.6);
-  reel.rotation.x = Math.PI / 2;
-  add(new THREE.BoxGeometry(1, 3, 0.8), std(0x555555), reelX, reelY, F + 0.5);
-  for (const dz of [1.0, 1.6, 2.2]) {
-    add(new THREE.TorusGeometry(2.3, 0.45, 8, 20), std(0x2e7d32), reelX, reelY, F + dz);
-  }
+  const reel = buildPrefab('hose-reel', { scale: 2 });
+  reel.position.set(reelX, reelY - 1.375 * 2, F + 1.6);
+  house.add(reel);
 
-  // Air-conditioner unit with a grille
-  add(new THREE.BoxGeometry(7, 6, 3), std(0xdddddd), 40, 5, F + 1.5);
-  add(new THREE.BoxGeometry(5, 4, 0.2), std(0x555555), 40, 5, F + 3.1);
+  // Air-conditioner unit with a grille. Prefab 'air-conditioner' is built at a quarter size: scale 4.
+  const ac = buildPrefab('air-conditioner', { scale: 4 });
+  ac.position.set(40, 2, F + 1.5);
+  house.add(ac);
 
   // House number plaque beside the door
   const plaqueTex = canvasTex(192, 96, (g) => {
@@ -235,6 +236,11 @@ export function buildHouse(scene: THREE.Scene): HouseLights {
   let tvOn = false;
 
   return {
+    setTheme(theme: WorldTheme) {
+      const desertOn = theme === 'desert';
+      sidingMat.color.setHex(desertOn ? 0xe0b083 : siding);
+      roofMat.color.setHex(desertOn ? 0xb5523b : 0x6d4c41);
+    },
     setNight(night01: number) {
       glowMat.emissiveIntensity = night01 * 1.4;
 

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#9d174d" />
+  <!-- Ruby diamond -->
+  <polygon points="32,8 46,22 32,36 18,22" fill="#f43f5e" stroke="#ffe4e6" stroke-width="2" />
+  <polygon points="32,14 39,22 32,30 25,22" fill="#fda4af" opacity="0.6" />
+  <!-- Emerald gem -->
+  <polygon points="20,34 31,45 20,56 9,45" fill="#22c55e" stroke="#dcfce7" stroke-width="2" />
+  <!-- Sapphire gem -->
+  <polygon points="44,34 55,45 44,56 33,45" fill="#38bdf8" stroke="#e0f2fe" stroke-width="2" />
+</svg>
