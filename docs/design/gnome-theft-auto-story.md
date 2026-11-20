@@ -3,6 +3,7 @@
 > **Setting:** `apocrypha` ([docs/lore/settings.md](../lore/settings.md), [R-015](../lore/rulings.md#r-015), [R-016](../lore/rulings.md#r-016))  
 > **Game:** `games/gnome-theft-auto` ([README](../../games/gnome-theft-auto/README.md))  
 > **World & Area Lore:** [gnome-theft-auto-world-lore.md](gnome-theft-auto-world-lore.md)  
+> **Fictional Brands & Rivalries:** [gnome-theft-auto-brands.md](gnome-theft-auto-brands.md)  
 > **Status:** Narrative & Content Design Proposal
 
 ---
