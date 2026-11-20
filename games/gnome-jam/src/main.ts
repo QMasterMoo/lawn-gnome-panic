@@ -71,7 +71,10 @@ async function boot(): Promise<void> {
       startMatch(config);
     },
     onRemoteEvent: (ev: SimEvent) => {
-      if (ev.kind === 'announce') ui.announce(ev.ev);
+      if (ev.kind === 'announce') {
+        ui.announce(ev.ev);
+        audio.announce(ev.ev);
+      }
       else if (ev.kind === 'sound') playSound(ev.sound);
       else if (ev.kind === 'rimShake') renderer.arena.shakeRim(ev.side, ev.strength);
       else if (ev.kind === 'cameraPunch') renderer.punchCamera(ev.strength);
@@ -118,6 +121,7 @@ async function boot(): Promise<void> {
       {
         onAnnounce: (ev) => {
           ui.announce(ev);
+          audio.announce(ev);
           if (isOnlineHost) net.sendEvent({ kind: 'announce', ev });
         },
         onSound: (kind) => {
@@ -194,6 +198,7 @@ async function boot(): Promise<void> {
       input.setTouchVisible(!paused);
     },
     onQuitMatch: () => {
+      audio.stopAnnouncer();
       audio.setMusicMode('chill');
       sim?.dispose();
       if (activeConfig?.opponentMode === 'online') {
@@ -241,6 +246,12 @@ async function boot(): Promise<void> {
           big: true,
         });
       }
+      return next;
+    },
+    isAnnouncerEnabled: () => audio.isAnnouncerEnabled(),
+    onToggleAnnouncer: () => {
+      const next = !audio.isAnnouncerEnabled();
+      audio.setAnnouncerEnabled(next);
       return next;
     },
   });

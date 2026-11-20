@@ -15,6 +15,7 @@
     "@lawn/gnome": "*",
     "@lawn/mp": "*",
     "@lawn/prefabs": "*",
+    "sam-js": "^0.3.1",
     "three": "0.187.0"
   },
   "devDependencies": {

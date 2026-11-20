@@ -1,16 +1,23 @@
 // Procedural WebAudio arcade basketball sound effects + 90s hip-hop chop-sample beat engine.
 import { createVolumeStore, type VolumeStore } from '@arcade/volume';
+import { StadiumAnnouncer } from './announcer';
 import { HipHopBeatEngine, type BeatMode } from './music';
+import type { AnnouncerEvent } from './types';
 
 export class JamAudio {
   private ctx: AudioContext | null = null;
   private sfxLimiter: DynamicsCompressorNode | null = null;
   private beat: HipHopBeatEngine;
+  private announcer: StadiumAnnouncer;
   readonly volume: VolumeStore;
 
   constructor() {
     this.volume = createVolumeStore();
     this.beat = new HipHopBeatEngine(() => this.musicGain());
+    this.announcer = new StadiumAnnouncer(
+      () => this.sfxGain(),
+      (mult) => this.beat.setDuck(mult),
+    );
   }
 
   private ensure(): AudioContext | null {
@@ -51,6 +58,24 @@ export class JamAudio {
 
   unlock(): void {
     this.ensure();
+    void this.announcer.init();
+  }
+
+  announce(ev: AnnouncerEvent): void {
+    const ctx = this.ensure();
+    this.announcer.announce(ctx, ev);
+  }
+
+  stopAnnouncer(): void {
+    this.announcer.stop();
+  }
+
+  isAnnouncerEnabled(): boolean {
+    return this.announcer.isEnabled();
+  }
+
+  setAnnouncerEnabled(enabled: boolean): void {
+    this.announcer.setEnabled(enabled);
   }
 
   playBounce(): void {

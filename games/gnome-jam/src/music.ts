@@ -313,6 +313,7 @@ export class HipHopBeatEngine {
 
   private timerId: number | null = null;
   private running = false;
+  private duckMult = 1;
   private nextStepTime = 0;
   private stepInBar = 0; // 0..15
   private barIndex = 0;  // 0..31
@@ -346,6 +347,14 @@ export class HipHopBeatEngine {
     if (this.ctx && this.busFilter) {
       const targetHz = mode === 'chill' ? 2100 : mode === 'fire' ? 6000 : 4400;
       this.busFilter.frequency.setTargetAtTime(targetHz, this.ctx.currentTime, 0.25);
+    }
+  }
+
+  /** Ducks or restores the beat master level (e.g. when the stadium announcer speaks). */
+  setDuck(mult: number): void {
+    this.duckMult = Math.max(0, Math.min(1, mult));
+    if (this.ctx && this.masterGain) {
+      this.masterGain.gain.setTargetAtTime(this.getGain() * this.duckMult, this.ctx.currentTime, 0.04);
     }
   }
 
@@ -514,7 +523,7 @@ export class HipHopBeatEngine {
 
   private scheduler(): void {
     if (!this.running || !this.ctx || !this.masterGain) return;
-    const vol = this.getGain();
+    const vol = this.getGain() * this.duckMult;
     this.masterGain.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.05);
     if (vol <= 0.001) {
       this.nextStepTime = Math.max(this.nextStepTime, this.ctx.currentTime + 0.05);
