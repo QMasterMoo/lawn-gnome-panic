@@ -125,6 +125,19 @@ export class JamRenderer {
     this.previewGnome = model;
   }
 
+  refreshPlayerLooks(sim: JamSimulation): void {
+    for (let idx = 0; idx < sim.players.length; idx++) {
+      const oldModel = this.playerModels[idx];
+      if (!oldModel) continue;
+      this.scene.remove(oldModel.object);
+      const newModel = createGnomeModel(sim.players[idx].profile.look, { overrideEquipment: ['hand'] });
+      newModel.object.scale.setScalar(1.25);
+      newModel.object.visible = this.mode === 'match';
+      this.scene.add(newModel.object);
+      this.playerModels[idx] = newModel;
+    }
+  }
+
   mountMatch(sim: JamSimulation, home: ProTeam, away: ProTeam): void {
     // Clear previous models
     for (const m of this.playerModels) this.scene.remove(m.object);
@@ -276,7 +289,7 @@ export class JamRenderer {
       // Ground indicator ring (bright gold for P1, cyan for P2, subtle for AI)
       ring.position.set(p.pos.x, 0.03, p.pos.z);
       const isP1 = idx === sim.p1ControlIdx;
-      const isP2 = sim.config.opponentMode === 'local2p' && idx === sim.p2ControlIdx;
+      const isP2 = (sim.config.opponentMode === 'local2p' || sim.config.opponentMode === 'online') && idx === sim.p2ControlIdx;
       const ringMat = ring.material as THREE.MeshBasicMaterial;
       if (isP1) {
         ringMat.color.setHex(0xffd21f);

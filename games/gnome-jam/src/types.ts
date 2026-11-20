@@ -1,13 +1,13 @@
 import type { GnomeLook } from '@lawn/gnome';
 
 export interface PlayerStats {
-  /** Movement & sprint speed (3-9). */
+  /** Movement & sprint speed (0-100). */
   speed: number;
-  /** 3-point & midrange shooting accuracy (3-9). */
+  /** 3-point & midrange shooting accuracy (0-100). */
   threePt: number;
-  /** Dunk range, leap height & hangtime (3-9). */
+  /** Dunk range, leap height & hangtime (0-100). */
   dunk: number;
-  /** Steal, shove & block ability (3-9). */
+  /** Steal, shove & block ability (0-100). */
   defense: number;
 }
 
@@ -19,6 +19,8 @@ export interface GnomePlayerProfile {
   look: GnomeLook;
   stats: PlayerStats;
   isCustom?: boolean;
+  /** Platform account id (from @lawn/mp PlayerInfo.userId) for remote gear sync. */
+  userId?: string;
 }
 
 export interface ProTeam {
@@ -35,16 +37,25 @@ export interface ProTeam {
   roster: [GnomePlayerProfile, GnomePlayerProfile, GnomePlayerProfile];
 }
 
+export interface ProgressionData {
+  gamesPlayed: number;
+  wins: number;
+  tournamentWins: number;
+  /** Total bonus stat points earned from games played (+3), wins (+2), and tournament wins (+20). */
+  bonusPoints: number;
+}
+
 export interface CustomGnomeData {
   name: string;
   nickname: string;
   number: number;
   look: GnomeLook;
   stats: PlayerStats;
+  progression: ProgressionData;
 }
 
 export type Difficulty = 'rookie' | 'pro' | 'allstar';
-export type OpponentMode = 'ai' | 'local2p';
+export type OpponentMode = 'ai' | 'local2p' | 'online';
 
 export interface MatchConfig {
   homeTeamId: string;
@@ -59,6 +70,10 @@ export interface MatchConfig {
     roundIndex: number;
     matchId: string;
     label: string;
+  };
+  onlineContext?: {
+    myTeam: 0 | 1;
+    isHost: boolean;
   };
 }
 

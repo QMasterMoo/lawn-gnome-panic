@@ -228,7 +228,8 @@ export class JamSimulation {
     const defIdx = team === 0 ? 2 : 0;
 
     // Give ball to primary ball-handler on inbound team
-    const handler = team === 0 ? this.p1ControlIdx : this.config.opponentMode === 'local2p' ? this.p2ControlIdx : baseIdx;
+    const hasP2 = this.config.opponentMode === 'local2p' || this.config.opponentMode === 'online';
+    const handler = team === 0 ? this.p1ControlIdx : hasP2 ? this.p2ControlIdx : baseIdx;
     const mate = handler === baseIdx ? baseIdx + 1 : baseIdx;
 
     this.players[handler].pos.set(baseX, 0, 0);
@@ -261,7 +262,7 @@ export class JamSimulation {
     this.ball.lastTouchTeam = p.team;
     this.ball.onFire = p.onFire;
     if (p.team === 0) this.p1ControlIdx = playerIdx;
-    else if (this.config.opponentMode === 'local2p') this.p2ControlIdx = playerIdx;
+    else if (this.config.opponentMode === 'local2p' || this.config.opponentMode === 'online') this.p2ControlIdx = playerIdx;
   }
 
   /** Target hoop X for a team (Home attacks +HOOP_X, Away attacks -HOOP_X). */
@@ -345,7 +346,7 @@ export class JamSimulation {
     const p1Mate = this.p1ControlIdx === 0 ? 1 : 0;
     inputs[p1Mate] = this.computeAI(this.players[p1Mate], clampedDt, 'teammate', p1In);
 
-    if (this.config.opponentMode === 'local2p') {
+    if (this.config.opponentMode === 'local2p' || this.config.opponentMode === 'online') {
       inputs[this.p2ControlIdx] = p2In;
       const p2Mate = this.p2ControlIdx === 2 ? 3 : 2;
       inputs[p2Mate] = this.computeAI(this.players[p2Mate], clampedDt, 'teammate', p2In);
@@ -442,7 +443,7 @@ export class JamSimulation {
     }
 
     // Movement speed derived from Speed stat
-    const baseSpeed = 4.6 + p.profile.stats.speed * 0.34;
+    const baseSpeed = 4.6 + (p.profile.stats.speed / 10) * 0.34;
     const speedMul = usingTurbo ? 1.48 : 1.0;
     const carryMul = this.ball.carrier === p.index ? 0.96 : 1.0;
     const moveSpeed = baseSpeed * speedMul * carryMul;
@@ -497,7 +498,7 @@ export class JamSimulation {
       if (inp.shootPressed && p.grounded) {
         const hx = this.targetHoopX(p.team);
         const distToHoop = Math.hypot(hx - p.pos.x, p.pos.z);
-        const dunkReach = 3.2 + p.profile.stats.dunk * 0.24 + (usingTurbo ? 1.25 : 0) + (p.onFire ? 1.1 : 0);
+        const dunkReach = 3.2 + (p.profile.stats.dunk / 10) * 0.24 + (usingTurbo ? 1.25 : 0) + (p.onFire ? 1.1 : 0);
 
         if (distToHoop <= dunkReach) {
           this.startDunk(p, usingTurbo);
@@ -539,7 +540,7 @@ export class JamSimulation {
       // DEFENSE / LOOSE BALL: Block/Rebound or Steal/Shove!
       if (inp.shootPressed && p.grounded) {
         p.grounded = false;
-        p.vel.y = 8.2 + p.profile.stats.defense * 0.22 + (usingTurbo ? 1.2 : 0);
+        p.vel.y = 8.2 + (p.profile.stats.defense / 10) * 0.22 + (usingTurbo ? 1.2 : 0);
         this.tryBlockShot(p);
       }
 
@@ -617,7 +618,7 @@ export class JamSimulation {
       for (const opp of this.players) {
         if (opp.team === p.team || opp.grounded || opp.stunTimer > 0) continue;
         const dist = opp.pos.distanceTo(p.pos);
-        if (dist < 1.25 && opp.pos.y > 1.4 && Math.random() < 0.04 + opp.profile.stats.defense * 0.012) {
+        if (dist < 1.25 && opp.pos.y > 1.4 && Math.random() < 0.04 + (opp.profile.stats.defense / 10) * 0.012) {
           // REJECTED!
           p.dunk = null;
           p.vel.set((p.team === 0 ? -1 : 1) * 4, 2, (Math.random() - 0.5) * 3);
@@ -666,13 +667,13 @@ export class JamSimulation {
       const d = Math.hypot(opp.pos.x - p.pos.x, opp.pos.z - p.pos.z);
       if (d < 2.2) {
         const jumpBonus = !opp.grounded ? 0.16 : 0.06;
-        contest = Math.max(contest, (1 - d / 2.2) * (0.14 + opp.profile.stats.defense * 0.018) + jumpBonus);
+        contest = Math.max(contest, (1 - d / 2.2) * (0.14 + (opp.profile.stats.defense / 10) * 0.018) + jumpBonus);
       }
     }
 
     const baseChance = isThree
-      ? 0.28 + p.profile.stats.threePt * 0.055
-      : 0.44 + p.profile.stats.threePt * 0.042;
+      ? 0.28 + (p.profile.stats.threePt / 10) * 0.055
+      : 0.44 + (p.profile.stats.threePt / 10) * 0.042;
     const timingBonus = timingQuality * 0.22;
     const fireBonus = p.onFire ? 0.28 : 0;
     const distPenalty = Math.max(0, (dist - 8.5) * 0.045);
@@ -762,7 +763,7 @@ export class JamSimulation {
       // On defense with no opponent nearby, pressing Pass switches control to teammate!
       if (p.index === this.p1ControlIdx) {
         this.p1ControlIdx = p.index === 0 ? 1 : 0;
-      } else if (this.config.opponentMode === 'local2p' && p.index === this.p2ControlIdx) {
+      } else if ((this.config.opponentMode === 'local2p' || this.config.opponentMode === 'online') && p.index === this.p2ControlIdx) {
         this.p2ControlIdx = p.index === 2 ? 3 : 2;
       }
       return;
@@ -791,7 +792,7 @@ export class JamSimulation {
       }
     } else if (this.ball.carrier === target.index) {
       // Quick steal poke!
-      const stealChance = 0.34 + p.profile.stats.defense * 0.045;
+      const stealChance = 0.34 + (p.profile.stats.defense / 10) * 0.045;
       if (Math.random() < stealChance) {
         p.box.steals++;
         this.giveBallTo(p.index);
@@ -1091,9 +1092,9 @@ export class JamSimulation {
       }
 
       const distHoop = Math.hypot(hx - p.pos.x, p.pos.z);
-      const preferThree = p.profile.stats.threePt >= 8 && Math.abs(p.pos.z) > 2.0 && distHoop < 7.2 && distHoop > THREE_PT_RADIUS + 0.3;
+      const preferThree = p.profile.stats.threePt >= 80 && Math.abs(p.pos.z) > 2.0 && distHoop < 7.2 && distHoop > THREE_PT_RADIUS + 0.3;
 
-      if (distHoop < 3.4 + p.profile.stats.dunk * 0.16) {
+      if (distHoop < 3.4 + (p.profile.stats.dunk / 10) * 0.16) {
         // Drive in and DUNK!
         out.turbo = true;
         out.shootPressed = true;
@@ -1130,7 +1131,7 @@ export class JamSimulation {
       // Space out nicely on the opposite wing or cut to the hoop for an alley-oop!
       const wantZ = mate.pos.z >= 0 ? -3.0 : 3.0;
       const wantX =
-        p.profile.stats.dunk >= 7
+        p.profile.stats.dunk >= 70
           ? hx - attackDir * 2.6
           : hx - attackDir * (THREE_PT_RADIUS + 0.7);
       this.steerToward(p, wantX, wantZ, out, Math.hypot(wantX - p.pos.x, wantZ - p.pos.z) > 3.5);
