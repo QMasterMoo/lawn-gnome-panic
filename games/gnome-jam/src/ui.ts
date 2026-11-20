@@ -14,6 +14,7 @@ import {
   STAT_MIN,
   awardMatchProgression,
   customGnomeToProfile,
+  getProgressionTier,
   getRemainingStatPoints,
   getTeamById,
   getTotalStatBudget,
@@ -70,6 +71,8 @@ export interface JamUIHooks {
     },
   ) => void;
   onOnlineLeave: () => void;
+  isBigHead: () => boolean;
+  onToggleBigHead: () => boolean;
 }
 
 const STYLE_CSS = `
@@ -510,7 +513,10 @@ export class JamUI {
     this.season = saved;
     this.customGnome = loadCustomGnome();
     const unspent = getRemainingStatPoints(this.customGnome);
+    const totalBudget = getTotalStatBudget(this.customGnome);
+    const tier = getProgressionTier(totalBudget);
     const prog = this.customGnome.progression;
+    const bigHeadOn = this.hooks.isBigHead();
 
     this.screenSlot.innerHTML = `
       <div class="jam-screen" id="jam-title">
@@ -528,7 +534,13 @@ export class JamUI {
             </button>
           </div>
           <div style="font-size:12px;color:#ffd21f;font-weight:800;margin-bottom:8px">
-            ${this.customGnome.name}: ${prog.gamesPlayed} GP · ${prog.wins} W · ${prog.tournamentWins} 🏆 &nbsp;|&nbsp; Budget: ${getTotalStatBudget(this.customGnome)} pts
+            <span style="color:${tier.color}">${tier.label}</span> &nbsp;|&nbsp; ${this.customGnome.name}: ${prog.gamesPlayed} GP · ${prog.wins} W · ${prog.tournamentWins} 🏆 &nbsp;|&nbsp; Budget: ${totalBudget} pts
+          </div>
+          <div class="jam-row" style="justify-content:center;margin:8px 0">
+            <input id="jam-cheat-in" type="text" maxlength="12" placeholder="CHEAT CODE"
+              style="width:130px;min-height:44px;border-radius:8px;border:1px solid rgba(255,255,255,0.28);background:#11152c;color:#fff;padding:6px 10px;font-weight:800;text-transform:uppercase;text-align:center;font-size:12px" />
+            <button id="jam-cheat-btn" class="jam-btn small">🎮 Apply</button>
+            ${bigHeadOn ? `<button id="jam-bighead-badge" class="jam-btn small active">🗿 BIGHEAD: ON</button>` : ''}
           </div>
           <div style="font-size:12px;color:#b8c4e0;line-height:1.5;margin-top:8px;background:rgba(0,0,0,0.28);padding:10px;border-radius:8px">
             <strong>Controls (P1):</strong> WASD / Arrows Move &nbsp;•&nbsp; <strong>Space / J</strong> Shoot, Dunk &amp; Block &nbsp;•&nbsp; <strong>K / E</strong> Pass, Steal &amp; Shove &nbsp;•&nbsp; <strong>Shift / L</strong> Turbo<br/>
@@ -557,6 +569,27 @@ export class JamUI {
     this.screenSlot.querySelector('#jam-custom-btn')!.addEventListener('click', () => {
       this.hooks.onClickSound();
       this.showCustomCreator('title');
+    });
+
+    const cheatIn = this.screenSlot.querySelector('#jam-cheat-in') as HTMLInputElement;
+    const tryCheat = () => {
+      const code = cheatIn.value.trim().toUpperCase();
+      if (code === 'BIGHEAD') {
+        this.hooks.onToggleBigHead();
+        this.showTitle();
+      }
+    };
+    this.screenSlot.querySelector('#jam-cheat-btn')!.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      tryCheat();
+    });
+    cheatIn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') tryCheat();
+    });
+    this.screenSlot.querySelector('#jam-bighead-badge')?.addEventListener('click', () => {
+      this.hooks.onClickSound();
+      this.hooks.onToggleBigHead();
+      this.showTitle();
     });
   }
 
@@ -799,6 +832,7 @@ export class JamUI {
 
     const totalBudget = getTotalStatBudget(g);
     const remaining = getRemainingStatPoints(g);
+    const tier = getProgressionTier(totalBudget);
 
     const swatches = (list: readonly number[], current: number | null, key: string) =>
       list
@@ -859,6 +893,7 @@ export class JamUI {
             STAT POINTS (0–100) — UNSPENT: ${remaining} / ${totalBudget}
           </div>
           <div style="font-size:11px;color:#b8c4e0;margin-bottom:6px">
+            <strong style="color:${tier.color}">${tier.label}</strong> &nbsp;|&nbsp;
             Career: ${g.progression.gamesPlayed} GP · ${g.progression.wins} W · ${g.progression.tournamentWins} 🏆 &nbsp;|&nbsp;
             +${POINTS_PER_GAME}/game · +${POINTS_PER_WIN_BONUS} win · +${POINTS_PER_TOURNAMENT_WIN} tourney
           </div>

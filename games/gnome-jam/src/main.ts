@@ -216,6 +216,51 @@ async function boot(): Promise<void> {
     onOnlineLeave: () => {
       net.leave();
     },
+    isBigHead: () => renderer.isBigHead(),
+    onToggleBigHead: () => {
+      const next = !renderer.isBigHead();
+      renderer.setBigHead(next);
+      audio.unlock();
+      if (next) audio.playFire();
+      else audio.playClick();
+      if (sim) {
+        ui.announce({
+          text: next ? '🗿 BIGHEAD MODE ON!' : 'BIGHEAD MODE OFF',
+          subtext: next ? 'CLASSIC GBA CHEAT ACTIVATED!' : undefined,
+          color: '#ffd21f',
+          big: true,
+        });
+      }
+      return next;
+    },
+  });
+
+  // Classic keyboard cheatcode listener: type BIGHEAD anywhere (outside inputs)
+  let cheatBuf = '';
+  window.addEventListener('keydown', (e) => {
+    const tag = (e.target as HTMLElement | null)?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.key.length === 1 && /^[a-zA-Z]$/.test(e.key)) {
+      cheatBuf = (cheatBuf + e.key.toUpperCase()).slice(-7);
+      if (cheatBuf === 'BIGHEAD') {
+        cheatBuf = '';
+        const next = !renderer.isBigHead();
+        renderer.setBigHead(next);
+        audio.unlock();
+        if (next) audio.playFire();
+        else audio.playClick();
+        if (sim) {
+          ui.announce({
+            text: next ? '🗿 BIGHEAD MODE ON!' : 'BIGHEAD MODE OFF',
+            subtext: next ? 'CLASSIC GBA CHEAT ACTIVATED!' : undefined,
+            color: '#ffd21f',
+            big: true,
+          });
+        } else if (document.getElementById('jam-title')) {
+          ui.showTitle();
+        }
+      }
+    }
   });
 
   input.mountTouchControls(ui.root);

@@ -9,6 +9,7 @@ import {
   STAT_MIN,
   awardMatchProgression,
   defaultCustomGnome,
+  getProgressionTier,
   getRemainingStatPoints,
   getTotalStatBudget,
 } from './teams';
@@ -18,10 +19,17 @@ describe('Custom Gnome 0-100 stats & progression', () => {
     const g = defaultCustomGnome();
     expect(getTotalStatBudget(g)).toBe(CUSTOM_STAT_BUDGET);
     expect(getRemainingStatPoints(g)).toBe(0);
+    expect(getProgressionTier(getTotalStatBudget(g)).label).toContain('ROOKIE');
     for (const val of Object.values(g.stats)) {
       expect(val).toBeGreaterThanOrEqual(STAT_MIN);
       expect(val).toBeLessThanOrEqual(STAT_MAX);
     }
+  });
+
+  it('progresses from Rookie to Pro Level and eventually exceeds pros', () => {
+    expect(getProgressionTier(180).label).toContain('ROOKIE');
+    expect(getProgressionTier(270).label).toContain('PRO LEVEL');
+    expect(getProgressionTier(320).label).toContain('LEGEND');
   });
 
   it('has all pro team stats on the 0-100 scale', () => {

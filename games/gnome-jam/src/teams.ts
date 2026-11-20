@@ -3,7 +3,7 @@ import type { CustomGnomeData, GnomePlayerProfile, ProTeam } from './types';
 
 const CUSTOM_KEY = 'gnome-jam.custom.v1';
 
-export const CUSTOM_STAT_BUDGET = 200;
+export const CUSTOM_STAT_BUDGET = 180;
 export const STAT_MIN = 0;
 export const STAT_MAX = 100;
 export const POINTS_PER_GAME = 3;
@@ -283,9 +283,15 @@ export function defaultCustomGnome(): CustomGnomeData {
     nickname: 'ROOKIE',
     number: 99,
     look: baseLook,
-    stats: { speed: 50, threePt: 50, dunk: 50, defense: 50 },
+    stats: { speed: 45, threePt: 45, dunk: 45, defense: 45 },
     progression: { gamesPlayed: 0, wins: 0, tournamentWins: 0, bonusPoints: 0 },
   };
+}
+
+export function getProgressionTier(totalBudget: number): { label: string; color: string } {
+  if (totalBudget >= 300) return { label: '🔥 GBA LEGEND', color: '#ffd21f' };
+  if (totalBudget >= 240) return { label: '⭐ PRO LEVEL', color: '#44ff88' };
+  return { label: '🌱 ROOKIE', color: '#8fd3ff' };
 }
 
 export function getTotalStatBudget(data: CustomGnomeData): number {
