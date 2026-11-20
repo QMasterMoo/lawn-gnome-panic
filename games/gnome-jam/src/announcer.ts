@@ -312,7 +312,7 @@ export class StadiumAnnouncer {
     crunchShaper.oversample = '2x';
 
     const crunchMakeup = ctx.createGain();
-    crunchMakeup.gain.value = 0.72;
+    crunchMakeup.gain.value = 0.48;
 
     // Dry + Stadium Reverb parallel buses
     const dryGain = ctx.createGain();
@@ -336,7 +336,7 @@ export class StadiumAnnouncer {
     revReturn.gain.value = 0.58;
 
     this.paMaster = ctx.createGain();
-    this.paMaster.gain.value = Math.max(0, Math.min(1, this.getSfxGain()));
+    this.paMaster.gain.value = Math.max(0, Math.min(1, this.getSfxGain())) * 0.28;
 
     this.paInput.connect(hornHp);
     hornHp.connect(this.hornPresence);
@@ -365,7 +365,7 @@ export class StadiumAnnouncer {
     }
 
     const now = ctx.currentTime;
-    this.paMaster.gain.setTargetAtTime(vol * 1.15, now, 0.01);
+    this.paMaster.gain.setTargetAtTime(vol * 0.28, now, 0.01);
 
     const steps = 14;
     this.paInput.gain.cancelScheduledValues(now);
