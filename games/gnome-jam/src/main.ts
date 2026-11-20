@@ -52,46 +52,55 @@ async function boot(): Promise<void> {
       const home = getTeamById(config.homeTeamId);
       const away = getTeamById(config.awayTeamId);
 
-      sim = new JamSimulation(config, {
-        onAnnounce: (ev) => ui.announce(ev),
-        onSound: (kind) => {
-          switch (kind) {
-            case 'bounce': audio.playBounce(); break;
-            case 'swish': audio.playSwish(false); break;
-            case 'swish3': audio.playSwish(true); break;
-            case 'clang': audio.playRimClang(); break;
-            case 'dunk': audio.playDunk(false); break;
-            case 'dunkFire': audio.playDunk(true); break;
-            case 'pass': audio.playPass(); break;
-            case 'shove': audio.playShove(); break;
-            case 'block': audio.playBlock(); break;
-            case 'fire': audio.playFire(); break;
-            case 'whistle': audio.playWhistle(); break;
-            case 'buzzer': audio.playBuzzer(); break;
-            case 'cheer': audio.playCrowdCheer(0.95); break;
-          }
+      sim = new JamSimulation(
+        config,
+        {
+          onAnnounce: (ev) => ui.announce(ev),
+          onSound: (kind) => {
+            switch (kind) {
+              case 'bounce': audio.playBounce(); break;
+              case 'swish': audio.playSwish(false); break;
+              case 'swish3': audio.playSwish(true); break;
+              case 'clang': audio.playRimClang(); break;
+              case 'dunk': audio.playDunk(false); break;
+              case 'dunkFire': audio.playDunk(true); break;
+              case 'pass': audio.playPass(); break;
+              case 'shove': audio.playShove(); break;
+              case 'block': audio.playBlock(); break;
+              case 'fire': audio.playFire(); break;
+              case 'whistle': audio.playWhistle(); break;
+              case 'buzzer': audio.playBuzzer(); break;
+              case 'cheer': audio.playCrowdCheer(0.95); break;
+            }
+          },
+          onRimShake: (side, strength) => renderer.arena.shakeRim(side, strength),
+          onCameraPunch: (strength) => renderer.punchCamera(strength),
+          onBurst: (pos, kind, color) => renderer.spawnBurst(pos, kind, color),
+          onAchievement: (kind) => {
+            if (kind === 'dunk') void achievements.unlock('jam-first-dunk');
+            else if (kind === 'fire') void achievements.unlock('jam-on-fire');
+            else if (kind === 'three') void achievements.increment('jam-downtown');
+            else if (kind === 'win') void achievements.unlock('jam-first-win');
+          },
+          onMatchEnd: (result) => {
+            audio.setMusicMode('chill');
+            input.setTouchVisible(false);
+            const cfg = activeConfig!;
+            sim?.dispose();
+            sim = null;
+            renderer.setMode('attract');
+            ui.showPostGame(result, cfg);
+          },
         },
-        onRimShake: (side, strength) => renderer.arena.shakeRim(side, strength),
-        onCameraPunch: (strength) => renderer.punchCamera(strength),
-        onBurst: (pos, kind, color) => renderer.spawnBurst(pos, kind, color),
-        onAchievement: (kind) => {
-          if (kind === 'dunk') void achievements.unlock('jam-first-dunk');
-          else if (kind === 'fire') void achievements.unlock('jam-on-fire');
-          else if (kind === 'three') void achievements.increment('jam-downtown');
-          else if (kind === 'win') void achievements.unlock('jam-first-win');
+        {
+          onError: (err) => {
+            ui.announce({ text: 'BOT SCRIPT ERROR', subtext: err, color: '#ff5555' });
+          },
         },
-        onMatchEnd: (result) => {
-          audio.setMusicMode('chill');
-          input.setTouchVisible(false);
-          const cfg = activeConfig!;
-          sim = null;
-          renderer.setMode('attract');
-          ui.showPostGame(result, cfg);
-        },
-      });
+      );
 
       renderer.mountMatch(sim, home, away);
-      input.setTouchVisible(true);
+      input.setTouchVisible(config.opponentMode !== 'botvsbot');
     },
     onPauseToggle: () => {
       if (!sim) return;
@@ -102,6 +111,7 @@ async function boot(): Promise<void> {
     },
     onQuitMatch: () => {
       audio.setMusicMode('chill');
+      sim?.dispose();
       sim = null;
       paused = false;
       input.setTouchVisible(false);
@@ -114,6 +124,12 @@ async function boot(): Promise<void> {
 
   input.mountTouchControls(ui.root);
   ui.showTitle();
+
+  // Expose read-only state & bot-swap hook for AI/ML experiments
+  (window as unknown as Record<string, unknown>).__GBA_JAM__ = {
+    getGameState: () => sim?.getSnapshot() ?? null,
+    setBot: (slot: 0 | 1 | 2 | 3, bot: Parameters<JamSimulation['setBot']>[1]) => sim?.setBot(slot, bot),
+  };
 
   // Main 60fps animation loop
   let lastTs = performance.now();

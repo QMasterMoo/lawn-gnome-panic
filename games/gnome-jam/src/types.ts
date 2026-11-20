@@ -1,4 +1,5 @@
 import type { GnomeLook } from '@lawn/gnome';
+import type { BotSlotAssignment } from './ai/types';
 
 export interface PlayerStats {
   /** Movement & sprint speed (3-9). */
@@ -44,7 +45,7 @@ export interface CustomGnomeData {
 }
 
 export type Difficulty = 'rookie' | 'pro' | 'allstar';
-export type OpponentMode = 'ai' | 'local2p';
+export type OpponentMode = 'ai' | 'local2p' | 'botvsbot';
 
 export interface MatchConfig {
   homeTeamId: string;
@@ -54,6 +55,8 @@ export interface MatchConfig {
   opponentMode: OpponentMode;
   difficulty: Difficulty;
   quarterSeconds: number;
+  /** Optional per-slot (0..3) bot AI assignments; omitted slots use the Classic Jam AI. */
+  botSlots?: Partial<Record<0 | 1 | 2 | 3, BotSlotAssignment>>;
   seasonContext?: {
     phase: 'regular' | 'playoffs';
     roundIndex: number;
