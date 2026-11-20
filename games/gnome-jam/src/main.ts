@@ -3,10 +3,13 @@
 import { createAchievementTracker } from '@lawn/achievements';
 import { getMyGnome, loadMyGnome } from '@lawn/gnome';
 import { whileHidden } from '@lawn/mp/background';
+import { showSyncNotice, watchKey } from '@lawn/sync';
 import { JamAudio } from './audio';
+import { cloud, onCloudMerged } from './cloud';
 import { JamInput } from './input';
 import { JamNet, type SimEvent } from './net';
 import { JamRenderer } from './renderer';
+import { SAVE_KEY, onSaveWritten } from './save';
 import { JamSimulation } from './sim';
 import { customGnomeToProfile, getTeamById } from './teams';
 import { JamUI } from './ui';
@@ -14,6 +17,8 @@ import type { MatchConfig } from './types';
 
 async function boot(): Promise<void> {
   await loadMyGnome();
+  onSaveWritten(() => cloud.pushSave());
+  await cloud.syncAtStartup();
 
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   const uiRoot = document.getElementById('ui') as HTMLElement;
@@ -285,6 +290,17 @@ async function boot(): Promise<void> {
   });
 
   input.mountTouchControls(ui.root);
+  onCloudMerged(() => {
+    ui.reloadSaveFromStorage();
+    showSyncNotice('Progress from your other device was added to GBA GJAM.');
+  });
+  watchKey(SAVE_KEY, () => {
+    ui.reloadSaveFromStorage();
+    showSyncNotice('Your GBA GJAM save changed in another tab.');
+  });
+  cloud.onStatus(() => {
+    if (document.getElementById('jam-title')) ui.showTitle();
+  });
   ui.showTitle();
 
   // Expose read-only state & bot-swap hook for AI/ML experiments
