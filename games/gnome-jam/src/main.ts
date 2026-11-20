@@ -1,12 +1,14 @@
 // GBA GJAM entry point: loads player's @lawn/gnome, wires achievements, audio,
-// indoor Gnomerena renderer, 2-on-2 simulation, input, and UI.
+// indoor Gnomerena renderer, 2-on-2 simulation, @lawn/mp online multiplayer, input, and UI.
 import { createAchievementTracker } from '@lawn/achievements';
-import { loadMyGnome } from '@lawn/gnome';
+import { getMyGnome, loadMyGnome } from '@lawn/gnome';
+import { whileHidden } from '@lawn/mp/background';
 import { JamAudio } from './audio';
 import { JamInput } from './input';
+import { JamNet, type SimEvent } from './net';
 import { JamRenderer } from './renderer';
 import { JamSimulation } from './sim';
-import { getTeamById } from './teams';
+import { customGnomeToProfile, getTeamById } from './teams';
 import { JamUI } from './ui';
 import type { MatchConfig } from './types';
 
@@ -26,7 +28,147 @@ async function boot(): Promise<void> {
   let paused = false;
   let jumboTick = 0;
 
-  const ui = new JamUI(uiRoot, {
+  const playSound = (
+    kind:
+      | 'bounce'
+      | 'swish'
+      | 'swish3'
+      | 'clang'
+      | 'dunk'
+      | 'dunkFire'
+      | 'pass'
+      | 'shove'
+      | 'block'
+      | 'fire'
+      | 'whistle'
+      | 'buzzer'
+      | 'cheer',
+  ): void => {
+    switch (kind) {
+      case 'bounce': audio.playBounce(); break;
+      case 'swish': audio.playSwish(false); break;
+      case 'swish3': audio.playSwish(true); break;
+      case 'clang': audio.playRimClang(); break;
+      case 'dunk': audio.playDunk(false); break;
+      case 'dunkFire': audio.playDunk(true); break;
+      case 'pass': audio.playPass(); break;
+      case 'shove': audio.playShove(); break;
+      case 'block': audio.playBlock(); break;
+      case 'fire': audio.playFire(); break;
+      case 'whistle': audio.playWhistle(); break;
+      case 'buzzer': audio.playBuzzer(); break;
+      case 'cheer': audio.playCrowdCheer(0.95); break;
+    }
+  };
+
+  let ui: JamUI;
+
+  const net = new JamNet({
+    onStatus: (st) => ui.updateOnlineStatus(st),
+    onStartOnlineMatch: (config) => {
+      ui.clearScreens();
+      ui.showHUD(true);
+      startMatch(config);
+    },
+    onRemoteEvent: (ev: SimEvent) => {
+      if (ev.kind === 'announce') {
+        ui.announce(ev.ev);
+        audio.announce(ev.ev);
+      }
+      else if (ev.kind === 'sound') playSound(ev.sound);
+      else if (ev.kind === 'rimShake') renderer.arena.shakeRim(ev.side, ev.strength);
+      else if (ev.kind === 'cameraPunch') renderer.punchCamera(ev.strength);
+      else if (ev.kind === 'burst') {
+        const THREE_VEC = sim?.ball.pos.clone().set(ev.x, ev.y, ev.z);
+        if (THREE_VEC) renderer.spawnBurst(THREE_VEC, ev.burstKind, ev.color);
+      }
+    },
+    onRemoteMatchEnd: (result) => {
+      audio.setMusicMode('chill');
+      input.setTouchVisible(false);
+      const cfg = activeConfig!;
+      sim = null;
+      renderer.setMode('attract');
+      ui.showPostGame(result, cfg);
+    },
+    onOpponentLeft: (reason) => {
+      audio.setMusicMode('chill');
+      input.setTouchVisible(false);
+      sim = null;
+      paused = false;
+      renderer.setMode('attract');
+      ui.showOnlineDisconnected(reason);
+    },
+    onRemoteLooksUpdated: (players) => {
+      if (!sim) return;
+      net.applyFetchedLooksToSim(sim, players);
+      renderer.refreshPlayerLooks(sim);
+    },
+  });
+
+  function startMatch(config: MatchConfig): void {
+    audio.unlock();
+    audio.startMusic('court');
+    activeConfig = config;
+    paused = false;
+
+    const home = getTeamById(config.homeTeamId);
+    const away = getTeamById(config.awayTeamId);
+    const isOnlineHost = config.opponentMode === 'online' && Boolean(config.onlineContext?.isHost);
+
+    sim = new JamSimulation(
+      config,
+      {
+        onAnnounce: (ev) => {
+          ui.announce(ev);
+          audio.announce(ev);
+          if (isOnlineHost) net.sendEvent({ kind: 'announce', ev });
+        },
+        onSound: (kind) => {
+          playSound(kind);
+          if (isOnlineHost) net.sendEvent({ kind: 'sound', sound: kind });
+        },
+        onRimShake: (side, strength) => {
+          renderer.arena.shakeRim(side, strength);
+          if (isOnlineHost) net.sendEvent({ kind: 'rimShake', side, strength });
+        },
+        onCameraPunch: (strength) => {
+          renderer.punchCamera(strength);
+          if (isOnlineHost) net.sendEvent({ kind: 'cameraPunch', strength });
+        },
+        onBurst: (pos, kind, color) => {
+          renderer.spawnBurst(pos, kind, color);
+          if (isOnlineHost) net.sendEvent({ kind: 'burst', x: pos.x, y: pos.y, z: pos.z, burstKind: kind, color });
+        },
+        onAchievement: (kind) => {
+          if (kind === 'dunk') void achievements.unlock('jam-first-dunk');
+          else if (kind === 'fire') void achievements.unlock('jam-on-fire');
+          else if (kind === 'three') void achievements.increment('jam-downtown');
+          else if (kind === 'win') void achievements.unlock('jam-first-win');
+        },
+        onMatchEnd: (result) => {
+          audio.setMusicMode('chill');
+          input.setTouchVisible(false);
+          const cfg = activeConfig!;
+          if (isOnlineHost) net.sendMatchEnd(result);
+          sim?.dispose();
+          sim = null;
+          renderer.setMode('attract');
+          ui.showPostGame(result, cfg);
+        },
+      },
+      {
+        onError: (err) => {
+          ui.announce({ text: 'BOT SCRIPT ERROR', subtext: err, color: '#ff5555' });
+        },
+      },
+    );
+
+    renderer.mountMatch(sim, home, away);
+    input.setTouchVisible(config.opponentMode !== 'botvsbot');
+  }
+
+  ui = new JamUI(uiRoot, {
     volume: audio.volume,
     onClickSound: () => {
       audio.unlock();
@@ -44,68 +186,24 @@ async function boot(): Promise<void> {
       }
     },
     onStartMatch: (config) => {
-      audio.unlock();
-      audio.startMusic('court');
-      activeConfig = config;
-      paused = false;
-
-      const home = getTeamById(config.homeTeamId);
-      const away = getTeamById(config.awayTeamId);
-
-      sim = new JamSimulation(config, {
-        onAnnounce: (ev) => {
-          ui.announce(ev);
-          audio.announce(ev);
-        },
-        onSound: (kind) => {
-          switch (kind) {
-            case 'bounce': audio.playBounce(); break;
-            case 'swish': audio.playSwish(false); break;
-            case 'swish3': audio.playSwish(true); break;
-            case 'clang': audio.playRimClang(); break;
-            case 'dunk': audio.playDunk(false); break;
-            case 'dunkFire': audio.playDunk(true); break;
-            case 'pass': audio.playPass(); break;
-            case 'shove': audio.playShove(); break;
-            case 'block': audio.playBlock(); break;
-            case 'fire': audio.playFire(); break;
-            case 'whistle': audio.playWhistle(); break;
-            case 'buzzer': audio.playBuzzer(); break;
-            case 'cheer': audio.playCrowdCheer(0.95); break;
-          }
-        },
-        onRimShake: (side, strength) => renderer.arena.shakeRim(side, strength),
-        onCameraPunch: (strength) => renderer.punchCamera(strength),
-        onBurst: (pos, kind, color) => renderer.spawnBurst(pos, kind, color),
-        onAchievement: (kind) => {
-          if (kind === 'dunk') void achievements.unlock('jam-first-dunk');
-          else if (kind === 'fire') void achievements.unlock('jam-on-fire');
-          else if (kind === 'three') void achievements.increment('jam-downtown');
-          else if (kind === 'win') void achievements.unlock('jam-first-win');
-        },
-        onMatchEnd: (result) => {
-          audio.setMusicMode('chill');
-          input.setTouchVisible(false);
-          const cfg = activeConfig!;
-          sim = null;
-          renderer.setMode('attract');
-          ui.showPostGame(result, cfg);
-        },
-      });
-
-      renderer.mountMatch(sim, home, away);
-      input.setTouchVisible(true);
+      startMatch(config);
     },
     onPauseToggle: () => {
       if (!sim) return;
       paused = !paused;
-      audio.setMusicMode(paused ? 'chill' : 'court');
+      if (activeConfig?.opponentMode !== 'online') {
+        audio.setMusicMode(paused ? 'chill' : 'court');
+      }
       ui.showPauseMenu(paused);
       input.setTouchVisible(!paused);
     },
     onQuitMatch: () => {
       audio.stopAnnouncer();
       audio.setMusicMode('chill');
+      sim?.dispose();
+      if (activeConfig?.opponentMode === 'online') {
+        net.leave();
+      }
       sim = null;
       paused = false;
       input.setTouchVisible(false);
@@ -114,10 +212,114 @@ async function boot(): Promise<void> {
     onSeasonChampion: () => {
       void achievements.unlock('jam-champion');
     },
+    isOnlineAvailable: () => net.isAvailable(),
+    onOnlineQueue: (code, payload) => {
+      const team = getTeamById(payload.teamId);
+      const customProfile = payload.useCustom
+        ? customGnomeToProfile(payload.customGnome, team)
+        : undefined;
+      const displayName = getMyGnome()?.name || payload.customGnome.name || 'Gnome';
+      void net.queue(code, displayName, {
+        teamId: payload.teamId,
+        useCustom: payload.useCustom,
+        duo: payload.duo,
+        customProfile,
+        difficulty: payload.difficulty,
+        quarterSeconds: payload.quarterSeconds,
+      });
+    },
+    onOnlineLeave: () => {
+      net.leave();
+    },
+    isBigHead: () => renderer.isBigHead(),
+    onToggleBigHead: () => {
+      const next = !renderer.isBigHead();
+      renderer.setBigHead(next);
+      audio.unlock();
+      if (next) audio.playFire();
+      else audio.playClick();
+      if (sim) {
+        ui.announce({
+          text: next ? '🗿 BIGHEAD MODE ON!' : 'BIGHEAD MODE OFF',
+          subtext: next ? 'CLASSIC GBA CHEAT ACTIVATED!' : undefined,
+          color: '#ffd21f',
+          big: true,
+        });
+      }
+      return next;
+    },
+  });
+
+  // Classic keyboard cheatcode listener: type BIGHEAD anywhere (outside inputs)
+  let cheatBuf = '';
+  window.addEventListener('keydown', (e) => {
+    const tag = (e.target as HTMLElement | null)?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.key.length === 1 && /^[a-zA-Z]$/.test(e.key)) {
+      cheatBuf = (cheatBuf + e.key.toUpperCase()).slice(-7);
+      if (cheatBuf === 'BIGHEAD') {
+        cheatBuf = '';
+        const next = !renderer.isBigHead();
+        renderer.setBigHead(next);
+        audio.unlock();
+        if (next) audio.playFire();
+        else audio.playClick();
+        if (sim) {
+          ui.announce({
+            text: next ? '🗿 BIGHEAD MODE ON!' : 'BIGHEAD MODE OFF',
+            subtext: next ? 'CLASSIC GBA CHEAT ACTIVATED!' : undefined,
+            color: '#ffd21f',
+            big: true,
+          });
+        } else if (document.getElementById('jam-title')) {
+          ui.showTitle();
+        }
+      }
+    }
   });
 
   input.mountTouchControls(ui.root);
   ui.showTitle();
+
+  // Expose read-only state & bot-swap hook for AI/ML experiments
+  (window as unknown as Record<string, unknown>).__GBA_JAM__ = {
+    getGameState: () => sim?.getSnapshot() ?? null,
+    setBot: (slot: 0 | 1 | 2 | 3, bot: Parameters<JamSimulation['setBot']>[1]) => sim?.setBot(slot, bot),
+  };
+
+  function stepSimulation(dt: number, hidden: boolean): void {
+    if (sim && activeConfig) {
+      if (activeConfig.opponentMode === 'online') {
+        const isHost = activeConfig.onlineContext?.isHost ?? false;
+        const myTeam = activeConfig.onlineContext?.myTeam ?? 0;
+        const localIn = hidden
+          ? { moveX: 0, moveZ: 0, turbo: false, shootDown: false, shootPressed: false, shootReleased: false, passPressed: false }
+          : input.pollP1(true);
+
+        if (isHost) {
+          const remoteIn = net.consumeRemoteInput();
+          const p1In = myTeam === 0 ? localIn : remoteIn;
+          const p2In = myTeam === 1 ? localIn : remoteIn;
+          sim.step(dt, p1In, p2In);
+          net.tick(dt, sim, null);
+        } else {
+          net.applySnapshotToGuest(sim, dt);
+          net.tick(dt, sim, localIn);
+        }
+      } else if (!paused && !hidden) {
+        const p1In = input.pollP1(activeConfig.opponentMode === 'ai');
+        const p2In = input.pollP2();
+        sim.step(dt, p1In, p2In);
+      }
+    } else {
+      net.tick(dt, null, null);
+    }
+  }
+
+  // Keep online simulation/keepalives running even if tab is backgrounded
+  whileHidden((dt) => {
+    stepSimulation(dt, true);
+  });
 
   // Main 60fps animation loop
   let lastTs = performance.now();
@@ -132,14 +334,13 @@ async function boot(): Promise<void> {
       input.setTouchVisible(!paused);
     }
 
-    if (sim && !paused && activeConfig) {
-      const p1In = input.pollP1(activeConfig.opponentMode === 'ai');
-      const p2In = input.pollP2();
-      sim.step(dt, p1In, p2In);
+    stepSimulation(dt, false);
 
+    if (sim && activeConfig) {
       const home = getTeamById(activeConfig.homeTeamId);
       const away = getTeamById(activeConfig.awayTeamId);
-      const p1 = sim.players[sim.p1ControlIdx];
+      const myTeam = activeConfig.onlineContext?.myTeam ?? 0;
+      const myPlayer = sim.players[myTeam === 1 ? sim.p2ControlIdx : sim.p1ControlIdx];
       ui.updateHUD(
         home.abbr,
         away.abbr,
@@ -148,9 +349,9 @@ async function boot(): Promise<void> {
         sim.quarter,
         sim.clockSec,
         sim.shotClock,
-        p1.profile.name,
-        p1.turbo,
-        p1.onFire,
+        myPlayer.profile.name,
+        myPlayer.turbo,
+        myPlayer.onFire,
       );
 
       jumboTick += dt;

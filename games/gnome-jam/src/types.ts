@@ -1,13 +1,14 @@
 import type { GnomeLook } from '@lawn/gnome';
+import type { BotSlotAssignment } from './ai/types';
 
 export interface PlayerStats {
-  /** Movement & sprint speed (3-9). */
+  /** Movement & sprint speed (0-100). */
   speed: number;
-  /** 3-point & midrange shooting accuracy (3-9). */
+  /** 3-point & midrange shooting accuracy (0-100). */
   threePt: number;
-  /** Dunk range, leap height & hangtime (3-9). */
+  /** Dunk range, leap height & hangtime (0-100). */
   dunk: number;
-  /** Steal, shove & block ability (3-9). */
+  /** Steal, shove & block ability (0-100). */
   defense: number;
 }
 
@@ -19,6 +20,8 @@ export interface GnomePlayerProfile {
   look: GnomeLook;
   stats: PlayerStats;
   isCustom?: boolean;
+  /** Platform account id (from @lawn/mp PlayerInfo.userId) for remote gear sync. */
+  userId?: string;
 }
 
 export interface ProTeam {
@@ -35,16 +38,38 @@ export interface ProTeam {
   roster: [GnomePlayerProfile, GnomePlayerProfile, GnomePlayerProfile];
 }
 
+export interface CareerStats {
+  pts: number;
+  fgm: number;
+  fga: number;
+  tpm: number;
+  tpa: number;
+  dunks: number;
+  steals: number;
+  blocks: number;
+  rebounds: number;
+}
+
+export interface ProgressionData {
+  gamesPlayed: number;
+  wins: number;
+  tournamentWins: number;
+  /** Total bonus stat points earned from games played (+3), wins (+2), and tournament wins (+20). */
+  bonusPoints: number;
+  career: CareerStats;
+}
+
 export interface CustomGnomeData {
   name: string;
   nickname: string;
   number: number;
   look: GnomeLook;
   stats: PlayerStats;
+  progression: ProgressionData;
 }
 
 export type Difficulty = 'rookie' | 'pro' | 'allstar';
-export type OpponentMode = 'ai' | 'local2p';
+export type OpponentMode = 'ai' | 'local2p' | 'online' | 'botvsbot';
 
 export interface MatchConfig {
   homeTeamId: string;
@@ -54,11 +79,17 @@ export interface MatchConfig {
   opponentMode: OpponentMode;
   difficulty: Difficulty;
   quarterSeconds: number;
+  /** Optional per-slot (0..3) bot AI assignments; omitted slots use the Classic Jam AI. */
+  botSlots?: Partial<Record<0 | 1 | 2 | 3, BotSlotAssignment>>;
   seasonContext?: {
     phase: 'regular' | 'playoffs';
     roundIndex: number;
     matchId: string;
     label: string;
+  };
+  onlineContext?: {
+    myTeam: 0 | 1;
+    isHost: boolean;
   };
 }
 
