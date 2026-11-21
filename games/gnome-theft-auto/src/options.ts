@@ -1,5 +1,6 @@
 // Options: a small gear button (and O, or Start on a pad) opens a panel. Right now it holds one section, CHEATS, with "Driving
 // realism": the physics family every ground vehicle uses. It is a fun extra, not a primary control: nothing in the HUD shouts about it.
+import { firstPad } from '@lawn/gamepad';
 import { TUNES, getTune, type Tune } from './simdrive';
 import { getRadioText, setRadioText } from './radio/prefs';
 
@@ -88,10 +89,6 @@ export function createOptions(ui: HTMLElement, onPickMode: (t: Tune) => void): v
   let padPrev: boolean[] = [];
   // The focus ring is for the pad; with a mouse or touch it only gets in the way.
   const showFocus = (): void => buttons.forEach((b, id) => { b.style.outline = id === ids[focus] && firstPad() ? '3px solid #7cf0ff' : 'none'; });
-  const firstPad = (): Gamepad | null => {
-    for (const p of navigator.getGamepads ? navigator.getGamepads() : []) if (p && p.connected) return p;
-    return null;
-  };
   function pollPad(): void {
     if (!isOpen) return;
     const p = firstPad();

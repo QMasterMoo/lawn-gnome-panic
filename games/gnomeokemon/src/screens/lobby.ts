@@ -12,7 +12,7 @@ import {
 import { loadBestPhotos } from '../snap/storage';
 import type { CourseId, PhotoGrade } from '../snap/types';
 import { COURSE_META, getCourseSpawns } from '../snap/world';
-import { el } from '../ui';
+import { PANE_PAD, el, paneHead } from '../ui';
 
 export { COURSE_ORDER };
 
@@ -140,18 +140,15 @@ export function renderLobby(container: HTMLElement, actions: LobbyActions): void
   const unlockedCount = getUnlockedCourses(total).length;
   const divine = Object.values(best).filter((p) => p?.score?.grade === 'Divine').length;
 
-  const wrap = el('div', { padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' });
+  const wrap = el('div', { padding: PANE_PAD, display: 'flex', flexDirection: 'column', gap: '14px' });
   container.append(wrap);
 
-  // Header: title, and the Gnomokedex progress ring beside the stats.
+  // Header: the shared pane head, and the Gnomokedex progress ring beside the stats.
   const head = el('div', { display: 'flex', alignItems: 'center', gap: '14px' });
-  const titleBox = el('div', { flex: '1 1 auto', minWidth: '0' });
-  titleBox.append(
-    el('div', { fontSize: '11px', fontWeight: '800', letterSpacing: '0.08em', color: 'var(--accent)', textTransform: 'uppercase' }, 'Fescue Field Lab'),
-    el('h1', { margin: '2px 0 4px', fontSize: '26px', lineHeight: '1.1' }, 'Gnomokemon Snap 64'),
-    el('div', { display: 'flex', gap: '8px 12px', fontSize: '12px', color: 'var(--dim)', flexWrap: 'wrap', alignItems: 'center' }),
-  );
-  const stats = titleBox.lastElementChild as HTMLElement;
+  const titleBox = paneHead({ eyebrow: 'Lobby', title: 'Gnomokemon Snap 64' });
+  titleBox.style.flex = '1 1 auto';
+  const stats = el('div', { display: 'flex', gap: '8px 12px', marginTop: '4px', fontSize: '12px', color: 'var(--dim)', flexWrap: 'wrap', alignItems: 'center' });
+  titleBox.append(stats);
   stats.append(
     el('span', {}, `⭐ ${total.toLocaleString()} pts`),
     el('span', {}, `🏆 ${divine} Divine`),
@@ -322,7 +319,7 @@ export function renderLobby(container: HTMLElement, actions: LobbyActions): void
   badge('🏆 Divine Eye', divine >= 1);
   badge('👑 Master of Fescue', snapped >= all.length);
   wrap.append(sectionHead('Badges'), badges);
-  wrap.append(el('div', { fontSize: '11px', color: 'var(--dim)' }, 'Esc returns to the lobby. The top tabs walk you to any room.'));
+  wrap.append(el('div', { fontSize: '11px', color: 'var(--dim)' }, 'Tap an orb at the top to walk to that room. Keys 1–5 do the same, and Esc returns to the lobby.'));
 }
 
 /** The Map Room's course list: each world with its creatures, your progress and a "next up" marker. */
@@ -331,11 +328,10 @@ export function renderCourseMap(container: HTMLElement, actions: { onStartCourse
   container.id = 'course-map';
   const best = loadBestPhotos();
   const total = computeTotalPoints(best);
-  const wrap = el('div', { padding: '18px', display: 'flex', flexDirection: 'column', gap: '10px' });
+  const wrap = el('div', { padding: PANE_PAD, display: 'flex', flexDirection: 'column', gap: '10px' });
   container.append(wrap);
   wrap.append(
-    el('h2', { margin: '0', fontSize: '22px', color: 'var(--accent)' }, 'Select Safari Course'),
-    el('div', { color: 'var(--dim)', fontSize: '13px', marginBottom: '2px' }, 'Seven chapters in the Yard. Earn points to unlock new routes.'),
+    paneHead({ eyebrow: 'Map Room', title: 'Select Safari Course', hint: 'Seven chapters in the Yard. Earn points to unlock new routes.' }),
     buildProgressCard(total, { showHeaderStats: true, allUnlockedLabel: `All ${COURSE_ORDER.length} chapters unlocked!` }),
   );
 
