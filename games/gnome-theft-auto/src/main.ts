@@ -27,6 +27,7 @@ import type { BiomeId, Blip, CameraMode, Vehicle, VehicleKind } from './types';
 import { collideVehicles, createVehicle, damageVehicle, explodeVehicle, repairVehicle, setDamageHook, stepKnock, stepVehicle, syncVehicleMesh } from './vehicles';
 import { createWeapons } from './weapons';
 import { buildWorld } from './world';
+import { mountSteamConnect } from '@lawn/gamepad';
 
 await loadMyGnome();
 const me = getMyGnome();
@@ -34,6 +35,7 @@ const myLook = me?.look ?? DEFAULT_LOOK;
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ui = document.getElementById('ui') as HTMLElement;
+mountSteamConnect(ui);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
