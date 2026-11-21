@@ -377,3 +377,10 @@ machine that runs by itself. Shipped examine and dex lines that said otherwise w
 **Ruling:** In Fescue (all `status: draft` until a game adopts them), goblins are called **the Unfired** or **Loam-folk**, shaped from damp silt and root-tangle beneath the Shed, the Compost Heap, and the Drainpipe Deeps rather than the Rockery Kiln. Three factions sit across Fescue's Three Ideas: **the Peat-Pack** (*Let it grow*, led by **Skrag Mulchtoe**), **the Crock-Menders** (*Tend it*, a mixed craft guild led by gnoblin **Vetch Clayroot**), and **the Stubble-Sappers** (*Cut it all*, an underworld scavenge-crew near the Shorn led by **Nibs Rustcap**). In the Charters era, goblin matriarch **Mire-Mother Cressida Peat** and gnome **Kilnwright Alder Burlap** raised the first recorded gnoblin, **Bramble-Grub Burlap-Toe**, in Sodbury's **Warm Mounds**.
 **Applies to:** fescue.  **Date:** 2026-11-20.
 **Why:** anchors every new faction and figure in Fescue's existing places, three time layers, and Three Ideas while keeping the Tall Ones' role in making goblins a loose thread.
+
+## R-035
+
+**Question:** What is the Goblinomicon, what is "goblin metal", and how do the Gnomecino's pull-tab tickets fit into the Yard?
+**Ruling:** All `status: draft`. **The Goblinomicon** is a mysterious, bark-bound entity and ledger that surfaces wherever goblins gather—its pages damp with peat-ink, keeping tallies and old bargains whose full purpose stays a loose thread for future lore. **Goblin metal** refers both to the loud, clattering music goblins hammer out on tin pot-lids, bucket-rims, and mower-cowls, and (in Fescue) to the rough dark alloy of rusted Shed-nails and Shard-slag worked by the Stubble-Sappers. In `the-yard`, the Gnomecino's bar sells **Trollin' Gnomes** pull-tab slips printed with red-capped gnomes, moss-green goblins, ponies, snails, and spotted toadstools.
+**Applies to:** core, fescue, the-yard.  **Date:** 2026-11-20.
+**Why:** weaves the user's pull-tab inspiration, the Goblinomicon entity, and a subtle nod to goblin metal into the existing settings while keeping the repo's SFW, no-pop-culture decorum.
