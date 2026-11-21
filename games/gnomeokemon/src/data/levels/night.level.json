@@ -1,0 +1,857 @@
+{
+  "format": "lawn-level",
+  "version": 1,
+  "game": "gnomeokemon",
+  "id": "night",
+  "name": "The Glasshouse",
+  "bounds": {
+    "w": 80,
+    "d": 100
+  },
+  "stamps": [
+    {
+      "op": "gauss",
+      "x": -9,
+      "z": 9,
+      "sigma": 3,
+      "amount": 1.6
+    },
+    {
+      "op": "gauss",
+      "x": 9,
+      "z": -6,
+      "sigma": 3.5,
+      "amount": 1.3
+    },
+    {
+      "op": "gauss",
+      "x": -8,
+      "z": -20,
+      "sigma": 3,
+      "amount": 1.4
+    },
+    {
+      "op": "gauss",
+      "x": 9,
+      "z": 6,
+      "sigma": 2.5,
+      "amount": -1.1
+    },
+    {
+      "op": "gauss",
+      "x": -9,
+      "z": -1,
+      "sigma": 2.5,
+      "amount": -1
+    },
+    {
+      "op": "gauss",
+      "x": 5,
+      "z": -25,
+      "sigma": 2.5,
+      "amount": -0.8
+    },
+    {
+      "op": "flatten",
+      "x": -11,
+      "z": 12,
+      "inner": 2.5,
+      "outer": 5,
+      "to": 0.9
+    },
+    {
+      "op": "flatten",
+      "x": 11,
+      "z": -2,
+      "inner": 2.5,
+      "outer": 5,
+      "to": 0.8
+    },
+    {
+      "op": "flatten",
+      "x": -11,
+      "z": -14,
+      "inner": 2,
+      "outer": 4.5,
+      "to": -0.5
+    },
+    {
+      "op": "flatten",
+      "x": 0,
+      "z": 18,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 1.15,
+      "z": 16.75,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2.3,
+      "z": 15.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 3.45,
+      "z": 14.25,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 4.6,
+      "z": 13,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 5.13,
+      "z": 11.17,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 5.67,
+      "z": 9.33,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 6.2,
+      "z": 7.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 5.2,
+      "z": 6.38,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 4.2,
+      "z": 5.25,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 3.2,
+      "z": 4.13,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2.2,
+      "z": 3,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 0.85,
+      "z": 2.13,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -0.5,
+      "z": 1.25,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -1.85,
+      "z": 0.38,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -3.2,
+      "z": -0.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -4.13,
+      "z": -2.17,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -5.07,
+      "z": -3.83,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -6,
+      "z": -5.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -5,
+      "z": -7,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -4,
+      "z": -8.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -3,
+      "z": -10,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -1.55,
+      "z": -10.63,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -0.1,
+      "z": -11.25,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 1.35,
+      "z": -11.88,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2.8,
+      "z": -12.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 3.73,
+      "z": -13.83,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 4.67,
+      "z": -15.17,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 5.6,
+      "z": -16.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 4.45,
+      "z": -17.75,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 3.3,
+      "z": -19,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2.15,
+      "z": -20.25,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 1,
+      "z": -21.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -0.4,
+      "z": -22.83,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -1.8,
+      "z": -24.17,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -3.2,
+      "z": -25.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -2.13,
+      "z": -26.67,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -1.07,
+      "z": -27.83,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 0,
+      "z": -29,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 10,
+      "z": -22,
+      "inner": 1.98,
+      "outer": 3.4,
+      "to": -0.6
+    },
+    {
+      "op": "flatten",
+      "x": -7,
+      "z": 4,
+      "inner": 1.2,
+      "outer": 2.6,
+      "to": 0.8
+    }
+  ],
+  "paths": [
+    {
+      "id": "rail",
+      "kind": "road",
+      "points": [
+        [
+          0,
+          18
+        ],
+        [
+          4.6,
+          13
+        ],
+        [
+          6.2,
+          7.5
+        ],
+        [
+          2.2,
+          3
+        ],
+        [
+          -3.2,
+          -0.5
+        ],
+        [
+          -6,
+          -5.5
+        ],
+        [
+          -3,
+          -10
+        ],
+        [
+          2.8,
+          -12.5
+        ],
+        [
+          5.6,
+          -16.5
+        ],
+        [
+          1,
+          -21.5
+        ],
+        [
+          -3.2,
+          -25.5
+        ],
+        [
+          0,
+          -29
+        ]
+      ]
+    },
+    {
+      "id": "wall-0",
+      "kind": "wall",
+      "points": [
+        [
+          -13,
+          16
+        ],
+        [
+          -13,
+          -22
+        ]
+      ]
+    }
+  ],
+  "props": [
+    {
+      "prefab": "lily-pad",
+      "x": 9.5,
+      "z": -20.5
+    },
+    {
+      "prefab": "lily-pad",
+      "x": 10.8,
+      "z": -23.6
+    },
+    {
+      "prefab": "lily-pad",
+      "x": 8.9,
+      "z": -23.2
+    },
+    {
+      "prefab": "yarn-ball",
+      "x": 7,
+      "z": -2
+    },
+    {
+      "prefab": "painting",
+      "x": -6,
+      "z": -27,
+      "rot": 0
+    }
+  ],
+  "markers": [
+    {
+      "id": "zone-0",
+      "kind": "zone",
+      "x": -3.2,
+      "z": 13.6,
+      "r": 3.1
+    },
+    {
+      "id": "zone-1",
+      "kind": "zone",
+      "x": 4.2,
+      "z": 11.2,
+      "r": 3.5
+    },
+    {
+      "id": "zone-2",
+      "kind": "zone",
+      "x": -6.4,
+      "z": 6.4,
+      "r": 3.6
+    },
+    {
+      "id": "zone-3",
+      "kind": "zone",
+      "x": 2.8,
+      "z": 1.4,
+      "r": 4.3
+    },
+    {
+      "id": "zone-4",
+      "kind": "zone",
+      "x": -4.4,
+      "z": -4.6,
+      "r": 3.7
+    },
+    {
+      "id": "zone-5",
+      "kind": "zone",
+      "x": 5.4,
+      "z": -10.8,
+      "r": 2.9
+    },
+    {
+      "id": "zone-6",
+      "kind": "zone",
+      "x": -3.2,
+      "z": -17.2,
+      "r": 4.9
+    },
+    {
+      "id": "zone-7",
+      "kind": "zone",
+      "x": 0.4,
+      "z": -26.8,
+      "r": 3.3
+    },
+    {
+      "id": "cover-0",
+      "kind": "cover",
+      "x": -4.2,
+      "z": 11.2
+    },
+    {
+      "id": "cover-1",
+      "kind": "cover",
+      "x": 1.2,
+      "z": 11.2
+    },
+    {
+      "id": "cover-2",
+      "kind": "cover",
+      "x": -6.4,
+      "z": 3.3
+    },
+    {
+      "id": "cover-3",
+      "kind": "cover",
+      "x": 6.4,
+      "z": 0.2
+    },
+    {
+      "id": "cover-4",
+      "kind": "cover",
+      "x": -4.4,
+      "z": -7.8
+    },
+    {
+      "id": "cover-5",
+      "kind": "cover",
+      "x": 3,
+      "z": -10.8
+    },
+    {
+      "id": "cover-6",
+      "kind": "cover",
+      "x": 1.2,
+      "z": -17.2
+    },
+    {
+      "id": "cover-7",
+      "kind": "cover",
+      "x": 0.4,
+      "z": -29.6
+    },
+    {
+      "id": "mooncap-0",
+      "kind": "creature",
+      "x": -3.2,
+      "z": 13.6,
+      "data": {
+        "species": "mooncap",
+        "zone": 0,
+        "lift": 0,
+        "rotY": 0.6,
+        "behavior": "hop",
+        "speed": 0.9,
+        "radius": 1.6,
+        "scale": 1.35,
+        "phase": 0.1
+      }
+    },
+    {
+      "id": "mooncap-1",
+      "kind": "creature",
+      "x": 4.2,
+      "z": 11.2,
+      "data": {
+        "species": "mooncap",
+        "zone": 1,
+        "lift": 0,
+        "rotY": -0.5,
+        "behavior": "patrol",
+        "speed": 0.8,
+        "radius": 2,
+        "scale": 1.2,
+        "phase": 1.4
+      }
+    },
+    {
+      "id": "starbeetle-2",
+      "kind": "creature",
+      "x": -6.4,
+      "z": 6.4,
+      "data": {
+        "species": "starbeetle",
+        "zone": 2,
+        "lift": 0,
+        "rotY": 0.9,
+        "behavior": "orbit",
+        "speed": 1.1,
+        "radius": 2.1,
+        "scale": 1.35,
+        "phase": 0.4
+      }
+    },
+    {
+      "id": "dewghost-3",
+      "kind": "creature",
+      "x": 2.8,
+      "z": 1.4,
+      "data": {
+        "species": "dewghost",
+        "zone": 3,
+        "lift": 0.3,
+        "rotY": -0.7,
+        "behavior": "swoop",
+        "speed": 1,
+        "radius": 2.8,
+        "scale": 1.35,
+        "phase": 1.2
+      }
+    },
+    {
+      "id": "clockworkfrog-4",
+      "kind": "creature",
+      "x": -4.4,
+      "z": -4.6,
+      "data": {
+        "species": "clockworkfrog",
+        "zone": 4,
+        "lift": 0,
+        "rotY": 0.6,
+        "behavior": "hop",
+        "speed": 1.45,
+        "radius": 2.2,
+        "scale": 1.4,
+        "phase": 0.3
+      }
+    },
+    {
+      "id": "bonsaititan-5",
+      "kind": "creature",
+      "x": 5.4,
+      "z": -10.8,
+      "data": {
+        "species": "bonsaititan",
+        "zone": 5,
+        "lift": 0,
+        "rotY": -0.8,
+        "behavior": "patrol",
+        "speed": 0.45,
+        "radius": 1.4,
+        "scale": 1.5,
+        "phase": 0.8
+      }
+    },
+    {
+      "id": "glowmoth-6",
+      "kind": "creature",
+      "x": -3.2,
+      "z": -17.2,
+      "data": {
+        "species": "glowmoth",
+        "zone": 6,
+        "lift": 1.3,
+        "rotY": 0.5,
+        "behavior": "swoop",
+        "speed": 1.35,
+        "radius": 3.4,
+        "scale": 1.4,
+        "phase": 2
+      }
+    },
+    {
+      "id": "gnomejesus-7",
+      "kind": "creature",
+      "x": 0.4,
+      "z": -26.8,
+      "data": {
+        "species": "gnomejesus",
+        "zone": 7,
+        "lift": 0.15,
+        "rotY": 0,
+        "behavior": "orbit",
+        "speed": 0.65,
+        "radius": 1.8,
+        "scale": 1.45,
+        "phase": 0
+      }
+    },
+    {
+      "id": "lily-pool",
+      "kind": "pond",
+      "x": 10,
+      "z": -22,
+      "r": 2.2,
+      "data": {
+        "level": 0,
+        "color": 2046559,
+        "lava": false
+      }
+    },
+    {
+      "id": "platform-0",
+      "kind": "platform",
+      "x": -7,
+      "z": 4,
+      "r": 1.2,
+      "data": {
+        "h": 0.8
+      }
+    },
+    {
+      "id": "play-zone-0",
+      "kind": "zone",
+      "x": 10,
+      "z": -22,
+      "r": 1
+    },
+    {
+      "id": "dewghost-play-0",
+      "kind": "creature",
+      "x": 10,
+      "z": -22,
+      "data": {
+        "species": "dewghost",
+        "zone": 8,
+        "lift": 0,
+        "rotY": 0,
+        "behavior": "patrol",
+        "speed": 0.3,
+        "radius": 1,
+        "bob": 0.07
+      }
+    },
+    {
+      "id": "play-zone-1",
+      "kind": "zone",
+      "x": -7,
+      "z": 4,
+      "r": 0.9
+    },
+    {
+      "id": "mooncap-play-1",
+      "kind": "creature",
+      "x": -7,
+      "z": 4,
+      "data": {
+        "species": "mooncap",
+        "zone": 9,
+        "lift": 0,
+        "rotY": 0,
+        "behavior": "patrol",
+        "speed": 0.3,
+        "radius": 0.9
+      }
+    },
+    {
+      "id": "play-zone-2",
+      "kind": "zone",
+      "x": 7,
+      "z": -2,
+      "r": 1.2
+    },
+    {
+      "id": "clockworkfrog-play-2",
+      "kind": "creature",
+      "x": 7,
+      "z": -2,
+      "data": {
+        "species": "clockworkfrog",
+        "zone": 10,
+        "lift": 0,
+        "rotY": 0,
+        "behavior": "patrol",
+        "speed": 0.3,
+        "radius": 1.2
+      }
+    }
+  ],
+  "data": {
+    "railLift": [
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4,
+      0.4
+    ],
+    "cave": false,
+    "city": false,
+    "wallStyles": {
+      "wall-0": "glass"
+    }
+  }
+}

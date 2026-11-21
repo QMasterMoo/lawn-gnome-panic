@@ -1,0 +1,768 @@
+{
+  "format": "lawn-level",
+  "version": 1,
+  "game": "gnomeokemon",
+  "id": "kiln",
+  "name": "The Stopping Road",
+  "bounds": {
+    "w": 80,
+    "d": 100
+  },
+  "stamps": [
+    {
+      "op": "gauss",
+      "x": -8,
+      "z": 6,
+      "sigma": 3,
+      "amount": 1.6
+    },
+    {
+      "op": "gauss",
+      "x": 8,
+      "z": -2,
+      "sigma": 3,
+      "amount": 1.3
+    },
+    {
+      "op": "gauss",
+      "x": -9,
+      "z": -22,
+      "sigma": 3.5,
+      "amount": 1.4
+    },
+    {
+      "op": "gauss",
+      "x": 9,
+      "z": -14,
+      "sigma": 2.5,
+      "amount": -1.3
+    },
+    {
+      "op": "gauss",
+      "x": -5,
+      "z": 3,
+      "sigma": 2.5,
+      "amount": -0.8
+    },
+    {
+      "op": "flatten",
+      "x": -11,
+      "z": -6,
+      "inner": 2.5,
+      "outer": 5,
+      "to": 1
+    },
+    {
+      "op": "flatten",
+      "x": 11,
+      "z": 6,
+      "inner": 2.5,
+      "outer": 5,
+      "to": 0.7
+    },
+    {
+      "op": "flatten",
+      "x": 11,
+      "z": -22,
+      "inner": 2,
+      "outer": 4.5,
+      "to": 0.9
+    },
+    {
+      "op": "flatten",
+      "x": 0,
+      "z": 18,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 0.95,
+      "z": 16.75,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 1.9,
+      "z": 15.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2.85,
+      "z": 14.25,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 3.8,
+      "z": 13,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 4.4,
+      "z": 11.63,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 5,
+      "z": 10.25,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 5.6,
+      "z": 8.88,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 6.2,
+      "z": 7.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 5.3,
+      "z": 6.13,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 4.4,
+      "z": 4.75,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 3.5,
+      "z": 3.38,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2.6,
+      "z": 2,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 1.35,
+      "z": 0.75,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 0.1,
+      "z": -0.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -1.15,
+      "z": -1.75,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -2.4,
+      "z": -3,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -3.3,
+      "z": -4.25,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -4.2,
+      "z": -5.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -5.1,
+      "z": -6.75,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -6,
+      "z": -8,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -5.4,
+      "z": -9.67,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -4.8,
+      "z": -11.33,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -4.2,
+      "z": -13,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -2.78,
+      "z": -14.13,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -1.35,
+      "z": -15.25,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 0.08,
+      "z": -16.38,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 1.5,
+      "z": -17.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2.93,
+      "z": -18.83,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 4.37,
+      "z": -20.17,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 5.8,
+      "z": -21.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 4.87,
+      "z": -22.83,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 3.93,
+      "z": -24.17,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 3,
+      "z": -25.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2,
+      "z": -26.67,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 1,
+      "z": -27.83,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 0,
+      "z": -29,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 7,
+      "z": -9,
+      "inner": 1.44,
+      "outer": 2.8,
+      "to": -0.6
+    },
+    {
+      "op": "flatten",
+      "x": -8.5,
+      "z": -16,
+      "inner": 1.26,
+      "outer": 2.6,
+      "to": -0.6
+    },
+    {
+      "op": "flatten",
+      "x": -6,
+      "z": 12,
+      "inner": 1.2,
+      "outer": 2.6,
+      "to": 1.1
+    }
+  ],
+  "paths": [
+    {
+      "id": "rail",
+      "kind": "road",
+      "points": [
+        [
+          0,
+          18
+        ],
+        [
+          3.8,
+          13
+        ],
+        [
+          6.2,
+          7.5
+        ],
+        [
+          2.6,
+          2
+        ],
+        [
+          -2.4,
+          -3
+        ],
+        [
+          -6,
+          -8
+        ],
+        [
+          -4.2,
+          -13
+        ],
+        [
+          1.5,
+          -17.5
+        ],
+        [
+          5.8,
+          -21.5
+        ],
+        [
+          3,
+          -25.5
+        ],
+        [
+          0,
+          -29
+        ]
+      ]
+    }
+  ],
+  "props": [
+    {
+      "prefab": "lava-rock",
+      "x": -7,
+      "z": -4
+    },
+    {
+      "prefab": "anvil",
+      "x": -7.5,
+      "z": 0.5
+    }
+  ],
+  "markers": [
+    {
+      "id": "zone-0",
+      "kind": "zone",
+      "x": -4.2,
+      "z": 10.45,
+      "r": 4.7
+    },
+    {
+      "id": "zone-1",
+      "kind": "zone",
+      "x": 4,
+      "z": 7.1,
+      "r": 5.1
+    },
+    {
+      "id": "zone-2",
+      "kind": "zone",
+      "x": -3.6,
+      "z": -4.8,
+      "r": 3.1
+    },
+    {
+      "id": "zone-3",
+      "kind": "zone",
+      "x": 6.8,
+      "z": -11.2,
+      "r": 3.7
+    },
+    {
+      "id": "zone-4",
+      "kind": "zone",
+      "x": -6.4,
+      "z": -18.5,
+      "r": 2.9
+    },
+    {
+      "id": "zone-5",
+      "kind": "zone",
+      "x": 1.8,
+      "z": -26,
+      "r": 5.3
+    },
+    {
+      "id": "cover-0",
+      "kind": "cover",
+      "x": -8,
+      "z": 12.15
+    },
+    {
+      "id": "cover-1",
+      "kind": "cover",
+      "x": 8.5,
+      "z": 7.3
+    },
+    {
+      "id": "cover-2",
+      "kind": "cover",
+      "x": -3.6,
+      "z": -7.4
+    },
+    {
+      "id": "cover-3",
+      "kind": "cover",
+      "x": 6.8,
+      "z": -14.4
+    },
+    {
+      "id": "cover-4",
+      "kind": "cover",
+      "x": -8.8,
+      "z": -18.5
+    },
+    {
+      "id": "cover-5",
+      "kind": "cover",
+      "x": 1.8,
+      "z": -21.2
+    },
+    {
+      "id": "glowmoth-0",
+      "kind": "creature",
+      "x": -2.8,
+      "z": 13.5,
+      "data": {
+        "species": "glowmoth",
+        "zone": 0,
+        "lift": 1.2,
+        "rotY": 0.5,
+        "behavior": "swoop",
+        "speed": 1.35,
+        "radius": 3.2,
+        "scale": 1.35,
+        "phase": 0.2
+      }
+    },
+    {
+      "id": "glowmoth-1",
+      "kind": "creature",
+      "x": 3.8,
+      "z": 11.8,
+      "data": {
+        "species": "glowmoth",
+        "zone": 1,
+        "lift": 1.5,
+        "rotY": -0.6,
+        "behavior": "swoop",
+        "speed": 1.2,
+        "radius": 3.6,
+        "scale": 1.25,
+        "phase": 1.8
+      }
+    },
+    {
+      "id": "kilnpup-2",
+      "kind": "creature",
+      "x": -5.6,
+      "z": 7.4,
+      "data": {
+        "species": "kilnpup",
+        "zone": 0,
+        "lift": 0,
+        "rotY": 0.8,
+        "behavior": "orbit",
+        "speed": 1.25,
+        "radius": 2.4,
+        "scale": 1.35,
+        "phase": 0.5
+      }
+    },
+    {
+      "id": "unfired-3",
+      "kind": "creature",
+      "x": 4.2,
+      "z": 2.4,
+      "data": {
+        "species": "unfired",
+        "zone": 1,
+        "lift": 0,
+        "rotY": -0.9,
+        "behavior": "patrol",
+        "speed": 0.6,
+        "radius": 1.8,
+        "scale": 1.35,
+        "phase": 1.4
+      }
+    },
+    {
+      "id": "kilnwarden-4",
+      "kind": "creature",
+      "x": -3.6,
+      "z": -4.8,
+      "data": {
+        "species": "kilnwarden",
+        "zone": 2,
+        "lift": 0,
+        "rotY": 0.5,
+        "behavior": "patrol",
+        "speed": 0.55,
+        "radius": 1.6,
+        "scale": 1.45,
+        "phase": 0.1
+      }
+    },
+    {
+      "id": "strawight-5",
+      "kind": "creature",
+      "x": 6.8,
+      "z": -11.2,
+      "data": {
+        "species": "strawight",
+        "zone": 3,
+        "lift": 0,
+        "rotY": -1,
+        "behavior": "patrol",
+        "speed": 0.75,
+        "radius": 2.2,
+        "scale": 1.4,
+        "phase": 2.2
+      }
+    },
+    {
+      "id": "grubthorn-6",
+      "kind": "creature",
+      "x": -6.4,
+      "z": -18.5,
+      "data": {
+        "species": "grubthorn",
+        "zone": 4,
+        "lift": 0,
+        "rotY": 0.9,
+        "behavior": "burrow",
+        "speed": 0.9,
+        "radius": 1.4,
+        "scale": 1.45,
+        "phase": 0.8
+      }
+    },
+    {
+      "id": "minimower-7",
+      "kind": "creature",
+      "x": 1.8,
+      "z": -26,
+      "data": {
+        "species": "minimower",
+        "zone": 5,
+        "lift": 0,
+        "rotY": -0.4,
+        "behavior": "patrol",
+        "speed": 1.6,
+        "radius": 3.8,
+        "scale": 1.5,
+        "phase": 1
+      }
+    },
+    {
+      "id": "lava-pool-a",
+      "kind": "pond",
+      "x": 7,
+      "z": -9,
+      "r": 1.6,
+      "data": {
+        "level": 0,
+        "color": 16738842,
+        "lava": true
+      }
+    },
+    {
+      "id": "lava-pool-b",
+      "kind": "pond",
+      "x": -8.5,
+      "z": -16,
+      "r": 1.4,
+      "data": {
+        "level": 0,
+        "color": 16738842,
+        "lava": true
+      }
+    },
+    {
+      "id": "platform-0",
+      "kind": "platform",
+      "x": -6,
+      "z": 12,
+      "r": 1.2,
+      "data": {
+        "h": 1.1
+      }
+    },
+    {
+      "id": "play-zone-0",
+      "kind": "zone",
+      "x": -6,
+      "z": 12,
+      "r": 0.9
+    },
+    {
+      "id": "kilnpup-play-0",
+      "kind": "creature",
+      "x": -6,
+      "z": 12,
+      "data": {
+        "species": "kilnpup",
+        "zone": 6,
+        "lift": 0,
+        "rotY": 0,
+        "behavior": "patrol",
+        "speed": 0.3,
+        "radius": 0.9
+      }
+    },
+    {
+      "id": "play-zone-1",
+      "kind": "zone",
+      "x": -7,
+      "z": -4,
+      "r": 1.2
+    },
+    {
+      "id": "unfired-play-1",
+      "kind": "creature",
+      "x": -7,
+      "z": -4,
+      "data": {
+        "species": "unfired",
+        "zone": 7,
+        "lift": 0,
+        "rotY": 0,
+        "behavior": "patrol",
+        "speed": 0.3,
+        "radius": 1.2
+      }
+    }
+  ],
+  "data": {
+    "railLift": [
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2
+    ],
+    "cave": false,
+    "city": false,
+    "wallStyles": {}
+  }
+}

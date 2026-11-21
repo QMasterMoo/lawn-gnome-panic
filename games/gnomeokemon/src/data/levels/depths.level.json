@@ -1,0 +1,980 @@
+{
+  "format": "lawn-level",
+  "version": 1,
+  "game": "gnomeokemon",
+  "id": "depths",
+  "name": "Drainpipe Deeps",
+  "bounds": {
+    "w": 80,
+    "d": 100
+  },
+  "stamps": [
+    {
+      "op": "gauss",
+      "x": 7,
+      "z": 6,
+      "sigma": 2.5,
+      "amount": -1.1
+    },
+    {
+      "op": "gauss",
+      "x": -8,
+      "z": -8,
+      "sigma": 2.5,
+      "amount": -1
+    },
+    {
+      "op": "gauss",
+      "x": 7,
+      "z": -19,
+      "sigma": 3,
+      "amount": -1.3
+    },
+    {
+      "op": "gauss",
+      "x": -8,
+      "z": 11,
+      "sigma": 2.5,
+      "amount": 1
+    },
+    {
+      "op": "gauss",
+      "x": 9,
+      "z": -4,
+      "sigma": 3,
+      "amount": 1
+    },
+    {
+      "op": "gauss",
+      "x": -7,
+      "z": -25,
+      "sigma": 3,
+      "amount": 0.8
+    },
+    {
+      "op": "flatten",
+      "x": -11,
+      "z": -2,
+      "inner": 2.5,
+      "outer": 5,
+      "to": 0.8
+    },
+    {
+      "op": "flatten",
+      "x": 11,
+      "z": -14,
+      "inner": 2.5,
+      "outer": 5,
+      "to": 1
+    },
+    {
+      "op": "flatten",
+      "x": -11,
+      "z": -22,
+      "inner": 2,
+      "outer": 4.5,
+      "to": 0.6
+    },
+    {
+      "op": "flatten",
+      "x": 0,
+      "z": 18,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -1.2,
+      "z": 17,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -2.4,
+      "z": 16,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -3.6,
+      "z": 15,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -4.8,
+      "z": 14,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -3.2,
+      "z": 13.42,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -1.6,
+      "z": 12.83,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 0,
+      "z": 12.25,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 1.6,
+      "z": 11.67,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 3.2,
+      "z": 11.08,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 4.8,
+      "z": 10.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 3.23,
+      "z": 9.83,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 1.67,
+      "z": 9.17,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 0.1,
+      "z": 8.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -1.47,
+      "z": 7.83,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -3.03,
+      "z": 7.17,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -4.6,
+      "z": 6.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -2.8,
+      "z": 5.7,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -1,
+      "z": 4.9,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 0.8,
+      "z": 4.1,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2.6,
+      "z": 3.3,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 4.4,
+      "z": 2.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2.76,
+      "z": 1.7,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 1.12,
+      "z": 0.9,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -0.52,
+      "z": 0.1,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -2.16,
+      "z": -0.7,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -3.8,
+      "z": -1.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -2.2,
+      "z": -2.4,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -0.6,
+      "z": -3.3,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 1,
+      "z": -4.2,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2.6,
+      "z": -5.1,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 4.2,
+      "z": -6,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2.44,
+      "z": -6.9,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 0.68,
+      "z": -7.8,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -1.08,
+      "z": -8.7,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -2.84,
+      "z": -9.6,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -4.6,
+      "z": -10.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -2.92,
+      "z": -11.4,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -1.24,
+      "z": -12.3,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 0.44,
+      "z": -13.2,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2.12,
+      "z": -14.1,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 3.8,
+      "z": -15,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2.36,
+      "z": -15.9,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 0.92,
+      "z": -16.8,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -0.52,
+      "z": -17.7,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -1.96,
+      "z": -18.6,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -3.4,
+      "z": -19.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -1.9,
+      "z": -20.75,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -0.4,
+      "z": -22,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 1.1,
+      "z": -23.25,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 2.6,
+      "z": -24.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 1.73,
+      "z": -26,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 0.87,
+      "z": -27.5,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": 0,
+      "z": -29,
+      "inner": 2.6,
+      "outer": 5,
+      "to": 0
+    },
+    {
+      "op": "flatten",
+      "x": -9,
+      "z": 4,
+      "inner": 1.8,
+      "outer": 3.2,
+      "to": -0.6
+    },
+    {
+      "op": "flatten",
+      "x": -9,
+      "z": 4,
+      "inner": 0.8,
+      "outer": 2.4,
+      "to": 0.4
+    },
+    {
+      "op": "flatten",
+      "x": 10,
+      "z": -8,
+      "inner": 1.2,
+      "outer": 2.6,
+      "to": 1
+    }
+  ],
+  "paths": [
+    {
+      "id": "rail",
+      "kind": "road",
+      "points": [
+        [
+          0,
+          18
+        ],
+        [
+          -4.8,
+          14
+        ],
+        [
+          4.8,
+          10.5
+        ],
+        [
+          -4.6,
+          6.5
+        ],
+        [
+          4.4,
+          2.5
+        ],
+        [
+          -3.8,
+          -1.5
+        ],
+        [
+          4.2,
+          -6
+        ],
+        [
+          -4.6,
+          -10.5
+        ],
+        [
+          3.8,
+          -15
+        ],
+        [
+          -3.4,
+          -19.5
+        ],
+        [
+          2.6,
+          -24.5
+        ],
+        [
+          0,
+          -29
+        ]
+      ]
+    },
+    {
+      "id": "wall-0",
+      "kind": "wall",
+      "points": [
+        [
+          -13,
+          -4
+        ],
+        [
+          -13,
+          -20
+        ]
+      ]
+    }
+  ],
+  "props": [
+    {
+      "prefab": "rubber-duck",
+      "x": 10,
+      "z": 2
+    },
+    {
+      "prefab": "wooden-wall-sign",
+      "x": 12.5,
+      "z": 8,
+      "rot": -1.5708
+    }
+  ],
+  "markers": [
+    {
+      "id": "zone-0",
+      "kind": "zone",
+      "x": -3.2,
+      "z": 13.6,
+      "r": 3.9
+    },
+    {
+      "id": "zone-1",
+      "kind": "zone",
+      "x": 4.6,
+      "z": 11.4,
+      "r": 3.4
+    },
+    {
+      "id": "zone-2",
+      "kind": "zone",
+      "x": -6.2,
+      "z": 6.2,
+      "r": 3.5
+    },
+    {
+      "id": "zone-3",
+      "kind": "zone",
+      "x": 3.2,
+      "z": 1.8,
+      "r": 3.7
+    },
+    {
+      "id": "zone-4",
+      "kind": "zone",
+      "x": -3.8,
+      "z": -4.4,
+      "r": 3.3
+    },
+    {
+      "id": "zone-5",
+      "kind": "zone",
+      "x": 6.4,
+      "z": -9.8,
+      "r": 4.1
+    },
+    {
+      "id": "zone-6",
+      "kind": "zone",
+      "x": -4.2,
+      "z": -16.4,
+      "r": 3.1
+    },
+    {
+      "id": "zone-7",
+      "kind": "zone",
+      "x": 1.8,
+      "z": -24.5,
+      "r": 3.7
+    },
+    {
+      "id": "cover-0",
+      "kind": "cover",
+      "x": -3.2,
+      "z": 10.2
+    },
+    {
+      "id": "cover-1",
+      "kind": "cover",
+      "x": 4.6,
+      "z": 8.5
+    },
+    {
+      "id": "cover-2",
+      "kind": "cover",
+      "x": -8,
+      "z": 3.8
+    },
+    {
+      "id": "cover-3",
+      "kind": "cover",
+      "x": 0,
+      "z": 1.8
+    },
+    {
+      "id": "cover-4",
+      "kind": "cover",
+      "x": -6.6,
+      "z": -4.4
+    },
+    {
+      "id": "cover-5",
+      "kind": "cover",
+      "x": 2.8,
+      "z": -9.8
+    },
+    {
+      "id": "cover-6",
+      "kind": "cover",
+      "x": -5.2,
+      "z": -18.8
+    },
+    {
+      "id": "cover-7",
+      "kind": "cover",
+      "x": -1.4,
+      "z": -24.5
+    },
+    {
+      "id": "rustcrab-0",
+      "kind": "creature",
+      "x": -3.2,
+      "z": 13.6,
+      "data": {
+        "species": "rustcrab",
+        "zone": 0,
+        "lift": 0,
+        "rotY": 0.7,
+        "behavior": "patrol",
+        "speed": 1.35,
+        "radius": 2.4,
+        "scale": 1.35,
+        "phase": 0
+      }
+    },
+    {
+      "id": "rustcrab-1",
+      "kind": "creature",
+      "x": 4.6,
+      "z": 11.4,
+      "data": {
+        "species": "rustcrab",
+        "zone": 1,
+        "lift": 0,
+        "rotY": -0.6,
+        "behavior": "orbit",
+        "speed": 1.2,
+        "radius": 1.9,
+        "scale": 1.2,
+        "phase": 1.6
+      }
+    },
+    {
+      "id": "dewdrop-2",
+      "kind": "creature",
+      "x": -6.2,
+      "z": 6.2,
+      "data": {
+        "species": "dewdrop",
+        "zone": 2,
+        "lift": 0,
+        "rotY": 0.9,
+        "behavior": "hop",
+        "speed": 1.3,
+        "radius": 2,
+        "scale": 1.25,
+        "phase": 0.4
+      }
+    },
+    {
+      "id": "hoseleech-3",
+      "kind": "creature",
+      "x": 3.2,
+      "z": 1.8,
+      "data": {
+        "species": "hoseleech",
+        "zone": 3,
+        "lift": 0,
+        "rotY": -0.8,
+        "behavior": "orbit",
+        "speed": 0.95,
+        "radius": 2.2,
+        "scale": 1.4,
+        "phase": 1.1
+      }
+    },
+    {
+      "id": "clogmaw-4",
+      "kind": "creature",
+      "x": -3.8,
+      "z": -4.4,
+      "data": {
+        "species": "clogmaw",
+        "zone": 4,
+        "lift": 0,
+        "rotY": 0.4,
+        "behavior": "hop",
+        "speed": 0.75,
+        "radius": 1.8,
+        "scale": 1.5,
+        "phase": 0.2
+      }
+    },
+    {
+      "id": "rustcrab-5",
+      "kind": "creature",
+      "x": 6.4,
+      "z": -9.8,
+      "data": {
+        "species": "rustcrab",
+        "zone": 5,
+        "lift": 0,
+        "rotY": -1.1,
+        "behavior": "patrol",
+        "speed": 1.5,
+        "radius": 2.6,
+        "scale": 1.35,
+        "phase": 2.1
+      }
+    },
+    {
+      "id": "unfired-6",
+      "kind": "creature",
+      "x": -4.2,
+      "z": -16.4,
+      "data": {
+        "species": "unfired",
+        "zone": 6,
+        "lift": 0,
+        "rotY": 0.5,
+        "behavior": "patrol",
+        "speed": 0.55,
+        "radius": 1.6,
+        "scale": 1.35,
+        "phase": 0.7
+      }
+    },
+    {
+      "id": "clogmaw-7",
+      "kind": "creature",
+      "x": 1.8,
+      "z": -24.5,
+      "data": {
+        "species": "clogmaw",
+        "zone": 7,
+        "lift": 0,
+        "rotY": -0.3,
+        "behavior": "orbit",
+        "speed": 0.8,
+        "radius": 2.2,
+        "scale": 1.6,
+        "phase": 1.9
+      }
+    },
+    {
+      "id": "gutter-pool",
+      "kind": "pond",
+      "x": -9,
+      "z": 4,
+      "r": 2,
+      "data": {
+        "level": 0,
+        "color": 2841966,
+        "lava": false
+      }
+    },
+    {
+      "id": "island-0",
+      "kind": "island",
+      "x": -9,
+      "z": 4,
+      "r": 0.8,
+      "data": {
+        "h": 0.4
+      }
+    },
+    {
+      "id": "platform-0",
+      "kind": "platform",
+      "x": 10,
+      "z": -8,
+      "r": 1.2,
+      "data": {
+        "h": 1
+      }
+    },
+    {
+      "id": "play-zone-0",
+      "kind": "zone",
+      "x": -9,
+      "z": 4,
+      "r": 0.6
+    },
+    {
+      "id": "hoseleech-play-0",
+      "kind": "creature",
+      "x": -9,
+      "z": 4,
+      "data": {
+        "species": "hoseleech",
+        "zone": 8,
+        "lift": 0,
+        "rotY": 0,
+        "behavior": "patrol",
+        "speed": 0.3,
+        "radius": 0.6,
+        "bob": 0.05
+      }
+    },
+    {
+      "id": "play-zone-1",
+      "kind": "zone",
+      "x": 10,
+      "z": -8,
+      "r": 0.9
+    },
+    {
+      "id": "rustcrab-play-1",
+      "kind": "creature",
+      "x": 10,
+      "z": -8,
+      "data": {
+        "species": "rustcrab",
+        "zone": 9,
+        "lift": 0,
+        "rotY": 0,
+        "behavior": "patrol",
+        "speed": 0.3,
+        "radius": 0.9
+      }
+    },
+    {
+      "id": "play-zone-2",
+      "kind": "zone",
+      "x": 10,
+      "z": 2,
+      "r": 1.2
+    },
+    {
+      "id": "dewdrop-play-2",
+      "kind": "creature",
+      "x": 10,
+      "z": 2,
+      "data": {
+        "species": "dewdrop",
+        "zone": 10,
+        "lift": 0,
+        "rotY": 0,
+        "behavior": "patrol",
+        "speed": 0.3,
+        "radius": 1.2
+      }
+    }
+  ],
+  "data": {
+    "railLift": [
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2,
+      0.2
+    ],
+    "cave": false,
+    "city": false,
+    "wallStyles": {
+      "wall-0": "brick"
+    }
+  }
+}

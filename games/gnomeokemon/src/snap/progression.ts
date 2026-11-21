@@ -1,7 +1,7 @@
 import type { BestPhotoMap } from './storage';
 import type { CourseId } from './types';
 
-export const COURSE_ORDER: readonly CourseId[] = ['lawn', 'desert', 'depths', 'kiln', 'ocean', 'night', 'frost'];
+export const COURSE_ORDER: readonly CourseId[] = ['lawn', 'desert', 'depths', 'kiln', 'ocean', 'night', 'frost', 'city'];
 
 export const FINALE_POINTS = 80_000;
 
@@ -101,6 +101,18 @@ export const COURSE_STORY: Record<CourseId, CourseStoryInfo> = {
       "Birdbath Keep in its one week of hard frost — smoking chimneys, swept steps, and frozen ice tunnels. Track the racing Frosthound and frame the Frost King beneath the Keep's lit window.",
     storyBeat:
       'The Rime settles over Birdbath Keep. You have one frozen week — and the Lab’s finest remaining rolls — to finish the season’s census.',
+  },
+  city: {
+    chapter: 8,
+    chapterTitle: 'Turfton After Dark',
+    unlockPts: 72_000,
+    unlockLine:
+      'Seventy-two thousand! The Hat Watch has put in a complaint about you, which means you are on their list. Go down the town road into Turfton and take the best photos of your career.',
+    lockedTeaser: 'Downtown is where the Hat Watch goes to be photographed. Not yet.',
+    fieldBriefing:
+      'Turfton downtown: brick blocks, lamp-posts humming over the crossings, a fuel drum that is not for sale. Magpies work the bins and the Hat Watch watches the magpies.',
+    storyBeat:
+      'Down the town road into Turfton, the city where every brick is pressure-washed and every lamp-post has an opinion about the Hat Watch.',
   },
 };
 
