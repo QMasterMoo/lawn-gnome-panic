@@ -8,8 +8,11 @@ import { renderPhotoGallery } from './snap/gallery';
 import { makeFakePhotos } from './snap/fake';
 import { renderGradingView } from './snap/grading';
 import { mountSnapGame } from './snap/game';
+import { computeTotalPoints, getHighestUnlockedIncompleteCourse, isCourseUnlocked } from './snap/progression';
+import { loadBestPhotos } from './snap/storage';
 import type { CourseId, PhotoRecord } from './snap/types';
 import { jesusVoice } from './snap/voice';
+import { getCourseSpawns } from './snap/world';
 import { el, makeBtn } from './ui';
 
 type Screen = RoomId | 'title';
@@ -165,7 +168,17 @@ export function mountApp(ui: HTMLElement, params: URLSearchParams): void {
     lab.setActive(true);
   }
 
-  function startRide(course: CourseId): void {
+  function quickRideCourse(): CourseId {
+    return getHighestUnlockedIncompleteCourse(loadBestPhotos(), (c) => [
+      ...new Set(getCourseSpawns(c).map((s) => s.speciesId)),
+    ]);
+  }
+
+  function startRide(course: CourseId, bypassLock = false): void {
+    if (!bypassLock && !isCourseUnlocked(course, computeTotalPoints(loadBestPhotos()))) {
+      show('map');
+      return;
+    }
     lastCourse = course;
     // Riding again from the results goes back to the map; anywhere else returns to where you started.
     rideOrigin = current === 'office' ? 'map' : current;
@@ -205,7 +218,7 @@ export function mountApp(ui: HTMLElement, params: URLSearchParams): void {
       renderTitle(screenLayer, {
         onPlay: () => show('hall'),
         onOptions: () => show('dressing'),
-        onQuickRide: () => startRide('lawn'),
+        onQuickRide: () => startRide(quickRideCourse()),
       });
       return;
     }
@@ -221,7 +234,7 @@ export function mountApp(ui: HTMLElement, params: URLSearchParams): void {
         onSafari: () => show('map'),
         onGnomokedex: () => show('archive'),
         onGallery: () => show('darkroom'),
-        onQuickRide: () => startRide('lawn'),
+        onQuickRide: () => startRide(quickRideCourse()),
         onOptions: () => show('dressing'),
         onMap: () => show('map'),
       });
@@ -308,7 +321,7 @@ export function mountApp(ui: HTMLElement, params: URLSearchParams): void {
   const first: Screen = MODE_TO_SCREEN[mode] ?? 'title';
   if (mode === 'snap') {
     show('hall', undefined, true);
-    startRide(course);
+    startRide(course, true);
   } else if (first === 'office') {
     const fake = Number(params.get('fake') ?? 0);
     show('office', fake > 0 ? makeFakePhotos(fake) : undefined, true);
