@@ -601,6 +601,32 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     description: 'Win the Top-6 Knockout Tournament to lift the Golden Acorn Trophy.',
     reward: { slot: 'hand', prefabId: 'gba-trophy', label: 'Golden Acorn Trophy' },
   },
+  // ---- Wordle (the answer is gnome) ----
+  {
+    id: 'wordle-gnome-genius',
+    game: 'wordle-gnome',
+    gameTitle: 'Wordle (the answer is gnome)',
+    title: 'Genius',
+    description: 'Guess GNOME on the first try.',
+    reward: { slot: 'head', prefabId: 'mole-crown', label: 'Mole Crown' },
+  },
+  {
+    id: 'wordle-gnome-solve',
+    game: 'wordle-gnome',
+    gameTitle: 'Wordle (the answer is gnome)',
+    title: 'Gnome.',
+    description: 'Solve the puzzle. The answer was gnome.',
+    reward: { slot: 'neck', prefabId: 'name-tag', label: 'Name-Tag' },
+  },
+  {
+    id: 'wordle-gnome-regular',
+    game: 'wordle-gnome',
+    gameTitle: 'Wordle (the answer is gnome)',
+    title: 'Still Gnome',
+    description: 'Solve it 7 times. It is still gnome.',
+    target: 7,
+    reward: { slot: 'hand', prefabId: 'brass-key', label: 'Brass Key' },
+  },
 
   // ---- Once in a Gnomillion ----
   {
