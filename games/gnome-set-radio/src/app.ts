@@ -137,6 +137,7 @@ export function startApp(): void {
   let bossHitCooldown = 0;
   let pluckHitCooldown = 0;
   let sentryHitCooldown = 0;
+  let skillFlairTimer = 0;
 
   const helper = createHelperGnome(gsrUi, {
     onUnstuck: () => {
@@ -153,6 +154,7 @@ export function startApp(): void {
         grinding: () => musicExplorer.getReactiveOverrides()?.grinding?.() ?? skater.grinding,
         air: () => musicExplorer.getReactiveOverrides()?.air?.() ?? (!skater.grounded && !skater.grinding),
         boss: () => musicExplorer.getReactiveOverrides()?.boss?.() ?? (session.bossUnlocked && !session.levelCleared),
+        skillPeak: () => musicExplorer.getReactiveOverrides()?.skillPeak?.() ?? (skater.comboMult >= 4 || skillFlairTimer > 0),
         hype: () => musicExplorer.getReactiveOverrides()?.hype?.() ?? Math.min(1, 0.3 + skater.comboMult * 0.12),
         onBeat(step, _bar, section) {
           if (step % 4 === 0) beatPulse = 1;
@@ -203,6 +205,7 @@ export function startApp(): void {
     currentLevelId = levelId;
     selectedTagIdx = 0;
     doc = getLevelDoc(levelId);
+    graffiti.clear();
     if (world) {
       scene.remove(world.group);
       world.dispose();
@@ -269,7 +272,10 @@ export function startApp(): void {
       if (ev?.def.kind === 'side') {
         void achievements.increment('gsr-side-grooves');
       }
-      if (result.line) mutter.say(result.line, ev?.def.kind === 'boss' ? 76 : 112);
+      if (result.line) {
+        mutter.say(result.line, ev?.def.kind === 'boss' ? 76 : 112);
+        if (ev) world?.showSpeechBubble(ev.def.id, ev.def.character, result.line, 5.0);
+      }
       helper.showFact(currentLevelId);
       if (result.bossJustUnlocked) {
         effects.emit({ type: 'bossUnlock' });
@@ -318,6 +324,7 @@ export function startApp(): void {
     bossHitCooldown = Math.max(0, bossHitCooldown - dt);
     pluckHitCooldown = Math.max(0, pluckHitCooldown - dt);
     sentryHitCooldown = Math.max(0, sentryHitCooldown - dt);
+    skillFlairTimer = Math.max(0, skillFlairTimer - dt);
 
     const inp = input.poll(chaseCam.yaw);
     if (inp.toggleExplorer) {
@@ -360,6 +367,7 @@ export function startApp(): void {
       helper.tick(dt, currentLevelId, session);
 
       if (stepRes.trickTriggered) {
+        if (skater.comboMult >= 4) skillFlairTimer = Math.max(skillFlairTimer, 4.5);
         effects.emit({
           type: 'trick',
           name: stepRes.trickTriggered,
@@ -376,6 +384,7 @@ export function startApp(): void {
         effects.emit({ type: 'land', x: skater.x, y: skater.y, z: skater.z, impact: stepRes.landImpact });
       }
       if (stepRes.bankedScore > 0) {
+        if (stepRes.bankedScore >= 1000) skillFlairTimer = Math.max(skillFlairTimer, 4.5);
         effects.emit({ type: 'bankScore', points: stepRes.bankedScore });
         for (const ev of session.events.values()) {
           if (ev.def.objectiveType === 'rail-combo' && !ev.completed && stepRes.bankedScore >= ev.def.targetCount) {
@@ -410,6 +419,7 @@ export function startApp(): void {
             skater.comboScore += 300;
             skater.comboMult++;
             skater.comboTimer = 2.6;
+            if (skater.comboMult >= 3) skillFlairTimer = Math.max(skillFlairTimer, 4.5);
             hud.slamTrick(activeTag.label, skater.comboMult);
             void achievements.unlock('gsr-first-tag');
             if (bb.def.eventId) handleEventCompletion(bb.def.eventId, id);
@@ -455,6 +465,7 @@ export function startApp(): void {
           skater.boost = Math.min(100, skater.boost + 30);
           skater.comboScore += 250;
           skater.comboMult++;
+          if (skater.comboMult >= 3) skillFlairTimer = Math.max(skillFlairTimer, 4.5);
           hud.slamTrick('Aerial Ring', skater.comboMult);
           if (item.def.eventId) handleEventCompletion(item.def.eventId, id);
         } else if (
@@ -519,7 +530,7 @@ export function startApp(): void {
             if (inp.sprayEdge) {
               sprayConsumed = true;
               ev.active = true;
-              session.activeBanner = { speaker: ev.def.character, text: ev.def.introLine, ttl: 5.5 };
+              world.showSpeechBubble(ev.def.id, ev.def.character, ev.def.introLine, 5.5);
               mutter.say(ev.def.introLine, 118);
             }
           }
@@ -531,7 +542,7 @@ export function startApp(): void {
         const d = Math.hypot(skater.x - npc.def.x, skater.y - npc.def.y, skater.z - npc.def.z);
         if (d < 3.4 && elapsed - npc.talkedAt > 12) {
           npc.talkedAt = elapsed;
-          session.activeBanner = { speaker: npc.def.name, text: npc.def.line, ttl: 4.5 };
+          world.showSpeechBubble(npc.def.id, npc.def.name, npc.def.line, 4.5);
         }
       }
 
