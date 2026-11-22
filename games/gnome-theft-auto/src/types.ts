@@ -115,6 +115,8 @@ export interface VehicleSpec {
   radius: number;
   /** Where the rider's feet go, in the vehicle root's local space (after scaling). */
   seat: [number, number, number];
+  /** Passenger seats for online riders (seat 1 is [0]), same space as `seat`. Absent: the driver rides alone. */
+  passengerSeats?: [number, number, number][];
   flies: boolean;
   /** Heavier pushes lighter in vehicle-vehicle bumps. */
   mass: number;
@@ -275,6 +277,8 @@ export interface Player {
   /** 1 = dry, 0 = Washed Out. */
   health: number;
   vehicle: Vehicle | null;
+  /** The seat in `vehicle`: 0 = driver, 1.. = a passenger seat (see seats.ts). */
+  seat: number;
   model: GnomeModel;
   /** Walk relative to camYaw, jump, collide with world.boxes and bounds, animate the model. */
   updateFoot(input: InputState, camYaw: number, dt: number, world: World): void;
@@ -282,7 +286,7 @@ export interface Player {
   updateRiding(dt: number, lean?: number): void;
   /** Draws the gnome for one frame of a mount sequence (see mount.ts). The vehicle is not set until the gnome is seated. */
   drawMount(pose: MountPose, dt: number): void;
-  enter(v: Vehicle): void;
+  enter(v: Vehicle, seat?: number): void;
   /** Leave the vehicle; stand at its left side. */
   exit(): void;
   /** Take `amount` damage (0..1 of full health). */
@@ -466,8 +470,11 @@ export interface Watch {
   ejectPursuitDriver?(v: Vehicle): void;
 }
 
-/** A map dot. `quest` makes it a big gold-ringed marker that sticks to the minimap edge when far away, labelled on the big map. */
-export interface Blip { x: number; z: number; color: string; quest?: string }
+/**
+ * A map dot. `quest` makes it a big gold-ringed marker that sticks to the minimap edge when far away, labelled on the big map.
+ * `player` is another online player: pinned to the minimap's edge when far away, and `label` (their name) shows on the big map.
+ */
+export interface Blip { x: number; z: number; color: string; quest?: string; player?: boolean; label?: string }
 
 export interface HudState {
   /** 0..4 watch level. */

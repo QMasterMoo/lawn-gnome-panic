@@ -48,7 +48,7 @@ export function createPlayer(scene: THREE.Scene, look: GnomeLook): Player {
   const upright = (): void => { model.object.quaternion.identity(); };
 
   const p: Player = {
-    x: 0, y: 0, z: 0, yaw: 0, vy: 0, grounded: true, health: 1, vehicle: null, model,
+    x: 0, y: 0, z: 0, yaw: 0, vy: 0, grounded: true, health: 1, vehicle: null, seat: 0, model,
     airborne: false, chute: 0,
 
     bail(v: Vehicle) {
@@ -59,6 +59,7 @@ export function createPlayer(scene: THREE.Scene, look: GnomeLook): Player {
       p.z = pos.z;
       p.yaw = v.yaw;
       p.vehicle = null;
+      p.seat = 0;
       p.airborne = true;
       p.chute = 0;
       p.grounded = false;
@@ -231,7 +232,7 @@ export function createPlayer(scene: THREE.Scene, look: GnomeLook): Player {
       p.yaw = v.yaw;
       p.vy = 0;
       p.grounded = true;
-      seatWorld(v, pos);
+      seatWorld(v, pos, p.seat);
       vel.set(0, 0, 0);
       state.facing = v.yaw;
       state.grounded = true;
@@ -242,8 +243,9 @@ export function createPlayer(scene: THREE.Scene, look: GnomeLook): Player {
       if (!v.spec.flies) model.object.quaternion.copy(v.object.quaternion).multiply(leanQ.setFromAxisAngle(AXIS_Z, lean));
     },
 
-    enter(v: Vehicle) {
+    enter(v: Vehicle, seat = 0) {
       p.vehicle = v;
+      p.seat = seat;
     },
 
     /** Draws the gnome during a mount sequence (mount.ts): on foot beside the vehicle, climbing, or still seated. */
@@ -283,6 +285,7 @@ export function createPlayer(scene: THREE.Scene, look: GnomeLook): Player {
       p.grounded = p.y <= 0.1;
       p.yaw = v.yaw;
       p.vehicle = null;
+      p.seat = 0;
       p.airborne = false;
       p.chute = 0;
       canopyOpening = false;
@@ -305,6 +308,7 @@ export function createPlayer(scene: THREE.Scene, look: GnomeLook): Player {
       p.grounded = true;
       p.health = 1;
       p.vehicle = null;
+      p.seat = 0;
       p.airborne = false;
       p.chute = 0;
       canopyOpening = false;
@@ -319,7 +323,7 @@ export function createPlayer(scene: THREE.Scene, look: GnomeLook): Player {
 
     muzzle(out: THREE.Vector3) {
       if (p.vehicle) {
-        seatWorld(p.vehicle, out);
+        seatWorld(p.vehicle, out, p.seat);
         out.y += 0.8;
         return out;
       }

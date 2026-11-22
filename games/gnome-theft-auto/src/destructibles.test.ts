@@ -15,6 +15,7 @@ function makeMockPlayer(overrides: Partial<Player> = {}): Player {
     grounded: true,
     health: 0.5,
     vehicle: null,
+    seat: 0,
     airborne: false,
     chute: 0,
     model: {} as Player['model'],
