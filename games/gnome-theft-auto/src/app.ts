@@ -24,6 +24,7 @@ import { createOptions } from './options';
 import { createNet, VEHICLE_CODES, type NetStatus } from './net';
 import { createNpcs } from './npcs';
 import { createPlayer, setChuteHook } from './player';
+import { createAmbientGnomes } from './ambientGnomes';
 import { createAmbulances } from './ambulance';
 import { createWatch } from './police';
 import { createRemotes } from './remotes';
@@ -105,6 +106,7 @@ const economy = createEconomy();
 const vibeNpcs = createVibeNpcs(scene, world, hud);
 const easterEggs = createEasterEggs(scene, world, hud, (amt, reason) => economy.earn(amt, reason));
 const worldDetails = createWorldDetails(scene, hud);
+const ambientGnomes = createAmbientGnomes(scene);
 const garages = createGarages(ui, hud, economy, {
   repaintVehicle,
   repairVehicle,
@@ -615,6 +617,7 @@ function frame(now: number): void {
   vibeNpcs.update(dt, player.x, player.z, v);
   easterEggs.update(dt, player, vehicles);
   worldDetails.update(dt, player.x, player.z);
+  ambientGnomes.update(dt, player.x, player.z);
   garages.update(dt, player, watch);
   culvertCooldown = Math.max(0, culvertCooldown - dt);
   steamCooldown = Math.max(0, steamCooldown - dt);
