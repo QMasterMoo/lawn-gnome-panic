@@ -59,6 +59,14 @@ export interface Airfield {
   planeSpots: ParkedSpot[];
 }
 
+export interface DewBarrel {
+  x: number;
+  y: number;
+  z: number;
+  mesh?: THREE.Object3D;
+  blown: boolean;
+}
+
 export interface World {
   /** Every static collider: buildings, walls, fences, big props. */
   boxes: Box[];
@@ -77,6 +85,8 @@ export interface World {
   /** Which biome a point is in (the pure function `biomeAt` from config.ts). */
   biomeAt(x: number, z: number): BiomeId;
   airfield: Airfield;
+  /** Shootable Black Dew barrels placed in biomes. */
+  dewBarrels?: DewBarrel[];
   /** Animate scenery (flags, sprinklers) and keep the sun's shadow box centred on (focusX, focusZ), the player. */
   update(dt: number, focusX: number, focusZ: number): void;
 }
@@ -383,8 +393,12 @@ export interface Watch {
   crack(officer: Npc): boolean;
   /** Spawn mission-specific enemy faction squads (HOA Enforcers, Porcelain Guards, Spade Guards). */
   spawnSquad(kind: 'hoa' | 'porcelain' | 'spade', points: [number, number][]): Npc[];
+  /** Remove mission-spawned squad NPCs when an objective ends or is cleaned up. */
+  despawnSquad?(npcs: Npc[]): void;
   /** Make nearby Hat Watch officers sneeze (hands up / drop aggro for 6s). Returns count affected. */
   onSneeze(x: number, z: number, radius: number): number;
+  /** Fling nearby Hat Watch / HOA / Guard units into ragdolls. Returns count affected. */
+  knockArea?(x: number, z: number, radius: number, force: number, up: number, fromX: number, fromZ: number): number;
   /** Eject the officer driver when the player steals a pursuit mower or HOA van. */
   ejectPursuitDriver?(v: Vehicle): void;
 }

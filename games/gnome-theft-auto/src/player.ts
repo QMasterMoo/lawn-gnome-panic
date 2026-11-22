@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { createGnomeModel, type GnomeLook, type GnomeModel, type PlayerState } from '@lawn/gnome';
 import { buildPrefab } from '@lawn/prefabs';
 import { CHUTE, PLAYER } from './config';
-import { angleDiff, clampToWorld, pushOutOfBoxes } from './collide';
+import { angleDiff, clampToWorld, groundHeight, pushOutOfBoxes } from './collide';
 import { exitPoint, seatWorld } from './vehicles';
 import type { InputState, Player, Vehicle, World } from './types';
 
@@ -101,25 +101,22 @@ export function createPlayer(scene: THREE.Scene, look: GnomeLook): Player {
       vz += (mz * glide - vz) * ease;
 
       // Integrate position.
+      const prevY = p.y;
       p.x += vx * dt;
       p.z += vz * dt;
       p.y += p.vy * dt;
 
-      // Face the motion direction.
-      if (Math.hypot(vx, vz) > MOVE_EPS) {
-        p.yaw += angleDiff(Math.atan2(vx, vz), p.yaw) * Math.min(1, WALK_TURN_RATE * dt);
-      }
-
-      // Collide with buildings and the playable area.
-      const pushed = pushOutOfBoxes(p.x, p.z, PLAYER.radius, world.boxes, p.y);
+      // Collide with buildings taller than our feet and the playable area.
+      const pushed = pushOutOfBoxes(p.x, p.z, PLAYER.radius, world.boxes, p.y + 0.35);
       const bounded = clampToWorld(pushed.x, pushed.z, world.half, PLAYER.radius);
       p.x = bounded.x;
       p.z = bounded.z;
 
-      // Landing: a hard landing without a canopy hurts.
-      if (p.y <= 0) {
+      // Landing (on ground or on top of a building): a hard landing without a canopy hurts.
+      const floorY = groundHeight(p.x, p.z, PLAYER.radius * 0.75, world.boxes, Math.max(prevY, p.y));
+      if (p.y <= floorY) {
         const impact = -p.vy;
-        p.y = 0;
+        p.y = floorY;
         p.vy = 0;
         p.grounded = true;
         p.airborne = false;
@@ -130,28 +127,33 @@ export function createPlayer(scene: THREE.Scene, look: GnomeLook): Player {
         vz = 0;
       }
 
-      // Animate. The arms go out in free fall and up under an open canopy.
+      // Animate. Only hold free-fall/chute arm poses while still airborne; reset on landing to prevent T-pose.
       pos.set(p.x, p.y, p.z);
       vel.set(vx, p.vy, vz);
       state.facing = p.yaw;
-      state.grounded = false;
-      state.jumpsUsed = 1;
+      state.grounded = !p.airborne;
+      state.jumpsUsed = p.airborne ? 1 : 0;
       state.sitting = false;
       model.update(state, dt);
 
-      if (p.chute >= 0.5) {
-        model.arms.left.rotation.x = -2.9;
-        model.arms.left.rotation.z = 0;
-        model.arms.right.rotation.x = -2.9;
-        model.arms.right.rotation.z = 0;
+      if (p.airborne) {
+        if (p.chute >= 0.5) {
+          model.arms.left.rotation.x = -2.9;
+          model.arms.left.rotation.z = 0;
+          model.arms.right.rotation.x = -2.9;
+          model.arms.right.rotation.z = 0;
+        } else {
+          model.arms.left.rotation.x = 0;
+          model.arms.left.rotation.z = 1.3;
+          model.arms.right.rotation.x = 0;
+          model.arms.right.rotation.z = -1.3;
+        }
       } else {
-        model.arms.left.rotation.x = 0;
-        model.arms.left.rotation.z = 1.3;
-        model.arms.right.rotation.x = 0;
-        model.arms.right.rotation.z = -1.3;
+        model.arms.left.rotation.set(0, 0, 0);
+        model.arms.right.rotation.set(0, 0, 0);
       }
 
-      canopy.visible = p.chute > 0.02;
+      canopy.visible = p.airborne && p.chute > 0.02;
       canopy.scale.setScalar(Math.max(0.01, p.chute));
     },
 
@@ -175,11 +177,21 @@ export function createPlayer(scene: THREE.Scene, look: GnomeLook): Player {
         p.yaw += angleDiff(target, p.yaw) * Math.min(1, WALK_TURN_RATE * dt);
       }
 
-      // Horizontal move.
+      // Horizontal move, then collide with walls taller than our feet.
       p.x += vel.x * dt;
       p.z += vel.z * dt;
+      const pushed = pushOutOfBoxes(p.x, p.z, PLAYER.radius, world.boxes, p.y + 0.35);
+      const bounded = clampToWorld(pushed.x, pushed.z, world.half, PLAYER.radius);
+      p.x = bounded.x;
+      p.z = bounded.z;
 
-      // Jump and gravity; the ground is y = 0.
+      // Jump, gravity, and standing on top of buildings/props.
+      const floorY = groundHeight(p.x, p.z, PLAYER.radius * 0.75, world.boxes, p.y);
+      if (p.grounded && p.y > floorY + 0.05) {
+        p.grounded = false;
+      } else if (p.grounded && floorY > p.y) {
+        p.y = floorY;
+      }
       if (input.jump && p.grounded) {
         p.vy = PLAYER.jumpSpeed;
         p.grounded = false;
@@ -187,19 +199,13 @@ export function createPlayer(scene: THREE.Scene, look: GnomeLook): Player {
       if (!p.grounded) {
         p.vy -= PLAYER.gravity * dt;
         p.y += p.vy * dt;
-        if (p.y <= 0) {
-          p.y = 0;
+        if (p.vy <= 0 && p.y <= floorY) {
+          p.y = floorY;
           p.vy = 0;
           p.grounded = true;
         }
       }
       vel.y = p.vy;
-
-      // Collide with buildings (boxes taller than the feet) and the playable area.
-      const pushed = pushOutOfBoxes(p.x, p.z, PLAYER.radius, world.boxes, p.y);
-      const bounded = clampToWorld(pushed.x, pushed.z, world.half, PLAYER.radius);
-      p.x = bounded.x;
-      p.z = bounded.z;
 
       // Animate.
       pos.set(p.x, p.y, p.z);
@@ -208,6 +214,8 @@ export function createPlayer(scene: THREE.Scene, look: GnomeLook): Player {
       state.jumpsUsed = p.grounded ? 0 : 1;
       state.sitting = false;
       model.update(state, dt);
+      model.arms.left.rotation.z = 0;
+      model.arms.right.rotation.z = 0;
 
       // Raise the right arm to aim the water gun (after update, which animates the arms).
       if (input.fire) model.arms.right.rotation.x = -Math.PI / 2;
@@ -244,15 +252,17 @@ export function createPlayer(scene: THREE.Scene, look: GnomeLook): Player {
       const at = exitPoint(v);
       p.x = at.x;
       p.z = at.z;
-      p.y = 0;
+      p.y = Math.max(0, v.y);
       p.vy = 0;
-      p.grounded = true;
+      p.grounded = p.y <= 0.1;
       p.yaw = v.yaw;
       p.vehicle = null;
       p.airborne = false;
       p.chute = 0;
       canopyOpening = false;
       canopy.visible = false;
+      model.arms.left.rotation.set(0, 0, 0);
+      model.arms.right.rotation.set(0, 0, 0);
     },
 
     hurt(amount: number) {
@@ -273,6 +283,8 @@ export function createPlayer(scene: THREE.Scene, look: GnomeLook): Player {
       p.chute = 0;
       canopyOpening = false;
       canopy.visible = false;
+      model.arms.left.rotation.set(0, 0, 0);
+      model.arms.right.rotation.set(0, 0, 0);
     },
 
     hand() {

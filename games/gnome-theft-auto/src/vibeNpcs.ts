@@ -500,6 +500,12 @@ export function createVibeNpcs(scene: THREE.Scene, _world: World, hud: Hud): Vib
   };
 
   // 1. John Bodega + Asphalt (tabby cat on a crate)
+  let bodegaIdx = 0;
+  const bodegaLines = [
+    'John Bodega: "Acorn-Cola is lukewarm. Take it or leave it."',
+    'John Bodega: "Asphalt only bats bottlecaps for paying customers."',
+    'John Bodega: "No Sons, Just John. Sign\'s been wrong since \'98."',
+  ];
   addVibe(
     BODEGA.x + 6,
     0,
@@ -507,11 +513,16 @@ export function createVibeNpcs(scene: THREE.Scene, _world: World, hud: Hud): Vib
     Math.PI / 2,
     false,
     makeLook({ hat: 0xf4efe6, shirt: 0x3b7a57, beard: 0x8b5a2b }),
-    () => 'John Bodega: "Acorn-Cola is lukewarm. Take it or leave it."',
+    () => bodegaLines[bodegaIdx++ % bodegaLines.length],
   );
   const asphalt = buildCrateWithAsphalt(scene, BODEGA.x + 6.9, BODEGA.z + 0.9);
 
   // 2. Wind-Sock Wally (lawn chair + binoculars + windsock)
+  let wallyIdx = 0;
+  const wallyLines = [
+    'Wind-Sock Wally: "Stall speed\'s 22, kid, don\'t embarrass yourself."',
+    'Wind-Sock Wally: "Wind\'s out of the east. Good day to stay on the ground."',
+  ];
   addVibe(
     565,
     0.22,
@@ -519,7 +530,7 @@ export function createVibeNpcs(scene: THREE.Scene, _world: World, hud: Hud): Vib
     -Math.PI / 2,
     true,
     makeLook({ hat: 0x6b4a2e, shirt: 0xc2a878, skin: 0xd99b66, beard: 0xd9d9d9, glasses: true }),
-    () => 'Wind-Sock Wally: "Stall speed\'s 22, kid, don\'t embarrass yourself."',
+    () => wallyLines[wallyIdx++ % wallyLines.length],
   );
   const windsock = buildLawnChairAndWindsock(scene, 565, -110, -Math.PI / 2);
 
@@ -647,9 +658,42 @@ export function createVibeNpcs(scene: THREE.Scene, _world: World, hud: Hud): Vib
     -Math.PI / 2,
     false,
     makeLook({ hat: 0x1e1e26, shirt: 0x1b1b22, pants: 0x141418, beard: 0x262220, skin: 0xd99b66, glasses: true }),
-    () => 'Big Lou: "No wet hats inside The Gnomecino."',
+    () => 'Big Lou: "Bone-dry felt hats only inside The Gnomecino. Dry-Hat Embargo."',
   );
   buildVelvetRopes(scene, GNOMECINO.x - 14, GNOMECINO.z);
+
+  // 12. Porcelain Gnome at Tall House Porch
+  addVibe(
+    -558,
+    0,
+    40,
+    Math.PI / 2,
+    false,
+    makeLook({ hat: 0xf4f4f8, shirt: 0xe6e8f0, skin: 0xfafafa, beard: null, dress: true }),
+    () => 'Porcelain Gnome: "Don\'t look at the lantern. One chip and we don\'t glue back."',
+  );
+
+  // 13. Castaway by Driftwood's turf-raft
+  addVibe(
+    53,
+    0,
+    230,
+    -Math.PI / 2,
+    false,
+    makeLook({ hat: 0x4f9d92, shirt: 0xd9c79e, beard: 0xe5e0d4 }),
+    () => 'Castaway: "Watch the canal for lawn sharks. Two fins, both forged."',
+  );
+
+  // 14. Squeaky-Clean Midge outside Glaze Clinic Hospital
+  addVibe(
+    9,
+    0,
+    32,
+    -Math.PI / 2,
+    false,
+    makeLook({ hat: 0xf4f4f8, shirt: 0x3ec9b6, beard: null, glasses: true }),
+    () => 'Squeaky-Clean Midge: "Claim denied before you even tripped. Sign here."',
+  );
 
   // ---- Red Cap vs. Blue Cap picnic-table standoff at (76, -76) ---------------------------------------------------
   const TABLE_X = 76;

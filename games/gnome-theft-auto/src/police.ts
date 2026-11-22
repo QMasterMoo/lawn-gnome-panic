@@ -4,9 +4,10 @@ import * as THREE from 'three';
 import { LAYER, flatLayer } from '@lawn/depth';
 import { createGnomeModel, type PlayerState } from '@lawn/gnome';
 import { buildHeld } from '@lawn/prefabs';
-import { HEAT, MAX_HEAT, WATCH } from './config';
+import { HEAT, MAX_HEAT, RUN_OVER, WATCH } from './config';
 import { angleDiff, clampToWorld, pushOutOfBoxes } from './collide';
 import { clearHandsUp, gnomeState, makeGnome, poseHandsUp, randomGnomeName, randomTownLook } from './gnomes';
+import { createRagdoll, impulse, poseRagdoll, ragdollCentre, resetPose, stepRagdoll, type Ragdoll } from './ragdoll';
 import { createVehicle, exitPoint, removeVehicle, stepVehicle, syncVehicleMesh } from './vehicles';
 import type { Fx, Npc, Vehicle, VehicleKind, Watch, WatchContext, World } from './types';
 
@@ -38,6 +39,9 @@ interface Unit {
   sprayT: number;
   /** Reused PlayerState for model.update. */
   state: PlayerState;
+  rag: Ragdoll | null;
+  upFromX: number;
+  upFromZ: number;
 }
 
 interface Pursuit {
@@ -45,6 +49,9 @@ interface Pursuit {
   kind: 'ride-on' | 'zero-turn' | 'hoa-van';
   ring?: THREE.Mesh;
   citationT: number;
+  dismounted: boolean;
+  crew: Unit[];
+  stuckT: number;
 }
 
 const muzzleAt = new THREE.Vector3();
@@ -94,9 +101,27 @@ export function createWatch(
         grounded: true,
         jumpsUsed: 0,
       },
+      rag: null,
+      upFromX: npc.x,
+      upFromZ: npc.z,
     };
     units.set(npc.id, unit);
     return unit;
+  }
+
+  function knockUnit(u: Unit, vx: number, vy: number, vz: number, spin: number, fromX: number, fromZ: number): void {
+    const n = u.npc;
+    u.upFromX = fromX;
+    u.upFromZ = fromZ;
+    if (n.state === 'ragdoll' && u.rag) {
+      impulse(u.rag, vx, vy, vz, spin);
+      return;
+    }
+    const sp = n.state === 'walk' || n.state === 'flee' ? WATCH.speed : 0;
+    u.rag = createRagdoll(n.x, 0, n.z, n.yaw, Math.sin(n.yaw) * sp, Math.cos(n.yaw) * sp);
+    impulse(u.rag, vx, vy, vz, spin);
+    n.state = 'ragdoll';
+    clearHandsUp(n.model);
   }
 
   function removeUnit(u: Unit): void {
@@ -163,6 +188,40 @@ export function createWatch(
   function stepUnit(u: Unit, dt: number, world: World, px: number, pz: number, tx: number, ty: number, tz: number): number {
     const n = u.npc;
     const model = n.model;
+
+    if (n.state === 'ragdoll') {
+      const r = u.rag;
+      if (!r) { n.state = 'walk'; return 0; }
+      stepRagdoll(r, dt, world.boxes);
+      const c = { x: 0, y: 0, z: 0 };
+      ragdollCentre(r, c);
+      const cl = clampToWorld(c.x, c.z, world.half, BODY_R);
+      n.x = cl.x;
+      n.z = cl.z;
+      poseRagdoll(model, r);
+      if ((r.still > 1.2 && r.age > 0.6) || r.age > 4.0) {
+        u.rag = null;
+        resetPose(model);
+        n.yaw = Math.atan2(tx - n.x, tz - n.z);
+        model.object.position.set(n.x, 0, n.z);
+        n.state = 'walk';
+      }
+      return 0;
+    }
+
+    // Fast vehicles fling standing officers/guards into ragdoll.
+    for (const v of vehicles) {
+      if (v.driver === 'none' || v.driver === 'police' || Math.abs(v.speed) < RUN_OVER.minSpeed || v.y > 1.5) continue;
+      const dx = n.x - v.x, dz = n.z - v.z;
+      if (Math.hypot(dx, dz) > v.spec.radius * RUN_OVER.reach + BODY_R) continue;
+      const sp = v.speed;
+      const dir = Math.sign(sp);
+      const vx = Math.sin(v.yaw) * dir, vz = Math.cos(v.yaw) * dir;
+      const side = (dx * vz - dz * vx) > 0 ? 1 : -1;
+      const f = Math.min(Math.abs(sp), 30);
+      knockUnit(u, vx * f * 0.9 - vz * side * 2, 3 + f * 0.35, vz * f * 0.9 + vx * side * 2, 1.2 + f * 0.05, v.x, v.z);
+      return 0;
+    }
 
     if (n.state === 'flee') {
       n.fleeTime -= dt;
@@ -304,16 +363,61 @@ export function createWatch(
       ring.position.y = 0.08;
       v.object.add(ring);
     }
-    pursuits.push({ vehicle: v, kind, ring, citationT: 1.5 });
+    pursuits.push({ vehicle: v, kind, ring, citationT: 1.5, dismounted: false, crew: [], stuckT: 0 });
   }
 
   function removePursuit(p: Pursuit, removeVeh: boolean): void {
     if (p.ring) p.ring.removeFromParent();
+    for (const u of p.crew) {
+      if (units.has(u.npc.id)) removeUnit(u);
+    }
+    p.crew.length = 0;
     if (removeVeh) {
       removeVehicle(scene, p.vehicle);
       const idx = vehicles.indexOf(p.vehicle);
       if (idx >= 0) vehicles.splice(idx, 1);
     }
+  }
+
+  function dismountPursuit(p: Pursuit): void {
+    const v = p.vehicle;
+    p.dismounted = true;
+    p.stuckT = 0;
+    if (v.rider) {
+      v.object.remove(v.rider.object);
+      v.rider = null;
+      v.riderLook = null;
+    }
+    v.driver = 'none';
+    v.speed = 0;
+    const count = p.kind === 'hoa-van' ? 2 : 1;
+    for (let i = 0; i < count; i++) {
+      const pt = exitPoint(v);
+      const ox = pt.x + (i === 1 ? 1.4 : 0);
+      const oz = pt.z + (i === 1 ? 1.4 : 0);
+      const isHoa = p.kind === 'hoa-van';
+      const look = randomTownLook({
+        hat: isHoa ? WATCH.hoaHat : WATCH.hat,
+        shirt: isHoa ? WATCH.hoaCoat : WATCH.coat,
+      });
+      const npc = newNpc(`${isHoa ? 'HOA Enforcer' : 'Officer'} ${randomGnomeName()}`, look, ox, oz, v.yaw, 'walk');
+      p.crew.push(makeUnit('officer', npc, null));
+    }
+  }
+
+  function reboardPursuit(p: Pursuit, u: Unit): void {
+    const v = p.vehicle;
+    const look = u.npc.look;
+    removeUnit(u);
+    const idx = p.crew.indexOf(u);
+    if (idx >= 0) p.crew.splice(idx, 1);
+    v.driver = 'police';
+    const rider = createGnomeModel(look);
+    v.object.add(rider.object);
+    v.rider = rider;
+    v.riderLook = look;
+    p.dismounted = false;
+    p.stuckT = 0;
   }
 
   function stepPursuits(dt: number, ctx: WatchContext, world: World, level: number): void {
@@ -324,7 +428,7 @@ export function createWatch(
     // Release stolen or exploded pursuit vehicles from tracking.
     for (let i = pursuits.length - 1; i >= 0; i--) {
       const p = pursuits[i];
-      if (p.vehicle.driver !== 'police' || p.vehicle.exploded) {
+      if (p.vehicle.exploded || (p.vehicle.driver !== 'police' && !p.dismounted)) {
         removePursuit(p, false);
         pursuits.splice(i, 1);
       }
@@ -352,6 +456,25 @@ export function createWatch(
       const dx = tx - v.x;
       const dz = tz - v.z;
       const dist = Math.hypot(dx, dz);
+
+      if (p.dismounted) {
+        // Prune dead/fled crew; if player fled far away and a crew member is near the rig, reboard it.
+        p.crew = p.crew.filter((u) => units.has(u.npc.id));
+        if (v.driver === 'none' && !v.exploded && dist > 36) {
+          const boarder = p.crew.find((u) => u.npc.state !== 'ragdoll' && u.npc.state !== 'flee' && Math.hypot(u.npc.x - v.x, u.npc.z - v.z) < 20);
+          if (boarder) reboardPursuit(p, boarder);
+        }
+        continue;
+      }
+
+      if (Math.abs(v.speed) < 1.5 && dist < 24) p.stuckT += dt;
+      else p.stuckT = 0;
+
+      if (dist <= 14 || p.stuckT > 1.5) {
+        dismountPursuit(p);
+        continue;
+      }
+
       const desired = Math.atan2(dx, dz);
       const diff = angleDiff(desired, v.yaw);
       const steer = Math.max(-1, Math.min(1, -diff * 2.2));
@@ -509,6 +632,12 @@ export function createWatch(
       }
       return out;
     },
+    despawnSquad(npcs: Npc[]): void {
+      for (const npc of npcs) {
+        const u = units.get(npc.id);
+        if (u) removeUnit(u);
+      }
+    },
     onSneeze(x: number, z: number, radius: number): number {
       let count = 0;
       for (const u of units.values()) {
@@ -520,6 +649,21 @@ export function createWatch(
           u.npc.fromZ = z;
           count++;
         }
+      }
+      return count;
+    },
+    knockArea(x: number, z: number, radius: number, force: number, up: number, fromX: number, fromZ: number): number {
+      let count = 0;
+      for (const u of units.values()) {
+        const dx = u.npc.x - x;
+        const dz = u.npc.z - z;
+        const d = Math.hypot(dx, dz);
+        if (d > radius) continue;
+        const k = d > 0.01 ? force / d : force;
+        const ux = d > 0.01 ? dx * k : force;
+        const uz = d > 0.01 ? dz * k : 0;
+        knockUnit(u, ux, up, uz, (Math.random() - 0.5) * 10, fromX, fromZ);
+        count++;
       }
       return count;
     },

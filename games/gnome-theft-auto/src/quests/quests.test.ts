@@ -9,6 +9,7 @@ vi.mock('../audio', () => ({
   unlockAudio: vi.fn(),
 }));
 import { WORLD_HALF } from '../config';
+import { EVENT_BULLETINS } from '../radio/content';
 import { GIVERS, QUESTS, questById } from './defs';
 import {
   createQuestCloudSlot,
@@ -187,6 +188,45 @@ describe('quest step transitions', () => {
     expect(bulletins).toEqual(['test-bulletin']);
     expect(engine.hint()).toBeNull();
   });
+
+  it('enforces one active quest at a time and supports restartActive / abandonActive / getJournal', () => {
+    const givers: Record<string, GiverDef> = {
+      g1: { id: 'g1', name: 'Giver 1', label: 'Talk 1', x: 0, z: 0, exit: { x: 0, z: 0, yaw: 0 }, room: 'street', letter: '1' },
+      g2: { id: 'g2', name: 'Giver 2', label: 'Talk 2', x: 30, z: 0, exit: { x: 30, z: 0, yaw: 0 }, room: 'street', letter: '2' },
+    };
+    const quests: QuestDef[] = [
+      { id: 'qa', title: 'Quest A', giver: 'g1', doneText: 'Done A', objectives: [{ kind: 'visit', text: 'Go A', at: [100, 0], radius: 3, hint: 'A' }] },
+      { id: 'qb', title: 'Quest B', giver: 'g2', doneText: 'Done B', objectives: [{ kind: 'visit', text: 'Go B', at: [200, 0], radius: 3, hint: 'B' }] },
+    ];
+    const deps: QuestDeps = {
+      scene: new THREE.Scene(),
+      world: { walkPoints: [{ x: 0, z: 0 }] } as QuestDeps['world'],
+      npcs: { list: [], spawnNamed: vi.fn(), scare: vi.fn() } as unknown as QuestDeps['npcs'],
+      hud: { setWorld: vi.fn(), set: vi.fn(), toast: vi.fn(), banner: vi.fn(), setObjective: vi.fn(), setVisible: vi.fn() },
+      cutscene: { active: false, play: (_req, onDone) => onDone(), update: vi.fn(), skip: vi.fn() },
+      placePlayer: vi.fn(),
+      unlock: vi.fn(),
+      play: vi.fn(),
+    };
+
+    const engine = createQuests(deps, quests, givers);
+    expect(engine.interact(0, 0)).toBe(true);
+    expect(engine.getJournal().activeId).toBe('qa');
+    // Second giver cannot start qb while qa is active.
+    expect(engine.prompt(30, 0)).toBeNull();
+    expect(engine.interact(30, 0)).toBe(true);
+    expect(engine.getJournal().activeId).toBe('qa');
+
+    expect(engine.restartActive()).toBe(true);
+    expect(engine.getJournal().activeId).toBe('qa');
+
+    expect(engine.abandonActive()).toBe(true);
+    expect(engine.getJournal().activeId).toBeNull();
+    // Now g2 is available again.
+    expect(engine.prompt(30, 0)).toBe('Talk 2');
+    expect(engine.interact(30, 0)).toBe(true);
+    expect(engine.getJournal().activeId).toBe('qb');
+  });
 });
 
 describe('story campaign registry', () => {
@@ -265,5 +305,26 @@ describe('story campaign registry', () => {
     expect(cameoChapters.has(1)).toBe(true);
     expect(cameoChapters.has(3)).toBe(true);
     expect(cameoChapters.has(5)).toBe(true);
+  });
+
+  it('wires every quest radioBulletin to EVENT_BULLETINS and obeys R-021 no-wet/no-gore canon', () => {
+    const banned = /\b(wet|wetter|wetness|soak\w*|blood\w*|gore|bleed\w*)\b/i;
+    for (const q of QUESTS) {
+      if (q.radioBulletin) {
+        expect(EVENT_BULLETINS[q.radioBulletin]?.length ?? 0, q.radioBulletin).toBeGreaterThanOrEqual(2);
+      }
+      expect(q.title, q.id).not.toMatch(banned);
+      expect(q.doneText, q.id).not.toMatch(banned);
+      if (q.cutscene?.kind === 'dialogue') {
+        for (const l of q.cutscene.lines) expect(l.text, q.id).not.toMatch(banned);
+      }
+      for (const obj of q.objectives) {
+        expect(obj.text, q.id).not.toMatch(banned);
+        if (obj.kind === 'choice') {
+          expect(obj.optionA.endingText, q.id).not.toMatch(banned);
+          expect(obj.optionB.endingText, q.id).not.toMatch(banned);
+        }
+      }
+    }
   });
 });

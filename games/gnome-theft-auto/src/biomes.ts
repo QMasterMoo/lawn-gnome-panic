@@ -5,7 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { buildPrefab, buildStaticPrefabs, type StaticPrefabPlacement } from '@lawn/prefabs';
 import { LAYER, flatLayer } from '@lawn/depth';
 import { AIRFIELD, BASE, CITY_HALF, COLORS, HIGHWAYS, ROAD_WIDTH, WORLD_HALF, biomeAt } from './config';
-import type { Box, BiomeId, ParkedSpot, VehicleKind } from './types';
+import type { Box, BiomeId, DewBarrel, ParkedSpot, VehicleKind } from './types';
 
 export interface BiomeBuild {
   /** Static colliders of everything built here (tree trunks, rocks, fort walls, hangars, cabins...). */
@@ -14,6 +14,8 @@ export interface BiomeBuild {
   walkPoints: { x: number; z: number }[];
   /** Empty mowers to steal, kerb-side or yard-side in the biomes (not the planes: those are AIRFIELD.planeSpots). */
   parked: ParkedSpot[];
+  /** Shootable Black Dew barrels placed in biomes. */
+  dewBarrels: DewBarrel[];
   /** Animate scenery (banners, windsock). Called every frame by world.update. */
   update(dt: number): void;
 }
@@ -480,6 +482,18 @@ export function buildBiomes(scene: THREE.Scene, rnd: () => number): BiomeBuild {
     }
   };
 
+  const dewBarrels: DewBarrel[] = [];
+  const placeDewBarrel = (x: number, z: number, s: number, yaw: number): void => {
+    const m = measure('gta-dew-barrel', s, yaw);
+    const mesh = buildPrefab('gta-dew-barrel', { lights: false });
+    mesh.scale.setScalar(s);
+    mesh.position.set(x, 0, z);
+    mesh.rotation.y = yaw;
+    scene.add(mesh);
+    boxes.push({ minX: x + m.ox - m.hw, maxX: x + m.ox + m.hw, minZ: z + m.oz - m.hd, maxZ: z + m.oz + m.hd, h: m.h });
+    dewBarrels.push({ x, y: 0.6, z, mesh, blown: false });
+  };
+
   // ---- 1. The Compost Heap (x: -255, z: -60) -----------------------------------------------------------------
   {
     const cx = -255, cz = -60;
@@ -534,7 +548,7 @@ export function buildBiomes(scene: THREE.Scene, rnd: () => number): BiomeBuild {
     addMerged(steelGeos, new THREE.MeshStandardMaterial({ color: 0x4b4f54, roughness: 0.65, metalness: 0.35 }));
 
     for (const [bx, bz] of [[-259, -68], [-257, -68], [-251, -68], [-249, -68]] as [number, number][]) {
-      placeSetpiece(F, 'gta-dew-barrel', fit('gta-dew-barrel', 1.25), 0, true, { x: bx, z: bz });
+      placeDewBarrel(bx, bz, fit('gta-dew-barrel', 1.25), 0);
     }
     placeSetpiece(F, 'wheelbarrow', fit('wheelbarrow', 2.4), 0.7, true, { x: -259, z: -54 });
     placeSetpiece(F, 'wheelbarrow', fit('wheelbarrow', 2.4), -1.1, true, { x: -250, z: -61 });
@@ -796,8 +810,8 @@ export function buildBiomes(scene: THREE.Scene, rnd: () => number): BiomeBuild {
     placeSetpiece(Fm, 'silo', 4.5, 0, true, { x: gx + 15, z: gz + 6 });
     placeSetpiece(Fm, 'haystack', 1, 0, true, { x: gx + 6, z: gz - 5 });
     placeSetpiece(Fm, 'scarecrow', 1, 0, true, { x: gx - 6, z: gz - 7 });
-    placeSetpiece(Fm, 'gta-dew-barrel', fit('gta-dew-barrel', 1.3), 0, true, { x: gx - 2, z: gz - 6 });
-    placeSetpiece(Fm, 'gta-dew-barrel', fit('gta-dew-barrel', 1.3), 0.7, true, { x: gx, z: gz - 6 });
+    placeDewBarrel(gx - 2, gz - 6, fit('gta-dew-barrel', 1.3), 0);
+    placeDewBarrel(gx, gz - 6, fit('gta-dew-barrel', 1.3), 0.7);
     // Granny's load-bearing prize pumpkins.
     const pGeos: THREE.BufferGeometry[] = [];
     for (const [px, pz] of [[gx - 11, gz - 5], [gx - 13, gz - 6], [gx - 11, gz - 7.5]] as [number, number][]) {
@@ -979,9 +993,9 @@ export function buildBiomes(scene: THREE.Scene, rnd: () => number): BiomeBuild {
       slab.receiveShadow = true;
       scene.add(slab);
       placeSetpiece(s.batch, 'gta-dew-pump', fit('gta-dew-pump', 3.6), s.yaw, true, { x: s.x, z: s.z }, 4);
-      placeSetpiece(s.batch, 'gta-dew-barrel', fit('gta-dew-barrel', 1.2), 0, true, { x: s.x - 3.2, z: s.z + 1.5 }, 4);
-      placeSetpiece(s.batch, 'gta-dew-barrel', fit('gta-dew-barrel', 1.2), 0.7, true, { x: s.x - 3.2, z: s.z - 0.5 }, 4);
-      placeSetpiece(s.batch, 'gta-dew-barrel', fit('gta-dew-barrel', 1.2), 1.4, true, { x: s.x + 3.2, z: s.z + 1.0 }, 4);
+      placeDewBarrel(s.x - 3.2, s.z + 1.5, fit('gta-dew-barrel', 1.2), 0);
+      placeDewBarrel(s.x - 3.2, s.z - 0.5, fit('gta-dew-barrel', 1.2), 0.7);
+      placeDewBarrel(s.x + 3.2, s.z + 1.0, fit('gta-dew-barrel', 1.2), 1.4);
     }
   }
 
@@ -1176,6 +1190,7 @@ export function buildBiomes(scene: THREE.Scene, rnd: () => number): BiomeBuild {
     boxes,
     walkPoints,
     parked,
+    dewBarrels,
     update(dt: number) {
       time += dt;
       banners.forEach((g, i) => { g.rotation.z = Math.sin(time * 1.6 + i * 1.3) * 0.06; });

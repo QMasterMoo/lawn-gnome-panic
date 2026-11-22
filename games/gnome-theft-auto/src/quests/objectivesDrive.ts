@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { LAYER, flatLayer } from '@lawn/depth';
 import { angleDiff } from '../collide';
+import { planRoute } from '../errands';
 import { gnomeState, makeGnome, randomTownLook } from '../gnomes';
 import type { Blip, Npc, Vehicle } from '../types';
 import { collideVehicles, createVehicle, removeVehicle, repairVehicle, stepVehicle, syncVehicleMesh } from '../vehicles';
@@ -35,10 +36,44 @@ function steerToward(v: Vehicle, tx: number, tz: number, speed: number, dt: numb
   const dz = tz - v.z;
   const targetYaw = Math.atan2(dx, dz);
   const diff = angleDiff(targetYaw, v.yaw);
-  const steer = Math.max(-1, Math.min(1, diff * 2.2));
-  const throttle = Math.min(1, speed / Math.max(1, v.spec.maxSpeed));
+  const steer = Math.max(-1, Math.min(1, -diff * 2.2));
+  const turnScale = Math.abs(diff) > 0.45 ? 0.55 : 1;
+  const throttle = Math.min(1, (speed * turnScale) / Math.max(1, v.spec.maxSpeed));
   stepVehicle(v, { throttle, steer, lift: 0 }, dt, deps.world);
   syncVehicleMesh(v, dt);
+}
+
+function expandRoadWaypoints(raw: [number, number][], deps: QuestDeps): [number, number][] {
+  const nodes = deps.world.roads?.nodes;
+  if (!nodes || nodes.length === 0 || raw.length < 2) return raw;
+  const nearestNode = (x: number, z: number): number => {
+    let best = -1;
+    let bestD = Infinity;
+    for (const n of nodes) {
+      if (n.links.length === 0) continue;
+      const d = Math.hypot(n.x - x, n.z - z);
+      if (d < bestD) { bestD = d; best = n.id; }
+    }
+    return best;
+  };
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const out: [number, number][] = [raw[0]];
+  for (let i = 0; i < raw.length - 1; i++) {
+    const a = raw[i];
+    const b = raw[i + 1];
+    const fromId = nearestNode(a[0], a[1]);
+    const toId = nearestNode(b[0], b[1]);
+    const route = fromId >= 0 && toId >= 0 ? planRoute(nodes, fromId, toId) : null;
+    if (route && route.length > 1) {
+      for (let k = 1; k < route.length; k++) {
+        const nd = byId.get(route[k]);
+        if (nd) out.push([nd.x, nd.z]);
+      }
+    }
+    const last = out[out.length - 1];
+    if (Math.hypot(last[0] - b[0], last[1] - b[1]) > 4) out.push(b);
+  }
+  return out;
 }
 
 /** Spawn a target vehicle, optionally apply heat/damage limits, and deliver it to `dropAt`. */
@@ -56,6 +91,9 @@ export function stealDeliverRun(
 
   let heatApplied = false;
   let delivered = false;
+  let squeakCool = 2;
+  let banterIdx = 0;
+  let banterCool = 4;
   let t = 0;
 
   return {
@@ -78,7 +116,26 @@ export function stealDeliverRun(
         heatApplied = true;
         deps.watch?.addHeat(obj.heatOnEnter);
       }
-      if (obj.maxDamage !== undefined && (1 - target.hp > obj.maxDamage || target.exploded)) {
+      if (driving && obj.squeakPulse && Math.abs(target.speed) > 4) {
+        squeakCool -= dt;
+        if (squeakCool <= 0) {
+          squeakCool = 5;
+          deps.play('whistle');
+          say('*SQUEAK!* Nearby gnomes panic and scatter!');
+          for (const n of deps.npcs.list) {
+            if (Math.hypot(n.x - target.x, n.z - target.z) < 18) deps.npcs.scare(n, target.x, target.z);
+          }
+          if (deps.watch && deps.watch.heat > 0 && deps.watch.heat < 2) deps.watch.clear();
+        }
+      }
+      if (driving && obj.banter && banterIdx < obj.banter.length) {
+        banterCool -= dt;
+        if (banterCool <= 0) {
+          say(obj.banter[banterIdx++]);
+          banterCool = 6;
+        }
+      }
+      if (target.exploded || (obj.maxDamage !== undefined && 1 - target.hp > obj.maxDamage)) {
         repairVehicle(target);
         target.x = obj.spawnAt[0];
         target.z = obj.spawnAt[1];
@@ -89,7 +146,7 @@ export function stealDeliverRun(
           target.driver = 'none';
         }
         syncVehicleMesh(target, 0);
-        say('Too damaged! Respawned at pickup.');
+        say(obj.maxDamage !== undefined ? 'Too damaged! Respawned at pickup.' : 'Mission vehicle wrecked! A fresh one is ready at the pickup.');
       }
       if (driving && Math.hypot(target.x - obj.dropAt[0], target.z - obj.dropAt[1]) <= obj.radius) {
         delivered = true;
@@ -127,16 +184,21 @@ export function chaseFollowRun(
   changed: () => void,
   say: (t: string) => void,
 ): Run {
-  const start = obj.waypoints[0] ?? [0, 0];
-  const next = obj.waypoints[1] ?? start;
+  const path = expandRoadWaypoints(obj.waypoints, deps);
+  const start = path[0] ?? [0, 0];
+  const next = path[1] ?? start;
   const startYaw = Math.atan2(next[0] - start[0], next[1] - start[1]);
   const leader = createVehicle(deps.scene, obj.leaderKind, start[0], start[1], startYaw);
-  const look = randomTownLook();
-  const rider = makeGnome(leader.object, look);
-  rider.object.position.set(...leader.spec.seat);
-  rider.update(gnomeState(0, 0, 0, 0, 0, true), 0);
-  leader.rider = rider;
-  leader.riderLook = look;
+  const look = { ...randomTownLook(), ...(obj.leaderLook ?? {}) };
+  const attachRider = () => {
+    if (leader.rider) return;
+    const rider = makeGnome(leader.object, look);
+    rider.object.position.set(...leader.spec.seat);
+    rider.update(gnomeState(0, 0, 0, 0, 0, true), 0);
+    leader.rider = rider;
+    leader.riderLook = look;
+  };
+  attachRider();
   leader.driver = 'npc';
   deps.vehicles?.push(leader);
 
@@ -146,6 +208,9 @@ export function chaseFollowRun(
   let wpIdx = 1;
   let completed = false;
   let warnCool = 0;
+  let stuckT = 0;
+  let lastX = leader.x;
+  let lastZ = leader.z;
   let t = 0;
 
   return {
@@ -157,32 +222,69 @@ export function chaseFollowRun(
       marker.rotation.y = t * 2.5;
       if (completed) return;
 
-      const wp = obj.waypoints[wpIdx];
+      // Recover if leader was blown up or knocked off/stolen.
+      if (leader.exploded || leader.driver !== 'npc') {
+        const respawnPt = path[Math.max(0, wpIdx - 1)] ?? start;
+        const targetPt = path[Math.min(wpIdx, path.length - 1)] ?? respawnPt;
+        if (deps.player?.vehicle === leader) deps.player.exit();
+        repairVehicle(leader);
+        leader.x = respawnPt[0];
+        leader.z = respawnPt[1];
+        leader.yaw = Math.atan2(targetPt[0] - respawnPt[0], targetPt[1] - respawnPt[1]);
+        leader.speed = 0;
+        leader.driver = 'npc';
+        attachRider();
+        syncVehicleMesh(leader, 0);
+        say(`${obj.leaderName} got knocked off! Regrouping on the road...`);
+        return;
+      }
+
+      const wp = path[wpIdx];
       if (!wp) {
         completed = true;
         changed();
         return;
       }
       const distPlayer = Math.hypot(leader.x - px, leader.z - pz);
-      if (distPlayer > obj.maxDist * 1.4) {
+      if (distPlayer > obj.maxDist * 1.05) {
         leader.speed *= Math.max(0, 1 - 3 * dt);
         syncVehicleMesh(leader, dt);
+        stuckT = 0;
         if (warnCool <= 0) {
-          say(`Catch up to ${obj.leaderName}!`);
+          say(`Wait up! Catch up to ${obj.leaderName}.`);
           warnCool = 4;
         }
         return;
       }
-      steerToward(leader, wp[0], wp[1], obj.speed, dt, deps);
-      if (Math.hypot(leader.x - wp[0], leader.z - wp[1]) < 6) {
+      const pace = distPlayer > obj.maxDist * 0.65 ? obj.speed * 0.55 : obj.speed;
+      steerToward(leader, wp[0], wp[1], pace, dt, deps);
+      if (Math.hypot(leader.x - lastX, leader.z - lastZ) < 0.5 * dt * 10) {
+        stuckT += dt;
+        if (stuckT > 2.5) {
+          stuckT = 0;
+          const dx = wp[0] - leader.x;
+          const dz = wp[1] - leader.z;
+          const d = Math.hypot(dx, dz) || 1;
+          leader.x += (dx / d) * 3;
+          leader.z += (dz / d) * 3;
+          leader.yaw = Math.atan2(dx, dz);
+          syncVehicleMesh(leader, 0);
+        }
+      } else {
+        stuckT = 0;
+      }
+      lastX = leader.x;
+      lastZ = leader.z;
+
+      if (Math.hypot(leader.x - wp[0], leader.z - wp[1]) < 8) {
         wpIdx++;
-        if (wpIdx >= obj.waypoints.length) {
+        if (wpIdx >= path.length) {
           if (distPlayer <= obj.maxDist) {
             completed = true;
             say(`Arrived with ${obj.leaderName}!`);
             changed();
           } else {
-            wpIdx = obj.waypoints.length - 1;
+            wpIdx = path.length - 1;
           }
         }
       }
@@ -236,6 +338,7 @@ export function convoyAmbushRun(
 
   let wpIdx = 1;
   let doneFlag = false;
+  let warnCool = 0;
   let t = 0;
 
   return {
@@ -251,10 +354,23 @@ export function convoyAmbushRun(
     done: () => doneFlag,
     update(dt) {
       t += dt;
+      warnCool = Math.max(0, warnCool - dt);
       marker.rotation.y = t * 2.5;
       if (doneFlag) return;
 
       const wp = obj.route[wpIdx];
+      if (hauler.exploded) {
+        if (deps.player?.vehicle === hauler) deps.player.exit();
+        repairVehicle(hauler);
+        hauler.x = start[0];
+        hauler.z = start[1];
+        hauler.yaw = yaw;
+        hauler.speed = 0;
+        hauler.driver = 'none';
+        syncVehicleMesh(hauler, 0);
+        say('Dew-Hauler wrecked! A fresh tanker is ready on Route South.');
+        return;
+      }
       if (hauler.driver === 'npc' && wp) {
         steerToward(hauler, wp[0], wp[1], 11, dt, deps);
         if (deps.vehicles) collideVehicles(deps.vehicles);
@@ -265,9 +381,17 @@ export function convoyAmbushRun(
       if (deps.player?.vehicle === hauler) {
         marker.visible = false;
         if (Math.hypot(hauler.x - obj.dropAt[0], hauler.z - obj.dropAt[1]) <= 12) {
-          doneFlag = true;
-          say('Convoy hijacked and delivered!');
-          changed();
+          const remainingEscorts = escorts.filter((e) => !crackedSet.has(e) && e.state !== 'ragdoll').length;
+          if (remainingEscorts > 0) {
+            if (warnCool <= 0) {
+              say(`Clear the remaining ${remainingEscorts} HOA escort(s) first!`);
+              warnCool = 3;
+            }
+          } else {
+            doneFlag = true;
+            say('Convoy hijacked and delivered!');
+            changed();
+          }
         }
       } else {
         marker.visible = true;
@@ -285,6 +409,7 @@ export function convoyAmbushRun(
     },
     cracked: () => [],
     cleanup() {
+      deps.watch?.despawnSquad?.(escorts);
       hauler.object.remove(marker);
       deps.scene.remove(ring);
       ring.geometry.dispose();

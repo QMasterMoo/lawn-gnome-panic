@@ -10,7 +10,7 @@ const LEFT_ZONE = 0.45;
 const clamp = (v: number): number => Math.max(-1, Math.min(1, v));
 
 /** `handbrake` says whether the driving model uses one (the Arcade mode does not); it is asked again on `refresh()`. */
-export function createInput(canvas: HTMLCanvasElement, ui: HTMLElement, opts: { handbrake?: () => boolean } = {}): Input {
+export function createInput(canvas: HTMLCanvasElement, ui: HTMLElement, opts: { handbrake?: () => boolean; hop?: () => boolean; canLock?: () => boolean } = {}): Input {
   const s: InputState = { moveX: 0, moveY: 0, lift: 0, jump: false, fire: false, enterExit: false, switchGun: false, reload: false, radio: false, camYaw: 0, camPitch: 0 };
 
   // ---- Keyboard ----------------------------------------------------------------------------------------------------
@@ -40,7 +40,7 @@ export function createInput(canvas: HTMLCanvasElement, ui: HTMLElement, opts: { 
   canvas.style.touchAction = 'none';
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   canvas.addEventListener('click', () => {
-    if (touchOn || locked()) return;
+    if (touchOn || locked() || (opts.canLock && !opts.canLock())) return;
     void Promise.resolve(canvas.requestPointerLock()).catch(() => {});
   });
   window.addEventListener('mousedown', (e) => {
@@ -160,9 +160,11 @@ export function createInput(canvas: HTMLCanvasElement, ui: HTMLElement, opts: { 
     shownMode = mode;
     upIds.clear();
     downIds.clear();
-    jumpBtn.textContent = mode === 'fly' ? 'Up' : mode === 'drive' ? 'Handbrake' : 'Jump';
-    jumpBtn.style.fontSize = mode === 'drive' ? '11px' : '';
-    jumpBtn.style.display = (mode === 'drive' && !opts.handbrake?.()) || mode === 'chute' ? 'none' : '';
+    const hasHandbrake = !!opts.handbrake?.();
+    const hasHop = !!opts.hop?.();
+    jumpBtn.textContent = mode === 'fly' ? 'Up' : mode === 'drive' ? (hasHandbrake ? 'Handbrake' : 'Hop') : 'Jump';
+    jumpBtn.style.fontSize = mode === 'drive' && hasHandbrake ? '11px' : '';
+    jumpBtn.style.display = (mode === 'drive' && !hasHandbrake && !hasHop) || mode === 'chute' ? 'none' : '';
     downBtn.style.display = mode === 'fly' ? '' : 'none';
     swapBtn.style.display = mode === 'foot' || mode === 'chute' ? '' : 'none';
     radioBtn.style.display = mode === 'drive' || mode === 'fly' ? '' : 'none';

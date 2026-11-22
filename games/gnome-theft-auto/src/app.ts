@@ -5,7 +5,7 @@ import { createAchievementTracker } from '@lawn/achievements';
 import { play, setEngine, setSkid, unlockAudio } from './audio';
 import { createChaseCamera } from './camera';
 import {
-  BAIL_MIN_ALTITUDE, BIOME_NAMES, DEFAULT_LOOK, GUNS, HEAT, HOSPITAL, MOWER_TINTS, PAY_N_GLAZE, VEHICLE_SHOT_DAMAGE, PLAYER, CRACK_LINES, RUNOVER_LINES, SIDE_VALVE, STEAL_LINES, VIEW, CRACKED_TEXT,
+  BAIL_MIN_ALTITUDE, BIOME_NAMES, CULVERT_PORTALS, DEFAULT_LOOK, GUNS, HEAT, HOSPITAL, MOWER_TINTS, PAY_N_GLAZE, VEHICLE_SHOT_DAMAGE, PLAYER, CRACK_LINES, RUNOVER_LINES, SIDE_VALVE, STEAL_LINES, VIEW, CRACKED_TEXT,
 } from './config';
 import { createEasterEggs } from './easterEggs';
 import { createEconomy } from './economy';
@@ -13,7 +13,9 @@ import { createFx } from './fx';
 import { createGarages } from './garages';
 import { clearHandsUp } from './gnomes';
 import { createHud } from './hud';
+import { createIntroTour } from './introTour';
 import { createCutscene } from './quests/cutscene';
+import { createQuestJournal } from './quests/journal';
 import { createRadio } from './radio/player';
 import { createQuests } from './quests/quests';
 import { createInput } from './input';
@@ -22,6 +24,7 @@ import { createOptions } from './options';
 import { createNet, VEHICLE_CODES, type NetStatus } from './net';
 import { createNpcs } from './npcs';
 import { createPlayer, setChuteHook } from './player';
+import { createAmbientGnomes } from './ambientGnomes';
 import { createAmbulances } from './ambulance';
 import { createWatch } from './police';
 import { createRemotes } from './remotes';
@@ -34,6 +37,7 @@ import {
 import { createVibeNpcs } from './vibeNpcs';
 import { createWeapons } from './weapons';
 import { buildWorld } from './world';
+import { createWorldDetails } from './worldDetails';
 import { createWorldEvents } from './worldEvents';
 import { mountSteamConnect } from '@lawn/gamepad';
 
@@ -65,7 +69,11 @@ const hud = createHud(ui);
 const world = buildWorld(scene, renderer);
 hud.setWorld(world);
 const fx = createFx(scene);
-const input = createInput(canvas, ui, { handbrake: simActive });
+const input = createInput(canvas, ui, {
+  handbrake: simActive,
+  hop: () => player.vehicle?.kind === 'lowrider',
+  canLock: () => !cutscene.active && !introTour.active && !journal.isOpen() && !garages.isOpen(),
+});
 const chase = createChaseCamera(camera);
 const player = createPlayer(scene, myLook);
 player.respawn(world.spawn.x, world.spawn.z, world.spawn.yaw);
@@ -97,6 +105,8 @@ const radio = createRadio(ui, {
 const economy = createEconomy();
 const vibeNpcs = createVibeNpcs(scene, world, hud);
 const easterEggs = createEasterEggs(scene, world, hud, (amt, reason) => economy.earn(amt, reason));
+const worldDetails = createWorldDetails(scene, hud);
+const ambientGnomes = createAmbientGnomes(scene);
 const garages = createGarages(ui, hud, economy, {
   repaintVehicle,
   repairVehicle,
@@ -123,6 +133,14 @@ const quests = createQuests({
   onRadioBulletin: (id) => reportNews(id),
 });
 const worldEvents = createWorldEvents({ scene, world, hud, vehicles, economy, play });
+const journal = createQuestJournal(ui, quests, hud);
+const introTour = createIntroTour(ui, {
+  setUiVisible(vis) { hud.setVisible(vis); input.setVisible(vis); },
+  onDone() {
+    chase.yaw = player.yaw;
+    hud.toast('Welcome to Turfton. Mowers are for borrowing.', 4000);
+  },
+});
 setChuteHook(() => play('chute'));
 
 const pickTint = (): number => MOWER_TINTS[Math.floor(Math.random() * MOWER_TINTS.length)];
@@ -221,6 +239,7 @@ function getIn(v: Vehicle): void {
   v.driver = 'player';
   if (simActive() && !v.spec.flies) v.sim = createSimDrive(v);
   player.enter(v);
+  input.refresh();
   weapons.setVisible(false);
   if (!stats.driven.has(v.kind)) {
     stats.driven.add(v.kind);
@@ -263,6 +282,7 @@ function getOut(): void {
   v.speed = 0;
   v.sim = undefined;
   player.exit();
+  input.refresh();
   radio.stop();
   weapons.setVisible(true);
   play('door');
@@ -283,6 +303,7 @@ function blowUp(v: Vehicle): void {
   watch.addHeat(0.5);
   hud.toast(`${v.spec.name} goes up in flames!`);
   void achievements.unlock('gta-kaboom');
+  if (v.kind === 'hoa-van') void achievements.unlock('gta-turf-violator');
 }
 
 /** A bullet at (x, y, z): crack whoever it hits. */
@@ -322,6 +343,27 @@ function hitTest(x: number, y: number, z: number): boolean {
     if (!v.exploded) {
       damageVehicle(v, VEHICLE_SHOT_DAMAGE[weapons.gun]);
       if (v.hp <= 0) blowUp(v);
+    }
+    return true;
+  }
+  for (const b of world.dewBarrels ?? []) {
+    if (b.blown || Math.hypot(x - b.x, z - b.z) > 1.1 || y > 1.8) continue;
+    b.blown = true;
+    if (b.mesh) b.mesh.visible = false;
+    fx.explode(b.x, b.y, b.z);
+    play('boom');
+    watch.addHeat(0.35);
+    hud.toast('Black Dew barrel detonated!');
+    for (const n of npcs.list) {
+      const d = Math.hypot(n.x - b.x, n.z - b.z);
+      if (d < 8) npcs.knock(n, (n.x - b.x) * 2, 7, (n.z - b.z) * 2, 8, b.x, b.z);
+    }
+    watch.knockArea?.(b.x, b.z, 8, 12, 7, b.x, b.z);
+    for (const v of vehicles) {
+      if (!v.exploded && Math.hypot(v.x - b.x, v.z - b.z) < 7) {
+        damageVehicle(v, 0.7);
+        if (v.hp <= 0) blowUp(v);
+      }
     }
     return true;
   }
@@ -387,6 +429,8 @@ let questHinted = false;
 let handbrakeOn = false;
 let driftT = 0;
 let fraudCooldown = 0;
+let culvertCooldown = 0;
+let steamCooldown = 0;
 let last = performance.now();
 
 window.addEventListener('keydown', (e) => {
@@ -401,11 +445,18 @@ window.addEventListener('keydown', (e) => {
 function frame(now: number): void {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+  if (introTour.active) {
+    input.read();
+    introTour.update(dt, camera, player);
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+    return;
+  }
   const rawInp = input.read();
   // A cutscene owns the screen: any key or tap skips it, and the game stands still.
   cutscene.update(dt, camera);
   if (cutscene.active) {
-    if (rawInp.jump || rawInp.enterExit || rawInp.fire) cutscene.skip();
+    if (cutscene.mode !== 'dialogue' && (rawInp.jump || rawInp.enterExit || rawInp.fire)) cutscene.skip();
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
     return;
@@ -420,12 +471,16 @@ function frame(now: number): void {
     if (deathT <= 0) wakeAtHospital();
   }
 
-  // Enter / exit (no getting in or out while falling).
+  // Enter / exit (no getting in or out while falling). Vehicles take priority when closer than a quest giver.
   const near = player.vehicle || player.airborne ? null : nearestVehicle();
+  const nearDist = near ? Math.hypot(near.x - player.x, near.z - player.z) - (near.spec.radius - 1) : Infinity;
   const giverPrompt = player.vehicle || player.airborne || deathT > 0 ? null : quests.prompt(player.x, player.z);
+  const giverDist = giverPrompt ? (quests.giverDist?.(player.x, player.z) ?? 0) : Infinity;
+  const preferVehicle = !!near && nearDist <= giverDist;
   const garagePrompt = player.vehicle || player.airborne || deathT > 0 ? null : garages.prompt(player);
   if (inp.enterExit && !player.airborne) {
     if (player.vehicle) getOut();
+    else if (preferVehicle && near) getIn(near);
     else if (giverPrompt) quests.interact(player.x, player.z);
     else if (garagePrompt) garages.openTuningModal();
     else if (near) getIn(near);
@@ -561,7 +616,37 @@ function frame(now: number): void {
   quests.update(dt, player.x, player.z);
   vibeNpcs.update(dt, player.x, player.z, v);
   easterEggs.update(dt, player, vehicles);
+  worldDetails.update(dt, player.x, player.z);
+  ambientGnomes.update(dt, player.x, player.z);
   garages.update(dt, player, watch);
+  culvertCooldown = Math.max(0, culvertCooldown - dt);
+  steamCooldown = Math.max(0, steamCooldown - dt);
+  if (!player.airborne && deathT <= 0 && culvertCooldown <= 0 && (!v || !v.spec.flies)) {
+    const dtDist = Math.hypot(player.x - CULVERT_PORTALS.downtown.x, player.z - CULVERT_PORTALS.downtown.z);
+    const cnDist = Math.hypot(player.x - CULVERT_PORTALS.canal.x, player.z - CULVERT_PORTALS.canal.z);
+    if (dtDist <= 4.5 || cnDist <= 4.5) {
+      culvertCooldown = 4;
+      const dest = dtDist <= 4.5 ? CULVERT_PORTALS.canal : CULVERT_PORTALS.downtown;
+      const nx = dest.x + 6;
+      const nz = dest.z + 6;
+      if (v) {
+        v.x = nx; v.z = nz; v.speed *= 0.4;
+        syncVehicleMesh(v, 0);
+        player.updateRiding(0, 0);
+      } else {
+        player.respawn(nx, nz, player.yaw);
+      }
+      play('door');
+      hud.toast('Under-Deck Culvert: shortcut through the storm drain!');
+    }
+  }
+  if (v && !v.spec.flies && steamCooldown <= 0 && Math.hypot(v.x - (-255), v.z - (-60)) <= 7) {
+    steamCooldown = 2.5;
+    if (!hopLowrider(v)) v.vy = Math.max(v.vy, 9);
+    fx.airBlast(-255, 0.5, -60, 0, 0);
+    play('bump');
+    hud.toast('Compost Steam Vent!');
+  }
   fraudCooldown = Math.max(0, fraudCooldown - dt);
   if (!v && !player.airborne && deathT <= 0 && fraudCooldown <= 0) {
     for (const veh of vehicles) {
@@ -601,7 +686,7 @@ function frame(now: number): void {
   // Camera.
   const mode: CameraMode = player.airborne ? 'chute' : v ? (v.spec.flies ? 'fly' : 'drive') : 'foot';
   input.setMode(mode);
-  const enterLabel = v ? 'Exit' : giverPrompt ? 'Enter' : garagePrompt ? 'Tune' : near ? (near.driver === 'npc' ? 'Steal' : 'Drive') : null;
+  const enterLabel = v ? 'Exit' : preferVehicle && near ? (near.driver === 'npc' ? 'Steal' : 'Drive') : giverPrompt ? 'Enter' : garagePrompt ? 'Tune' : near ? (near.driver === 'npc' ? 'Steal' : 'Drive') : null;
   input.setEnterLabel(enterLabel);
   if (v) target.set(v.x, v.y, v.z);
   else if (deathT > 0) target.set(deathTarget.x, deathTarget.y, deathTarget.z);
@@ -642,7 +727,7 @@ function frame(now: number): void {
     cracked: stats.cracked,
     acorns: econ.acorns,
     debt: econ.debtRemaining,
-    prompt: giverPrompt ?? garagePrompt ?? (near ? `${near.driver === 'npc' ? 'Steal' : 'Drive'} ${near.spec.name}` : null),
+    prompt: preferVehicle && near ? `${near.driver === 'npc' ? 'Steal' : 'Drive'} ${near.spec.name}` : giverPrompt ?? garagePrompt ?? (near ? `${near.driver === 'npc' ? 'Steal' : 'Drive'} ${near.spec.name}` : null),
     player: { x: player.x, z: player.z, yaw: v ? v.yaw : player.yaw },
     blips,
     online: onlineText,
@@ -703,7 +788,8 @@ if (startParams.has('herd')) {
   }
 }
 
-hud.toast('Welcome to Turfton. Mowers are for borrowing.', 4000);
+introTour.startIfFirstTime(startParams);
+if (!introTour.active) hud.toast('Welcome to Turfton. Mowers are for borrowing.', 4000);
 requestAnimationFrame(frame);
 
 // Test hook for scripted checks and demos: ?debug exposes the live objects.

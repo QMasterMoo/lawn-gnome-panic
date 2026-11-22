@@ -33,15 +33,35 @@ const BASE_SPEAKER_LOOK: GnomeLook = {
   hair: null, freckles: false, dress: false, glasses: false, bowlCut: null,
 };
 
-const CHARACTER_PRESETS: Record<string, { look: Partial<GnomeLook>; hz: number }> = {
-  pip: { look: { hat: 0x2f64c9, shirt: 0xf08a24, beard: null, freckles: true }, hz: 126 },
-  tansy: { look: { hat: 0xf08a24, shirt: 0x4a3b2c, beard: null, hair: { color: 0x6b3a1e, style: 'pigtails' } }, hz: 118 },
-  vesper: { look: { hat: 0x141414, shirt: 0xf8f8f8, pants: 0xf8f8f8, skin: 0xf5f5f5, beard: null, glasses: true }, hz: 92 },
-  granny: { look: { hat: 0x8e44ad, shirt: 0x6b4a2e, dress: true, beard: null, glasses: true }, hz: 132 },
-  diggs: { look: { hat: 0x3b5323, shirt: 0x556b2f, beard: 0x8b5a2b }, hz: 80 },
-  bracken: { look: { hat: 0x2e6f40, shirt: 0x3b2a1a, beard: 0xcccccc }, hz: 76 },
-  loam: { look: { hat: 0xc2d8e6, shirt: 0x3c5266, beard: 0xeeeeee }, hz: 84 },
-  bodega: { look: { hat: 0x7f8c8d, shirt: 0x4b3a2a, beard: 0x8b5a2b }, hz: 88 },
+interface CharacterPreset {
+  look: Partial<GnomeLook>;
+  hz: number;
+  held?: string;
+  scale?: number;
+}
+
+const CHARACTER_PRESETS: Record<string, CharacterPreset> = {
+  pip: { look: { hat: 0xc82828, shirt: 0x2f6b3a, pants: 0x3b2f24, beard: 0x6b4423, freckles: true }, hz: 126, scale: 1.38 },
+  tansy: { look: { hat: 0xf08a24, shirt: 0x2f353d, pants: 0x23384d, beard: null, glasses: true, hair: { color: 0x6b3a1e, style: 'pigtails' } }, hz: 118, held: 'leaf-blower-cannon', scale: 1.42 },
+  vesper: { look: { hat: 0x141418, shirt: 0xf8f8fa, pants: 0xf8f8fa, skin: 0xfafafa, beard: null, glasses: true }, hz: 92, held: 'brass-calipers', scale: 1.5 },
+  granny: { look: { hat: 0x8e44ad, shirt: 0x7a4f7d, dress: true, beard: null, glasses: true, hair: { color: 0xdedede, style: 'pigtails' } }, hz: 132, held: 'gta-shotgun', scale: 1.44 },
+  diggs: { look: { hat: 0x4b6329, shirt: 0x556b2f, pants: 0x384620, beard: 0x5c3e24 }, hz: 80, held: 'gta-rifle', scale: 1.52 },
+  bracken: { look: { hat: 0x2e6f40, shirt: 0x4b3522, pants: 0x2f2519, beard: 0xd9d9d2 }, hz: 76, held: 'stopping-stone', scale: 1.48 },
+  loam: { look: { hat: 0x9ec6de, shirt: 0x3c5266, pants: 0x283642, beard: 0xeeeeee, glasses: true }, hz: 84, held: 'porcelain-lantern', scale: 1.46 },
+  bodega: { look: { hat: 0x7c4a2d, shirt: 0x3b7a57, beard: 0x8b5a2b }, hz: 88, scale: 1.42 },
+  juniper: { look: { hat: 0x2f5a8f, shirt: 0x243447, pants: 0x1d2733, beard: null, glasses: true, hair: { color: 0x4a2f22, style: 'pigtails' } }, hz: 116, scale: 1.44 },
+  reginald: { look: { hat: 0x18181e, shirt: 0xc9b99b, pants: 0x3a3228, beard: 0x9e9e9e, glasses: true }, hz: 96, held: 'brass-calipers', scale: 1.45 },
+  sorrel: { look: { hat: 0x4f7a5a, shirt: 0x6d5c4d, beard: null, hair: { color: 0x7d4c2a, style: 'pigtails' } }, hz: 122, scale: 1.4 },
+  clara: { look: { hat: 0xf6f6fa, shirt: 0xe6e8f0, skin: 0xfafafa, dress: true, beard: null }, hz: 134, held: 'porcelain-lantern', scale: 1.4 },
+  brenda: { look: { hat: 0xd4a04a, shirt: 0xb84a7a, dress: true, beard: null, glasses: true }, hz: 112, scale: 1.48 },
+  'big lou': { look: { hat: 0x18181e, shirt: 0x23262e, pants: 0x141418, beard: 0x222222, glasses: true }, hz: 78, scale: 1.56 },
+  mossley: { look: { hat: 0x3b6ea5, shirt: 0x7c6a53, beard: 0xb8b0a0, glasses: true }, hz: 118, scale: 1.42 },
+  burt: { look: { hat: 0x4b5563, shirt: 0xc9b99b, beard: 0x6b6b6b, glasses: true }, hz: 102, scale: 1.44 },
+  driftwood: { look: { hat: 0x4f9d92, shirt: 0xd9c79e, beard: 0xe5e0d4 }, hz: 94, scale: 1.44 },
+  cedric: { look: { hat: 0x8e44ad, shirt: 0x5b3b24, beard: 0x3a2a1d }, hz: 114, scale: 1.44 },
+  bramble: { look: { hat: 0x8b5a2b, shirt: 0x4a6b3b, beard: 0xc4b8a4 }, hz: 100, scale: 1.46 },
+  shelldon: { look: { hat: 0x7a8a78, shirt: 0x3f4740, beard: null, glasses: true }, hz: 110, scale: 1.4 },
+  wally: { look: { hat: 0x6b4a2e, shirt: 0xc2a878, beard: 0xd9d9d9, glasses: true }, hz: 96, scale: 1.42 },
 };
 
 const ROOM_THEMES: Record<CutsceneRoom, { floor: number; wall: number; trim: number; ceiling: number; bg: number; light: number }> = {
@@ -72,16 +92,18 @@ function contractShots(targets: number): Shot[] {
   ];
 }
 
-/** Resolve speaker look and pitch from character preset + line override. */
-function speakerLookAndHz(line: DialogueLine): { look: GnomeLook; hz: number } {
+/** Resolve speaker look, pitch, optional held prop, and scale from character preset + line override. */
+function speakerLookAndHz(line: DialogueLine): { look: GnomeLook; hz: number; held?: string; scale: number } {
   const lower = line.speaker.toLowerCase();
-  let preset: { look: Partial<GnomeLook>; hz: number } | undefined;
+  let preset: CharacterPreset | undefined;
   for (const [k, v] of Object.entries(CHARACTER_PRESETS)) {
     if (lower.includes(k)) { preset = v; break; }
   }
   return {
     look: { ...BASE_SPEAKER_LOOK, ...(preset?.look ?? {}), ...(line.look ?? {}) },
     hz: line.hz ?? preset?.hz ?? 100,
+    held: preset?.held,
+    scale: preset?.scale ?? 1.45,
   };
 }
 
@@ -222,6 +244,7 @@ export function createCutscene(scene: THREE.Scene, ui: HTMLElement, hooks: { set
 
   function buildRoomShell(g: THREE.Group, room: CutsceneRoom): void {
     const theme = ROOM_THEMES[room] ?? ROOM_THEMES['mulch-club'];
+    const outdoor = room === 'street' || room === 'unmowed-hollow' || room === 'dust-overlook' || room === 'fells-shrine';
     const mat = (c: number): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 });
     const box = (w: number, h: number, d: number, x: number, y: number, z: number, c: number): void => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c));
@@ -229,20 +252,102 @@ export function createCutscene(scene: THREE.Scene, ui: HTMLElement, hooks: { set
       m.receiveShadow = true;
       g.add(m);
     };
-    box(14, 0.1, 13, 0, -0.05, 0, theme.floor);
-    box(14, 4.2, 0.2, 0, 2.1, -6.6, theme.wall);
-    box(0.2, 4.2, 13, -7.1, 2.1, 0, theme.wall);
-    box(0.2, 4.2, 13, 7.1, 2.1, 0, theme.wall);
-    box(14, 0.2, 13, 0, 4.3, 0, theme.ceiling);
-    box(14, 0.12, 0.2, 0, 0.3, -6.45, theme.trim);
+    box(16, 0.1, 15, 0, -0.05, 0, theme.floor);
+    if (!outdoor) {
+      box(14, 4.2, 0.2, 0, 2.1, -6.6, theme.wall);
+      box(0.2, 4.2, 13, -7.1, 2.1, 0, theme.wall);
+      box(0.2, 4.2, 13, 7.1, 2.1, 0, theme.wall);
+      box(14, 0.2, 13, 0, 4.3, 0, theme.ceiling);
+      box(14, 0.12, 0.2, 0, 0.3, -6.45, theme.trim);
+    }
 
-    const lampLight = new THREE.PointLight(theme.light, 16, 18, 1.5);
-    lampLight.position.set(-2.2, 2.2, -1.6);
+    const lampLight = new THREE.PointLight(theme.light, 18, 22, 1.4);
+    lampLight.position.set(-2.2, 2.8, -1.6);
     g.add(lampLight);
-    const spot = new THREE.SpotLight(0xffe8c2, 30, 15, 0.55, 0.6, 1.4);
-    spot.position.set(0, 4, -1.0);
+    const spot = new THREE.SpotLight(0xffe8c2, 30, 16, 0.55, 0.6, 1.4);
+    spot.position.set(0, 4.2, -1.0);
     spot.target.position.set(0, 1, -3.2);
     g.add(spot, spot.target);
+  }
+
+  function buildThemedSet(g: THREE.Group, room: CutsceneRoom): void {
+    const prop = (id: string, size: number, by: 'w' | 'h', x: number, y: number, z: number, yaw = 0): void => {
+      const built = fit(id, size, by);
+      built.obj.position.set(x, y, z);
+      built.obj.rotation.y = yaw;
+      g.add(built.obj);
+    };
+    const box = (w: number, h: number, d: number, x: number, y: number, z: number, c: number, emissive = 0): void => {
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, emissive }),
+      );
+      m.position.set(x, y, z);
+      g.add(m);
+    };
+
+    if (room === 'side-valve') {
+      // Corrugated roll-up bay slats, orange trim, Black Dew barrels, wheelbarrow, workbench.
+      for (let i = 0; i < 6; i++) box(5.4, 0.28, 0.14, 0, 0.5 + i * 0.42, -6.38, i % 2 === 0 ? 0x5c646d : 0x4a5159);
+      box(5.8, 0.14, 0.2, 0, 3.1, -6.35, 0xf08a24, 0x5a2e04);
+      prop('table', 2.4, 'w', 1.9, 0, -2.6, -0.2);
+      prop('gta-dew-barrel', 1.1, 'h', -2.3, 0, -3.8, 0.4);
+      prop('gta-dew-barrel', 1.1, 'h', -3.1, 0, -3.2, -0.3);
+      prop('wheelbarrow', 2.0, 'w', 3.0, 0, -4.4, -0.7);
+    } else if (room === 'cloverfield-barn') {
+      // Red barn beams, haystacks, prize orange pumpkins on crates, Black Dew barrel.
+      box(0.35, 4.2, 0.35, -4.2, 2.1, -5.8, 0x5c2018);
+      box(0.35, 4.2, 0.35, 4.2, 2.1, -5.8, 0x5c2018);
+      box(9.2, 0.32, 0.32, 0, 3.8, -5.8, 0x5c2018);
+      prop('haystack', 1.7, 'w', -2.6, 0, -4.0, 0.2);
+      prop('haystack', 1.5, 'w', 2.7, 0, -4.2, -0.4);
+      prop('gta-dew-barrel', 1.1, 'h', -1.6, 0, -2.5, 0.3);
+      const pumpkin = new THREE.Mesh(
+        new THREE.SphereGeometry(0.45, 10, 8),
+        new THREE.MeshStandardMaterial({ color: 0xe6731e, roughness: 0.7 }),
+      );
+      pumpkin.scale.set(1.15, 0.8, 1.15);
+      pumpkin.position.set(1.8, 0.36, -2.3);
+      g.add(pumpkin);
+    } else if (room === 'unmowed-hollow') {
+      // Forest canopy backdrop, broadleaf trees, bushes, glowing Stopping Stone plinth.
+      prop('broadleaf-tree', 4.6, 'h', -3.8, 0, -5.2, 0.3);
+      prop('broadleaf-tree', 4.4, 'h', 3.9, 0, -5.0, -0.5);
+      prop('round-bush', 2.0, 'w', -2.1, 0, -4.2, 0);
+      prop('round-bush', 1.8, 'w', 2.2, 0, -4.4, 0.8);
+      box(1.3, 0.65, 1.3, 1.7, 0.32, -2.5, 0x3b4d36);
+      prop('stopping-stone', 0.85, 'h', 1.7, 0.65, -2.5, 0.4);
+    } else if (room === 'fells-shrine') {
+      // Ice-stone arch, snowdrifts, glowing cyan Aether crystals, flickering barrel fire.
+      box(0.7, 3.6, 0.7, -2.4, 1.8, -5.2, 0x8ea6b8);
+      box(0.7, 3.6, 0.7, 2.4, 1.8, -5.2, 0x8ea6b8);
+      box(5.6, 0.7, 0.8, 0, 3.6, -5.2, 0xa8c2d4);
+      prop('aether-crystal', 1.6, 'h', -2.6, 0, -3.4, 0.3);
+      prop('aether-crystal', 1.4, 'h', 2.5, 0, -3.6, -0.5);
+      box(0.7, 0.85, 0.7, 1.6, 0.42, -2.4, 0x4b4f54);
+      box(0.45, 0.25, 0.45, 1.6, 0.92, -2.4, 0xff7a22, 0xc84600);
+    } else if (room === 'dust-overlook') {
+      // Sandbag parapet, desert cacti, tactical crate table, Black Dew barrel.
+      box(9.0, 0.75, 0.65, 0, 0.38, -5.4, 0xb89664);
+      prop('tall-cactus', 2.8, 'h', -3.4, 0, -4.2, 0.2);
+      prop('tall-cactus', 2.4, 'h', 3.6, 0, -4.5, -0.3);
+      prop('table', 2.0, 'w', 1.6, 0, -2.5, 0.15);
+      prop('gta-dew-barrel', 1.1, 'h', -2.1, 0, -3.1, 0);
+    } else if (room === 'mulch-club') {
+      // Velvet back room: rug, bookshelves, armchair, lamp.
+      prop('rug', 5.2, 'w', 0, 0.01, -2.0, 0);
+      prop('bookshelf', 2.4, 'w', -3.6, 0, -6.1, 0);
+      prop('bookshelf', 2.4, 'w', 3.6, 0, -6.1, 0);
+      prop('lamp', 1.4, 'h', -2.4, 0, -4.6, 0);
+      prop('table', 2.0, 'w', 1.6, 0, -2.4, 0);
+    } else {
+      // 'street': Turfton sidewalk storefront facade, neon sign, Acorn-Cola & Dandelion Fizz machines, picnic table.
+      box(12, 3.8, 0.4, 0, 1.9, -6.0, 0x3b424c);
+      box(4.6, 0.25, 0.35, 0, 3.1, -5.7, 0xffd23f, 0x8a6400);
+      prop('gta-vending-cola', 1.6, 'h', -2.8, 0, -5.0, 0);
+      prop('gta-vending-fizz', 1.6, 'h', 2.8, 0, -5.0, 0);
+      prop('picnic-table', 2.2, 'w', 2.1, 0, -2.7, -0.25);
+    }
   }
 
   function buildContract(req: Extract<CutsceneRequest, { kind?: 'contract' }>): void {
@@ -354,9 +459,15 @@ export function createCutscene(scene: THREE.Scene, ui: HTMLElement, hooks: { set
       stage.remove(speakerModel.object);
       speakerModel = null;
     }
-    const { look } = speakerLookAndHz(line);
+    const { look, held, scale } = speakerLookAndHz(line);
     speakerModel = makeGnome(stage, look);
-    speakerModel.object.scale.setScalar(1.45);
+    speakerModel.object.scale.setScalar(scale);
+    if (held) {
+      const prop = buildHeld(held);
+      prop.position.set(0, -0.32, 0.02);
+      prop.rotation.x = Math.PI;
+      speakerModel.arms.right.add(prop);
+    }
   }
 
   function applyDialogueLine(idx: number): void {
@@ -379,9 +490,7 @@ export function createCutscene(scene: THREE.Scene, ui: HTMLElement, hooks: { set
     const g = new THREE.Group();
     g.position.copy(ORIGIN);
     buildRoomShell(g, req.room);
-    const table = fit('table', 2.2, 'w');
-    table.obj.position.set(1.4, 0, -2.4);
-    g.add(table.obj);
+    buildThemedSet(g, req.room);
     buildBodegaCorner(g);
     scene.add(g);
     stage = g;
@@ -525,9 +634,11 @@ export function createCutscene(scene: THREE.Scene, ui: HTMLElement, hooks: { set
 
   const cs: Cutscene = {
     active: false,
+    get mode() { return mode; },
 
     play(req, done) {
       if (cs.active || phase !== 'off') return;
+      if (typeof document !== 'undefined' && document.pointerLockElement) document.exitPointerLock();
       cs.active = true;
       onDone = done;
       hooks.setUiVisible(false);
