@@ -201,6 +201,28 @@
   ],
   "markers": [
     {
+      "id": "leash-c6-spawn-6",
+      "kind": "leash",
+      "x": 60,
+      "z": 56,
+      "r": 18,
+      "data": {
+        "v": 1,
+        "spawn": "c6-spawn-6"
+      }
+    },
+    {
+      "id": "leash-c6-spawn-9",
+      "kind": "leash",
+      "x": 0,
+      "z": -80,
+      "r": 18,
+      "data": {
+        "v": 1,
+        "spawn": "c6-spawn-9"
+      }
+    },
+    {
       "id": "c6-shard-wall",
       "kind": "object",
       "x": 50,

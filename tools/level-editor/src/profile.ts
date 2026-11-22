@@ -174,6 +174,29 @@ export const COLLECTIONS: readonly CollectionDef[] = [
     fields: [num('count', 'Count', 1, 1), num('spread', 'Spread (m)', 0.5, 0)],
   },
   {
+    // Authored leash zones (kind 'leash' in markers). Drawn as orange circles; optional data.spawn binds a specific spawn id.
+    id: 'leashes', label: 'Leash zone', color: 0xffaa00, shape: 'circle',
+    radius: (i) => Number(i.r ?? 16),
+    items: (d) => ((d.markers ??= []) as unknown as Item[]),
+    accepts: (i) => i.kind === 'leash',
+    make: (x, z): Item => ({ id: `leash-${rid()}`, kind: 'leash', x, z, r: 16, data: { v: 1 } } satisfies MarkerDef),
+    fields: [
+      { key: 'id', label: 'Id', type: 'text' },
+      num('r', 'Radius (m)', 0.5, 1),
+      {
+        key: 'spawn', label: 'Spawn id (optional)', type: 'text',
+        get: (it) => (it.data as { spawn?: string } | undefined)?.spawn ?? '',
+        set: (it, val) => {
+          const d = (it.data ??= { v: 1 }) as { v: number; spawn?: string };
+          d.v = 1;
+          const s = String(val).trim();
+          if (s) d.spawn = s;
+          else delete d.spawn;
+        },
+      },
+    ],
+  },
+  {
     id: 'stamp-flatten', label: 'Flatten stamp', color: 0xb38cff, shape: 'circle',
     radius: (i) => Number(i.outer),
     items: (d) => ((d.stamps ??= []) as unknown as Item[]),

@@ -181,6 +181,28 @@
   ],
   "markers": [
     {
+      "id": "leash-c2-spawn-10",
+      "kind": "leash",
+      "x": 65,
+      "z": 45,
+      "r": 18,
+      "data": {
+        "v": 1,
+        "spawn": "c2-spawn-10"
+      }
+    },
+    {
+      "id": "leash-s03-spawn-5",
+      "kind": "leash",
+      "x": 65,
+      "z": 45,
+      "r": 18,
+      "data": {
+        "v": 1,
+        "spawn": "s03-spawn-5"
+      }
+    },
+    {
       "id": "c2-fountain-valve-1",
       "kind": "object",
       "x": -64,

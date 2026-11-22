@@ -8,6 +8,7 @@ import { applyStatus, canAct, dealDamage, playerMitigation } from './combat';
 import { talentBonus } from './abilities';
 import { allEntities, getEntity, isEntityAuthority, spawnEnemyAt } from './entities';
 import { bus } from './events';
+import { isWithinLeash } from './leash';
 import { player } from './player';
 import { enemyStats } from './rules';
 import { heightAt, isBlocked } from './terrain';
@@ -23,6 +24,7 @@ const SUMMON_OFFSET = 2.5;
 
 /** A telegraph (or a timed step) waiting to resolve. */
 interface Pending {
+  entityId: number;
   age: number;
   duration: number;
   mesh: THREE.Mesh | null;
@@ -56,6 +58,69 @@ export function initBossMoves(s: THREE.Scene): void {
   scene = s;
 }
 
+/** Cancels all pending moves, vanish hiding, timers and buffs for one boss (called on leash reset or death). */
+export function cancelBossMoves(entityId: number): void {
+  for (let i = pending.length - 1; i >= 0; i--) {
+    const p = pending[i];
+    if (p.entityId !== entityId) continue;
+    pending.splice(i, 1);
+    if (p.mesh) {
+      scene?.remove(p.mesh);
+      p.mesh.geometry.dispose();
+      (p.mesh.material as THREE.Material).dispose();
+    }
+  }
+  const spot = hidden.get(entityId);
+  if (spot) {
+    hidden.delete(entityId);
+    const e = getEntity(entityId);
+    if (e && !e.dead) {
+      e.position.set(spot.x, heightAt(spot.x, spot.z), spot.z);
+      e.object.visible = true;
+    }
+  }
+  const prefix = `${entityId}:`;
+  for (const key of timers.keys()) {
+    if (key.startsWith(prefix)) timers.delete(key);
+  }
+  const b = buffs.get(entityId);
+  if (b) {
+    b.owner.remove(b.glow);
+    b.glow.geometry.dispose();
+    (b.glow.material as THREE.Material).dispose();
+    buffs.delete(entityId);
+  }
+}
+
+/** Clears all boss-move state between headless test runs. */
+export function resetBossMovesState(): void {
+  for (const p of pending) {
+    if (p.mesh) {
+      scene?.remove(p.mesh);
+      p.mesh.geometry.dispose();
+      (p.mesh.material as THREE.Material).dispose();
+    }
+  }
+  pending.length = 0;
+  for (const p of pools) {
+    scene?.remove(p.mesh);
+    p.mesh.geometry.dispose();
+    (p.mesh.material as THREE.Material).dispose();
+  }
+  pools.length = 0;
+  timers.clear();
+  for (const b of buffs.values()) {
+    b.owner.remove(b.glow);
+    b.glow.geometry.dispose();
+    (b.glow.material as THREE.Material).dispose();
+  }
+  buffs.clear();
+  hidden.clear();
+}
+
+bus.on('enemy-reset', ({ entityId }) => cancelBossMoves(entityId));
+bus.on('enemy-killed', ({ entityId }) => cancelBossMoves(entityId));
+
 /** Per-frame boss move timers, telegraphs, pools and buffs. */
 export function updateBossMoves(dt: number): void {
   updatePending(dt);
@@ -65,6 +130,7 @@ export function updateBossMoves(dt: number): void {
 
   for (const e of allEntities()) {
     if (e.kind !== 'enemy' || e.dead || !e.inCombat) continue;
+    if (!isWithinLeash(e, player.position.x, player.position.z)) continue;
     const def = ENEMIES[e.defId] as EnemyDef | undefined;
     if (!def?.moves) continue;
     for (const move of def.moves) {
@@ -104,8 +170,10 @@ function fire(e: Entity, def: EnemyDef, move: BossMoveDef): void {
     case 'ring': {
       const r = move.radius ?? 3;
       const mesh = groundMesh(discGeo(r), telegraphMaterial(), cx, cz);
-      schedule(move.telegraph, mesh, () => {
-        if (inDisc(cx, cz, r, player.position.x, player.position.z)) hitPlayer(def, move);
+      schedule(e.id, move.telegraph, mesh, () => {
+        const b = getEntity(e.id);
+        if (!b || b.dead || !b.inCombat) return;
+        if (inDisc(cx, cz, r, player.position.x, player.position.z) && isWithinLeash(b, player.position.x, player.position.z)) hitPlayer(def, move);
       });
       break;
     }
@@ -114,8 +182,10 @@ function fire(e: Entity, def: EnemyDef, move: BossMoveDef): void {
       const dir = Math.atan2(px - cx, pz - cz);
       const mesh = groundMesh(coneGeo(r), telegraphMaterial(), cx, cz);
       mesh.rotation.y = dir - Math.PI / 2;
-      schedule(move.telegraph, mesh, () => {
-        if (inCone(cx, cz, r, dir, player.position.x, player.position.z)) hitPlayer(def, move);
+      schedule(e.id, move.telegraph, mesh, () => {
+        const b = getEntity(e.id);
+        if (!b || b.dead || !b.inCombat) return;
+        if (inCone(cx, cz, r, dir, player.position.x, player.position.z) && isWithinLeash(b, player.position.x, player.position.z)) hitPlayer(def, move);
       });
       break;
     }
@@ -125,15 +195,19 @@ function fire(e: Entity, def: EnemyDef, move: BossMoveDef): void {
       const dir = Math.atan2(px - cx, pz - cz);
       const mesh = groundMesh(laneGeo(wid, len), telegraphMaterial(), cx, cz);
       mesh.rotation.y = dir;
-      schedule(move.telegraph, mesh, () => {
-        if (inLane(cx, cz, dir, len, wid, player.position.x, player.position.z)) hitPlayer(def, move);
+      schedule(e.id, move.telegraph, mesh, () => {
+        const b = getEntity(e.id);
+        if (!b || b.dead || !b.inCombat) return;
+        if (inLane(cx, cz, dir, len, wid, player.position.x, player.position.z) && isWithinLeash(b, player.position.x, player.position.z)) hitPlayer(def, move);
       });
       break;
     }
     case 'pool': {
       const r = move.radius ?? 2;
       const mesh = groundMesh(discGeo(r), telegraphMaterial(), px, pz);
-      schedule(move.telegraph, mesh, () => {
+      schedule(e.id, move.telegraph, mesh, () => {
+        const b = getEntity(e.id);
+        if (!b || b.dead || !b.inCombat) return;
         const mat = new THREE.MeshBasicMaterial({ color: TELEGRAPH_COLOR, transparent: true, opacity: 0.3, depthWrite: false });
         const pm = groundMesh(discGeo(r), mat, px, pz);
         scene?.add(pm);
@@ -146,9 +220,9 @@ function fire(e: Entity, def: EnemyDef, move: BossMoveDef): void {
       if (!move.summon || !isEntityAuthority(e.id)) break;
       const { enemy, count } = move.summon;
       const mesh = groundMesh(discGeo(move.radius ?? SUMMON_OFFSET), telegraphMaterial(), cx, cz);
-      schedule(move.telegraph, mesh, () => {
+      schedule(e.id, move.telegraph, mesh, () => {
         const boss = getEntity(e.id);
-        if (!boss || boss.dead) return;
+        if (!boss || boss.dead || !boss.inCombat) return;
         for (let i = 0; i < count; i++) {
           const a = (i / count) * Math.PI * 2 + Math.random();
           spawnEnemyAt(enemy, boss.position.x + Math.cos(a) * SUMMON_OFFSET, boss.position.z + Math.sin(a) * SUMMON_OFFSET);
@@ -159,9 +233,11 @@ function fire(e: Entity, def: EnemyDef, move: BossMoveDef): void {
     case 'pull': {
       const r = move.radius ?? 6;
       const mesh = groundMesh(discGeo(r), telegraphMaterial(), cx, cz);
-      schedule(move.telegraph, mesh, () => {
+      schedule(e.id, move.telegraph, mesh, () => {
         const boss = getEntity(e.id);
-        if (!boss || boss.dead || player.dead) return;
+        if (!boss || boss.dead || !boss.inCombat || player.dead) return;
+        if (!inDisc(boss.position.x, boss.position.z, r, player.position.x, player.position.z)) return;
+        if (!isWithinLeash(boss, player.position.x, player.position.z)) return;
         const qx = player.position.x + (boss.position.x - player.position.x) * PULL_FRACTION;
         const qz = player.position.z + (boss.position.z - player.position.z) * PULL_FRACTION;
         if (isBlocked(qx, qz)) return;
@@ -173,7 +249,7 @@ function fire(e: Entity, def: EnemyDef, move: BossMoveDef): void {
     case 'vanish': {
       const r = move.radius ?? 2;
       const mesh = groundMesh(discGeo(r), telegraphMaterial(), cx, cz);
-      schedule(move.telegraph, mesh, () => hideBoss(e.id, def, move));
+      schedule(e.id, move.telegraph, mesh, () => hideBoss(e.id, def, move));
       break;
     }
     case 'buff': {
@@ -183,24 +259,49 @@ function fire(e: Entity, def: EnemyDef, move: BossMoveDef): void {
   }
 }
 
-/** Hides the boss for VANISH_SECONDS, then it reappears next to the player with a ring hit. */
+/** Hides the boss for VANISH_SECONDS, then it reappears next to the player (only if still in combat and in leash) with a ring hit. */
 function hideBoss(id: number, def: EnemyDef, move: BossMoveDef): void {
   const boss = getEntity(id);
-  if (!boss || boss.dead) return;
+  if (!boss || boss.dead || !boss.inCombat) return;
   hidden.set(id, { x: boss.position.x, z: boss.position.z });
   boss.object.visible = false;
-  schedule(VANISH_SECONDS, null, () => {
+  schedule(id, VANISH_SECONDS, null, () => {
     const b = getEntity(id);
+    const spot = hidden.get(id);
     hidden.delete(id);
     if (!b || b.dead) return;
-    const nx = player.position.x + 1.5;
-    const nz = player.position.z;
-    b.position.set(nx, heightAt(nx, nz), nz);
     b.object.visible = true;
+    if (!b.inCombat || player.dead || !isWithinLeash(b, player.position.x, player.position.z)) {
+      if (spot) b.position.set(spot.x, heightAt(spot.x, spot.z), spot.z);
+      return;
+    }
+    const px = player.position.x;
+    const pz = player.position.z;
+    const candidates: [number, number][] = [
+      [px + 1.5, pz],
+      [px - 1.5, pz],
+      [px, pz + 1.5],
+      [px, pz - 1.5],
+      [px, pz],
+    ];
+    let nx = spot?.x ?? b.home.x;
+    let nz = spot?.z ?? b.home.z;
+    for (const [cx, cz] of candidates) {
+      if (isWithinLeash(b, cx, cz) && !isBlocked(cx, cz)) {
+        nx = cx;
+        nz = cz;
+        break;
+      }
+    }
+    b.position.set(nx, heightAt(nx, nz), nz);
     const r = move.radius ?? 3;
     const mesh = groundMesh(discGeo(r), telegraphMaterial(), nx, nz);
-    schedule(0.5, mesh, () => {
-      if (inDisc(nx, nz, r, player.position.x, player.position.z)) hitPlayer(def, move);
+    schedule(id, 0.5, mesh, () => {
+      const b2 = getEntity(id);
+      if (!b2 || b2.dead || !b2.inCombat) return;
+      if (inDisc(nx, nz, r, player.position.x, player.position.z) && isWithinLeash(b2, player.position.x, player.position.z)) {
+        hitPlayer(def, move);
+      }
     });
   });
 }
@@ -270,9 +371,9 @@ function laneGeo(width: number, length: number): THREE.BufferGeometry {
 }
 
 /** Runs `onDone` after `duration` seconds; a mesh, if given, is drawn and fades up meanwhile. */
-function schedule(duration: number, mesh: THREE.Mesh | null, onDone: () => void): void {
+function schedule(entityId: number, duration: number, mesh: THREE.Mesh | null, onDone: () => void): void {
   if (mesh && scene) scene.add(mesh);
-  pending.push({ age: 0, duration, mesh, onDone });
+  pending.push({ entityId, age: 0, duration, mesh, onDone });
 }
 
 function updatePending(dt: number): void {

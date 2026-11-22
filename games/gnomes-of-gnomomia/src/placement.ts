@@ -9,6 +9,8 @@ export const OBJECT_MARKER_KIND = 'object';
 export const OBJECT_PLACEMENT_V = 1;
 export const SPAWN_MARKER_KIND = 'spawn';
 const SPAWN_PLACEMENT_V = 1;
+export const LEASH_MARKER_KIND = 'leash';
+export const LEASH_PLACEMENT_V = 1;
 
 export type Vec3P = { x?: number; y?: number; z?: number };
 
@@ -152,4 +154,59 @@ export function resolveSpawn(spec: SpawnSpec, zoneId: ZoneId, marker?: MarkerDef
     errors.push('marker x and z must be finite numbers');
   }
   return { def, errors };
+}
+
+// ---------------------------------------------------------------- leashes
+
+/** The `data` of a leash marker. x, z and r live on the marker itself. Unknown keys are ignored. */
+export interface LeashPlacementData {
+  v: 1;
+  spawn?: string;
+  [k: string]: unknown;
+}
+
+export interface ResolvedLeash {
+  id: string;
+  zone: ZoneId;
+  x: number;
+  z: number;
+  r: number;
+  spawn?: string;
+}
+
+/**
+ * Validates and resolves a `leash` marker in `zoneId`'s level file.
+ * Never throws: problems come back in `errors` and `def` is null when invalid.
+ */
+export function resolveLeash(marker: MarkerDef, zoneId: ZoneId): { def: ResolvedLeash | null; errors: string[] } {
+  const errors: string[] = [];
+  if (marker.kind !== LEASH_MARKER_KIND) {
+    errors.push(`marker ${marker.id} is kind '${marker.kind}', not '${LEASH_MARKER_KIND}'`);
+    return { def: null, errors };
+  }
+  if (!isFiniteNum(marker.x) || !isFiniteNum(marker.z)) {
+    errors.push('marker x and z must be finite numbers');
+  }
+  if (!isFiniteNum(marker.r) || marker.r <= 0) {
+    errors.push('marker r must be a finite number > 0');
+  }
+  const data = (marker.data ?? {}) as Partial<LeashPlacementData>;
+  if (data.v !== LEASH_PLACEMENT_V) {
+    errors.push(`marker data v ${String(data.v)} not supported (expected ${LEASH_PLACEMENT_V})`);
+  }
+  if (data.spawn !== undefined && (typeof data.spawn !== 'string' || data.spawn.length === 0)) {
+    errors.push('data.spawn must be a non-empty string when given');
+  }
+  if (errors.length > 0) return { def: null, errors };
+  return {
+    def: {
+      id: marker.id,
+      zone: zoneId,
+      x: marker.x,
+      z: marker.z,
+      r: marker.r!,
+      ...(data.spawn !== undefined ? { spawn: data.spawn } : {}),
+    },
+    errors,
+  };
 }

@@ -14,6 +14,8 @@ export interface GameEvents {
   heal: { amount: number };
   /** An enemy died. defId is its ENEMIES key. */
   'enemy-killed': { defId: string; entityId: number };
+  /** An enemy leashed/reset out of combat and began returning home. */
+  'enemy-reset': { entityId: number };
   /** Items went into the inventory (pickup, reward or purchase). */
   'item-added': { item: string; count: number };
   /** The player reached an NPC and starts talking. npcId is its NPCS key. */

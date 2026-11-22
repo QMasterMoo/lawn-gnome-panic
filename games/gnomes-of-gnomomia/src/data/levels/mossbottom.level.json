@@ -178,6 +178,17 @@
   ],
   "markers": [
     {
+      "id": "leash-mb-spawn-8",
+      "kind": "leash",
+      "x": 10,
+      "z": -88,
+      "r": 16,
+      "data": {
+        "v": 1,
+        "spawn": "mb-spawn-8"
+      }
+    },
+    {
       "id": "lmt-primrose-cenotaph",
       "kind": "object",
       "x": -4,

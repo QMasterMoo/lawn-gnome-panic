@@ -128,6 +128,17 @@
   ],
   "markers": [
     {
+      "id": "leash-c7-spawn-9",
+      "kind": "leash",
+      "x": 60,
+      "z": 0,
+      "r": 22,
+      "data": {
+        "v": 1,
+        "spawn": "c7-spawn-9"
+      }
+    },
+    {
       "id": "c7-hat-brims",
       "kind": "object",
       "x": -54,

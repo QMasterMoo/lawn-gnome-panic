@@ -50,7 +50,7 @@ export interface Viewport {
 /** Something the select tool can place and move: one list in a zone (houses, lakes, decks, props, stamps...). */
 export type Item = { x: number; z: number } & Record<string, unknown>;
 
-export type FieldDef =
+export type FieldDef = (
   | { key: string; label: string; type: 'number'; step?: number; min?: number; max?: number }
   | { key: string; label: string; type: 'text' }
   /** A prefab id from @lawn/prefabs: the Select tool shows a searchable picker. */
@@ -59,7 +59,12 @@ export type FieldDef =
   | { key: string; label: string; type: 'color' }
   /** A true / false flag: shown as a checkbox. */
   | { key: string; label: string; type: 'bool' }
-  | { key: string; label: string; type: 'enum'; options: readonly string[] };
+  | { key: string; label: string; type: 'enum'; options: readonly string[] }
+) & {
+  /** Optional custom reader/writer (e.g. for fields stored inside MarkerDef.data). */
+  get?(item: Item): unknown;
+  set?(item: Item, value: unknown): void;
+};
 
 export interface CollectionDef {
   id: string;
