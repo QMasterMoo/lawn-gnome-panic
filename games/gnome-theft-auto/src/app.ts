@@ -36,6 +36,7 @@ import {
 import { createVibeNpcs } from './vibeNpcs';
 import { createWeapons } from './weapons';
 import { buildWorld } from './world';
+import { createWorldDetails } from './worldDetails';
 import { createWorldEvents } from './worldEvents';
 import { mountSteamConnect } from '@lawn/gamepad';
 
@@ -103,6 +104,7 @@ const radio = createRadio(ui, {
 const economy = createEconomy();
 const vibeNpcs = createVibeNpcs(scene, world, hud);
 const easterEggs = createEasterEggs(scene, world, hud, (amt, reason) => economy.earn(amt, reason));
+const worldDetails = createWorldDetails(scene, hud);
 const garages = createGarages(ui, hud, economy, {
   repaintVehicle,
   repairVehicle,
@@ -612,6 +614,7 @@ function frame(now: number): void {
   quests.update(dt, player.x, player.z);
   vibeNpcs.update(dt, player.x, player.z, v);
   easterEggs.update(dt, player, vehicles);
+  worldDetails.update(dt, player.x, player.z);
   garages.update(dt, player, watch);
   culvertCooldown = Math.max(0, culvertCooldown - dt);
   steamCooldown = Math.max(0, steamCooldown - dt);
