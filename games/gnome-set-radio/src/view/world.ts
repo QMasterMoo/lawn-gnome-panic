@@ -25,6 +25,13 @@ const BUILDING_PREFAB_BY_ARCH: Partial<Record<NonNullable<GsrBuilding['arch']>, 
   'lighthouse-spire': 'gsr-bldg-neon-pavilion',
 };
 
+const ROUND_BUILDING_PREFABS = new Set([
+  'gsr-bldg-vinyl-tower',
+  'gsr-bldg-cafe-rotunda',
+  'gsr-bldg-drum-silo',
+  'gsr-bldg-kiln-chimney',
+]);
+
 export interface WorldVisuals {
   group: THREE.Group;
   billboardMeshes: Map<string, { panel: THREE.Mesh; tagged: boolean; def: GsrBillboard }>;
@@ -133,7 +140,7 @@ export function buildWorldVisuals(doc: GsrLevelDoc): WorldVisuals {
       const box = new THREE.Box3().setFromObject(prefabObj);
       const size = box.getSize(new THREE.Vector3());
       const sx = size.x > 0.01 ? b.w / size.x : 1;
-      const sy = size.y > 0.01 ? Math.max(0.3, h - 0.12) / size.y : 1;
+      const sy = size.y > 0.01 ? Math.max(0.3, h - 0.55) / size.y : 1;
       const sz = size.z > 0.01 ? b.d / size.z : 1;
       prefabObj.scale.set(sx, sy, sz);
       prefabObj.position.set(b.x, b.yBase + gapBottom - box.min.y * sy, b.z);
@@ -163,7 +170,13 @@ export function buildWorldVisuals(doc: GsrLevelDoc): WorldVisuals {
     }
 
     // Distinct proud rooftop pad (0.16m thick, sitting cleanly above body top)
-    const roofGeo = track(new THREE.BoxGeometry(b.w + 0.4, 0.16, b.d + 0.4));
+    const isRound = !!prefabId && ROUND_BUILDING_PREFABS.has(prefabId);
+    const roundR = Math.max(b.w, b.d) * 0.5;
+    const roofGeo = track(
+      isRound
+        ? new THREE.CylinderGeometry(roundR + 0.2, roundR + 0.2, 0.16, 16)
+        : new THREE.BoxGeometry(b.w + 0.4, 0.16, b.d + 0.4),
+    );
     const roofMat = track(new THREE.MeshToonMaterial({ color: b.roofColor, gradientMap: toonMap }));
     const roof = new THREE.Mesh(roofGeo, roofMat);
     roof.position.set(b.x, b.yBase + b.h - 0.08, b.z);
@@ -171,7 +184,11 @@ export function buildWorldVisuals(doc: GsrLevelDoc): WorldVisuals {
     group.add(roof);
 
     if (b.accentColor) {
-      const trimGeo = track(new THREE.BoxGeometry(b.w + 0.6, 0.16, b.d + 0.6));
+      const trimGeo = track(
+        isRound
+          ? new THREE.CylinderGeometry(roundR + 0.3, roundR + 0.3, 0.06, 16)
+          : new THREE.BoxGeometry(b.w + 0.6, 0.06, b.d + 0.6),
+      );
       const trimMat = track(
         new THREE.MeshStandardMaterial({
           color: b.accentColor,
@@ -181,7 +198,7 @@ export function buildWorldVisuals(doc: GsrLevelDoc): WorldVisuals {
         }),
       );
       const trim = new THREE.Mesh(trimGeo, trimMat);
-      trim.position.set(b.x, b.yBase + b.h - 0.36, b.z);
+      trim.position.set(b.x, b.yBase + b.h - 0.23, b.z);
       group.add(trim);
     }
 
@@ -691,7 +708,7 @@ export function buildWorldVisuals(doc: GsrLevelDoc): WorldVisuals {
     },
     markBillboardTagged(id, texture) {
       const entry = billboardMeshes.get(id);
-      if (!entry || entry.tagged) return;
+      if (!entry) return;
       entry.tagged = true;
       const mat = entry.panel.material as THREE.MeshStandardMaterial;
       if (texture) {
@@ -779,7 +796,7 @@ export function buildWorldVisuals(doc: GsrLevelDoc): WorldVisuals {
           continue;
         }
         se.root.position.x = se.baseX + Math.sin(t * 1.4 + se.phase) * 7;
-        se.root.position.y = se.baseY + Math.abs(Math.sin(t * 3.8 + se.phase)) * 0.25;
+        se.root.position.y = se.baseY + 0.18 + Math.abs(Math.sin(t * 3.8 + se.phase)) * 0.25;
         se.ring.position.x = se.root.position.x;
         se.ring.position.z = se.root.position.z;
         const pulse = (t * 0.8 + se.phase) % 1;
@@ -977,11 +994,6 @@ function decorateBuilding(
       group.add(vent);
     }
   } else if (arch === 'kiln-chimney') {
-    for (const f of [0.28, 0.56, 0.82]) {
-      const collar = new THREE.Mesh(track(new THREE.BoxGeometry(b.w + 0.72, 0.42, b.d + 0.72)), glowMat);
-      collar.position.set(b.x, b.yBase + b.h * f, b.z);
-      group.add(collar);
-    }
     addCornerPosts(0.28, 0.34, 2.2, darkMat);
   } else if (arch === 'foundry-hall') {
     const ribGeo = track(new THREE.BoxGeometry(0.65, b.h - 0.4, 0.7));
@@ -1038,9 +1050,6 @@ function decorateBuilding(
     }
     addCornerPosts(0.1, 0.18, 2.4, glowMat);
   } else if (arch === 'resort-terrace') {
-    const band = new THREE.Mesh(track(new THREE.BoxGeometry(b.w + 0.74, 0.38, b.d + 0.74)), glowMat);
-    band.position.set(b.x, b.yBase + b.h * 0.55, b.z);
-    group.add(band);
     addCornerPosts(0.18, 0.14, 1.6, glowMat);
   }
 }
