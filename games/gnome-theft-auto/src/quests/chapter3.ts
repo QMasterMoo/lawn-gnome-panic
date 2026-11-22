@@ -21,10 +21,11 @@ export const CHAPTER_3_QUESTS: readonly QuestDef[] = [
     cutscene: {
       kind: 'dialogue',
       room: 'side-valve',
+      titleCard: 'CHAPTER 3 — COLD CLAY',
       lines: [
         {
           speaker: 'Tansy Clayfoot',
-          text: 'A bribed Carburettor sold us out for a Patio Heights racing charter! Vesper\'s got the Golden Acorn—I\'m slipping into the Under-Deck storm drain.',
+          text: 'Turncoat Cam sold us out for a Patio Heights racing charter! Vesper\'s got the Golden Acorn—I\'m slipping into the Under-Deck storm drain.',
           look: TANSY_LOOK,
           hz: 170,
         },
@@ -46,18 +47,26 @@ export const CHAPTER_3_QUESTS: readonly QuestDef[] = [
     objectives: [
       {
         kind: 'crack',
-        text: 'Break through the HOA raid outside Side-Valve Salvage',
+        text: 'Break through Turncoat Cam and the HOA raid outside Side-Valve Salvage',
         targets: [
+          { id: 'raid-turncoat', name: 'Turncoat Cam', near: [-146, 70], hint: 'Side-Valve Alley', look: { hat: 0xf4f4f8, shirt: 0xc9b99b } },
           { id: 'raid-hoa-1', name: 'HOA Raider Ash', near: [-140, 72], hint: 'Side-Valve Alley', look: HOA_LOOK },
           { id: 'raid-hoa-2', name: 'HOA Raider Slate', near: [-155, 65], hint: 'Side-Valve Alley', look: HOA_LOOK },
           { id: 'raid-hoa-3', name: 'HOA Raider Clay', near: [-130, 82], hint: 'Side-Valve Alley', look: HOA_LOOK },
         ],
       },
       {
+        kind: 'visit',
+        text: 'Hit the northwest Ring Road to shake the downtown cordon',
+        at: [-260, -260],
+        radius: 22,
+        hint: 'Northwest Ring Road',
+      },
+      {
         kind: 'steal-deliver',
         text: 'Escape north in Pip\'s Zero-Turn to Frostbite Fells',
         vehicleKind: 'zero-turn',
-        spawnAt: [SIDE_VALVE.bay.x, SIDE_VALVE.bay.z, 0],
+        spawnAt: [-255, -265, Math.PI / 4],
         dropAt: [0, -340],
         radius: 16,
         hint: 'Frozen Birdbath Basin (Frostbite Fells)',
@@ -86,9 +95,15 @@ export const CHAPTER_3_QUESTS: readonly QuestDef[] = [
         },
         {
           speaker: 'Father Loam',
-          text: 'Bring him to the Frozen Birdbath Basin, my children. Grab Kiln-Resin from the northern shrine and hold the ice for ninety seconds while I set his glaze.',
+          text: 'The Chapel of Mulch excommunicated me for preaching on a snowmobile, yet here we are. Grab Kiln-Resin from the northern shrine and clear the HOA salt-plow crew.',
           look: LOAM_LOOK,
           hz: 135,
+        },
+        {
+          speaker: 'Father Loam',
+          text: 'Then hold the Frozen Birdbath Basin for ninety seconds while I cure Pip\'s glaze!',
+          look: LOAM_LOOK,
+          hz: 138,
         },
       ],
     },
@@ -101,13 +116,28 @@ export const CHAPTER_3_QUESTS: readonly QuestDef[] = [
         hint: 'Kiln-Resin Shrine',
       },
       {
+        kind: 'crack',
+        text: 'Crack the HOA salt-plow crew blocking the Frozen Birdbath approach',
+        targets: [
+          { id: 'plow-hoa-1', name: 'Salt-Plow Driver Grit', near: [-12, -390], hint: 'North Basin Approach', look: HOA_LOOK },
+          { id: 'plow-hoa-2', name: 'Salt-Plow Driver Frost', near: [12, -390], hint: 'North Basin Approach', look: HOA_LOOK },
+        ],
+      },
+      {
         kind: 'survive-derby',
         text: 'Survive the 90-second Frozen Birdbath Derby against HOA snow-pursuit mowers',
         arena: [0, -350],
         radius: 42,
         seconds: 90,
-        attackers: 6,
+        attackers: 8,
         hint: 'Frozen Birdbath Basin',
+      },
+      {
+        kind: 'visit',
+        text: 'Pick up Shelldon\'s snail-mail scroll by Thermos Theo\'s barrel',
+        at: [40, -330],
+        radius: 10,
+        hint: 'Thermos Theo\'s Bend',
       },
     ],
     doneText: 'Pip\'s clay arm is glued tight with Kiln-Resin—just as one of Shelldon\'s snails delivers a scroll from Tansy.',
@@ -147,7 +177,16 @@ export const CHAPTER_3_QUESTS: readonly QuestDef[] = [
         dropAt: [280, 40],
         radius: 16,
         hint: 'Dust Flats Overlook',
+        heatOnEnter: 2,
         maxDamage: 0.35,
+      },
+      {
+        kind: 'crack',
+        text: 'Clear the HOA spotters watching the Dust Flats Overlook',
+        targets: [
+          { id: 'overlook-hoa-1', name: 'HOA Spotter Dust', near: [275, 45], hint: 'Dust Flats Overlook', look: HOA_LOOK },
+          { id: 'overlook-hoa-2', name: 'HOA Spotter Grit', near: [285, 35], hint: 'Dust Flats Overlook', look: HOA_LOOK },
+        ],
       },
     ],
     doneText: 'You made the Dust Flats intact. Time to take the sky from Fort Sandpit.',

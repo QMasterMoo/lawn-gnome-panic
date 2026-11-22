@@ -9,6 +9,7 @@ vi.mock('../audio', () => ({
   unlockAudio: vi.fn(),
 }));
 import { WORLD_HALF } from '../config';
+import { EVENT_BULLETINS } from '../radio/content';
 import { GIVERS, QUESTS, questById } from './defs';
 import {
   createQuestCloudSlot,
@@ -265,5 +266,26 @@ describe('story campaign registry', () => {
     expect(cameoChapters.has(1)).toBe(true);
     expect(cameoChapters.has(3)).toBe(true);
     expect(cameoChapters.has(5)).toBe(true);
+  });
+
+  it('wires every quest radioBulletin to EVENT_BULLETINS and obeys R-021 no-wet/no-gore canon', () => {
+    const banned = /\b(wet|wetter|wetness|soak\w*|blood\w*|gore|bleed\w*)\b/i;
+    for (const q of QUESTS) {
+      if (q.radioBulletin) {
+        expect(EVENT_BULLETINS[q.radioBulletin]?.length ?? 0, q.radioBulletin).toBeGreaterThanOrEqual(2);
+      }
+      expect(q.title, q.id).not.toMatch(banned);
+      expect(q.doneText, q.id).not.toMatch(banned);
+      if (q.cutscene?.kind === 'dialogue') {
+        for (const l of q.cutscene.lines) expect(l.text, q.id).not.toMatch(banned);
+      }
+      for (const obj of q.objectives) {
+        expect(obj.text, q.id).not.toMatch(banned);
+        if (obj.kind === 'choice') {
+          expect(obj.optionA.endingText, q.id).not.toMatch(banned);
+          expect(obj.optionB.endingText, q.id).not.toMatch(banned);
+        }
+      }
+    }
   });
 });

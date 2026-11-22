@@ -998,6 +998,7 @@ export function buildWorld(scene: THREE.Scene, _renderer: THREE.WebGLRenderer): 
     half: H,
     biomeAt,
     airfield: { ...AIRFIELD, planeSpots: AIRFIELD.planeSpots.map((p) => ({ ...p })) },
+    dewBarrels: biomes.dewBarrels,
     update(dt: number, focusX: number, focusZ: number) {
       sun.target.position.set(focusX, 0, focusZ);
       sun.position.set(focusX + 60, 100, focusZ + 40);

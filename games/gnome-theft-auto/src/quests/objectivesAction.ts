@@ -75,6 +75,7 @@ export function airDropRun(
       const inZone = Math.hypot(px - obj.dropZone[0], pz - obj.dropZone[2]) <= obj.radius;
       if (wasAirborne && p && !p.airborne && !p.vehicle && p.y <= 1.2 && inZone && !landedInZone) {
         landedInZone = true;
+        if (obj.heatOnLand) deps.watch?.addHeat(obj.heatOnLand);
         if (!obj.targetVehicle) {
           doneFlag = true;
           say('Touchdown!');
@@ -84,6 +85,7 @@ export function airDropRun(
         say(`Landed! Now board the ${obj.targetVehicle}!`);
       }
       if (landedInZone && obj.targetVehicle && p?.vehicle?.kind === obj.targetVehicle) {
+        if (obj.heatOnBoard) deps.watch?.addHeat(obj.heatOnBoard);
         doneFlag = true;
         say(`Secured ${p.vehicle.spec.name}!`);
         changed();
@@ -224,6 +226,15 @@ export function bossCombineRun(
       intakeRing.position.set(0, 0.1, intakeZ);
       (intakeRing.material as THREE.MeshBasicMaterial).opacity = 0.45 + 0.25 * Math.sin(t * 4);
 
+      for (let i = 0; i < guards.length; i++) {
+        const g = guards[i];
+        if (crackedGuards.has(g) || g.state === 'ragdoll') continue;
+        if (Math.abs(g.z - bossZ) > 10) {
+          g.z += dir * 2.2 * dt;
+          g.model.object.position.set(g.x, 0, g.z);
+        }
+      }
+
       const alive = guards.filter((g) => !crackedGuards.has(g) && g.state !== 'ragdoll').length;
       if (alive === 0 && Math.hypot(px, pz - intakeZ) <= 5) {
         jammed = true;
@@ -239,6 +250,7 @@ export function bossCombineRun(
     blips: (): Blip[] => (jammed ? [] : [{ x: 0, z: bossZ, color: TARGET_COLOR, quest: 'Grand Combine' }]),
     cracked: () => [],
     cleanup() {
+      deps.watch?.despawnSquad?.(guards);
       deps.scene.remove(bossMesh, intakeRing);
       intakeRing.geometry.dispose();
       (intakeRing.material as THREE.Material).dispose();
@@ -270,11 +282,15 @@ export function choiceRun(
       if (chosen) return;
       if (Math.hypot(px - obj.optionA.at[0], pz - obj.optionA.at[1]) <= 4.5) {
         chosen = true;
-        say(obj.optionA.endingText);
+        const bonus = obj.optionA.bonusAcorns ?? 0;
+        if (bonus > 0) deps.economy?.earn(bonus, obj.optionA.label);
+        say(bonus > 0 ? `${obj.optionA.endingText} (+${bonus} Acorns)` : obj.optionA.endingText);
         changed();
       } else if (Math.hypot(px - obj.optionB.at[0], pz - obj.optionB.at[1]) <= 4.5) {
         chosen = true;
-        say(obj.optionB.endingText);
+        const bonus = obj.optionB.bonusAcorns ?? 0;
+        if (bonus > 0) deps.economy?.earn(bonus, obj.optionB.label);
+        say(bonus > 0 ? `${obj.optionB.endingText} (+${bonus} Acorns)` : obj.optionB.endingText);
         changed();
       }
     },

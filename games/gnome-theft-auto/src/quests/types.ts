@@ -64,6 +64,7 @@ export type CutsceneRequest =
 
 export interface CutsceneHandle {
   active: boolean;
+  readonly mode?: 'contract' | 'dialogue';
   play(req: CutsceneRequest, onDone: () => void): void;
   update(dt: number, camera: THREE.PerspectiveCamera): void;
   skip(): void;
@@ -75,7 +76,7 @@ export interface CutsceneHandle {
  */
 export type ObjectiveDef =
   | { kind: 'crack'; text: string; targets: TargetDef[] }
-  | { kind: 'visit'; text: string; at: [number, number]; radius: number; hint: string }
+  | { kind: 'visit'; text: string; at: [number, number]; radius: number; hint: string; heatOnEnter?: number; toastOnEnter?: string }
   | {
       kind: 'steal-deliver';
       text: string;
@@ -86,12 +87,15 @@ export type ObjectiveDef =
       hint: string;
       heatOnEnter?: number;
       maxDamage?: number;
+      squeakPulse?: boolean;
+      banter?: string[];
     }
   | {
       kind: 'chase-follow';
       text: string;
       leaderName: string;
       leaderKind: VehicleKind;
+      leaderLook?: Partial<GnomeLook>;
       waypoints: [number, number][];
       speed: number;
       maxDist: number;
@@ -113,6 +117,8 @@ export type ObjectiveDef =
       radius: number;
       targetVehicle?: VehicleKind;
       hint: string;
+      heatOnLand?: number;
+      heatOnBoard?: number;
     }
   | {
       kind: 'survive-derby';
@@ -127,8 +133,8 @@ export type ObjectiveDef =
   | {
       kind: 'choice';
       text: string;
-      optionA: { label: string; at: [number, number]; endingText: string };
-      optionB: { label: string; at: [number, number]; endingText: string };
+      optionA: { label: string; at: [number, number]; endingText: string; bonusAcorns?: number };
+      optionB: { label: string; at: [number, number]; endingText: string; bonusAcorns?: number };
     };
 
 export interface QuestDef {

@@ -509,6 +509,12 @@ export function createWatch(
       }
       return out;
     },
+    despawnSquad(npcs: Npc[]): void {
+      for (const npc of npcs) {
+        const u = units.get(npc.id);
+        if (u) removeUnit(u);
+      }
+    },
     onSneeze(x: number, z: number, radius: number): number {
       let count = 0;
       for (const u of units.values()) {

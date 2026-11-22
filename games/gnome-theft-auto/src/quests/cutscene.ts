@@ -34,7 +34,7 @@ const BASE_SPEAKER_LOOK: GnomeLook = {
 };
 
 const CHARACTER_PRESETS: Record<string, { look: Partial<GnomeLook>; hz: number }> = {
-  pip: { look: { hat: 0x2f64c9, shirt: 0xf08a24, beard: null, freckles: true }, hz: 126 },
+  pip: { look: { hat: 0xc82828, shirt: 0x2f6b3a, beard: 0x6b4423, freckles: true }, hz: 126 },
   tansy: { look: { hat: 0xf08a24, shirt: 0x4a3b2c, beard: null, hair: { color: 0x6b3a1e, style: 'pigtails' } }, hz: 118 },
   vesper: { look: { hat: 0x141414, shirt: 0xf8f8f8, pants: 0xf8f8f8, skin: 0xf5f5f5, beard: null, glasses: true }, hz: 92 },
   granny: { look: { hat: 0x8e44ad, shirt: 0x6b4a2e, dress: true, beard: null, glasses: true }, hz: 132 },
@@ -525,6 +525,7 @@ export function createCutscene(scene: THREE.Scene, ui: HTMLElement, hooks: { set
 
   const cs: Cutscene = {
     active: false,
+    get mode() { return mode; },
 
     play(req, done) {
       if (cs.active || phase !== 'off') return;

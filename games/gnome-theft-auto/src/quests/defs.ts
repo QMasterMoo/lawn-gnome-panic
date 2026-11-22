@@ -1,5 +1,5 @@
 // The quests and givers across Turfton and the four outer biomes.
-import { SIDE_VALVE } from '../config';
+import { BODEGA, GNOMECINO, SIDE_VALVE } from '../config';
 import { CHAPTER_1_QUESTS } from './chapter1';
 import { CHAPTER_2_QUESTS } from './chapter2';
 import { CHAPTER_3_QUESTS } from './chapter3';
@@ -93,10 +93,40 @@ export const GIVERS: Record<string, GiverDef> = {
     id: 'strangers',
     name: 'Strangers & Freaks',
     label: 'Talk to Stranger',
-    x: -60,
-    z: 60,
-    exit: { x: -56, z: 60, yaw: 0 },
+    x: BODEGA.x + 8,
+    z: BODEGA.z,
+    exit: { x: BODEGA.x + 12, z: BODEGA.z, yaw: 0 },
     room: 'street',
+    letter: '!',
+  },
+  'strangers-gnomecino': {
+    id: 'strangers-gnomecino',
+    name: 'Big Lou (The Gnomecino)',
+    label: 'Talk to Big Lou',
+    x: GNOMECINO.x - 16,
+    z: GNOMECINO.z,
+    exit: { x: GNOMECINO.x - 20, z: GNOMECINO.z, yaw: -Math.PI / 2 },
+    room: 'street',
+    letter: '!',
+  },
+  'strangers-canal': {
+    id: 'strangers-canal',
+    name: 'Baroness Brenda (Canal)',
+    label: 'Talk to Baroness Brenda',
+    x: 0,
+    z: 230,
+    exit: { x: 4, z: 226, yaw: 0 },
+    room: 'street',
+    letter: '!',
+  },
+  'strangers-porch': {
+    id: 'strangers-porch',
+    name: 'Clara (Tall House Porch)',
+    label: 'Talk to Clara',
+    x: -550,
+    z: 40,
+    exit: { x: -545, z: 40, yaw: Math.PI / 2 },
+    room: 'unmowed-hollow',
     letter: '!',
   },
 };

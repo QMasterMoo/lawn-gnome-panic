@@ -389,6 +389,24 @@ export function createEasterEggs(
   scene.add(oldCombine);
   const combineReel = oldCombine.getObjectByName('reel') ?? null;
 
+  // 7. Gnome Company Cursed Truffle in Mossy Wood (-330, -30)
+  const truffle = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(0.45, 0),
+    new THREE.MeshStandardMaterial({ color: 0x3b2416, emissive: 0x4a1d5e, emissiveIntensity: 0.45, roughness: 0.8 }),
+  );
+  truffle.position.set(-330, 0.5, -30);
+  scene.add(truffle);
+  let truffleCollected = false;
+
+  // 8. Faster Than Lawn charred crop-circle scorch mark in the Dust Flats (390, 140)
+  const scorch = new THREE.Mesh(
+    new THREE.CircleGeometry(7, 28).rotateX(-Math.PI / 2),
+    flatLayer(new THREE.MeshStandardMaterial({ color: 0x1e1a16, roughness: 1 }), LAYER.area),
+  );
+  scorch.position.set(390, 0.03, 140);
+  scene.add(scorch);
+  let scorchCd = 0;
+
   // Cooldown timers (seconds remaining).
   let gnomaFootCd = 0;
   let gnomaBumpCd = 0;
@@ -476,6 +494,24 @@ export function createEasterEggs(
       )) {
         hud.toast('Gnorwin Clayfoot Statue — Graffiti: "EVEN CUT WAS HERE"');
         statueCd = 25;
+      }
+
+      // 5b. Cursed Truffle pickup (Gnome Company nod).
+      if (!truffleCollected) {
+        truffle.rotation.y = animTime * 1.8;
+        if (dist2d(px, pz, -330, -30) <= 2.8) {
+          truffleCollected = true;
+          scene.remove(truffle);
+          onAcornReward(200, 'Cursed Truffle');
+          hud.toast('Cursed Truffle: "...the chapel smells of mulch..." (+200 Acorns)');
+        }
+      }
+
+      // 5c. Faster Than Lawn charred crop-circle scorch mark.
+      scorchCd = Math.max(0, scorchCd - dt);
+      if (scorchCd <= 0 && dist2d(px, pz, 390, 140) <= 8) {
+        scorchCd = 25;
+        hud.toast('Tinfoil Gnome: "FTL mower crew dropped out of orbit right here!"');
       }
 
       // 6. Collectibles (only when near ground level so overhead flyers don't vacuum them).

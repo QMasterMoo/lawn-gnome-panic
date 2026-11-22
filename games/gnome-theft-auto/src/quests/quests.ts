@@ -165,13 +165,17 @@ const crackRun = (obj: Extract<ObjectiveDef, { kind: 'crack' }>, deps: QuestDeps
   };
 };
 
-const visitRun = (obj: Extract<ObjectiveDef, { kind: 'visit' }>): Run => {
+const visitRun = (obj: Extract<ObjectiveDef, { kind: 'visit' }>, deps: QuestDeps, _save: QuestSave, _changed: () => void, say: (t: string) => void): Run => {
   let reached = false;
   return {
     lines: () => [obj.text],
     done: () => reached,
     update(_dt, px, pz) {
-      if (Math.hypot(px - obj.at[0], pz - obj.at[1]) <= obj.radius) reached = true;
+      if (!reached && Math.hypot(px - obj.at[0], pz - obj.at[1]) <= obj.radius) {
+        reached = true;
+        if (obj.heatOnEnter) deps.watch?.addHeat(obj.heatOnEnter);
+        if (obj.toastOnEnter) say(obj.toastOnEnter);
+      }
     },
     onCracked() {},
     blips: () => (reached ? [] : [{ x: obj.at[0], z: obj.at[1], color: TARGET_COLOR, quest: obj.hint }]),
@@ -183,7 +187,7 @@ const visitRun = (obj: Extract<ObjectiveDef, { kind: 'visit' }>): Run => {
 /** The objective kinds. A new kind is one entry here. */
 const OBJECTIVE_KINDS: Record<ObjectiveDef['kind'], Maker> = {
   crack: crackRun as unknown as Maker,
-  visit: ((obj: Extract<ObjectiveDef, { kind: 'visit' }>) => visitRun(obj)) as unknown as Maker,
+  visit: visitRun as unknown as Maker,
   'steal-deliver': ((obj: Extract<ObjectiveDef, { kind: 'steal-deliver' }>, deps: QuestDeps, _save: QuestSave, changed: () => void, say: (t: string) => void) =>
     stealDeliverRun(obj, deps, changed, say)) as unknown as Maker,
   'chase-follow': ((obj: Extract<ObjectiveDef, { kind: 'chase-follow' }>, deps: QuestDeps, _save: QuestSave, changed: () => void, say: (t: string) => void) =>

@@ -56,6 +56,9 @@ export function stealDeliverRun(
 
   let heatApplied = false;
   let delivered = false;
+  let squeakCool = 2;
+  let banterIdx = 0;
+  let banterCool = 4;
   let t = 0;
 
   return {
@@ -77,6 +80,25 @@ export function stealDeliverRun(
       if (driving && !heatApplied && obj.heatOnEnter) {
         heatApplied = true;
         deps.watch?.addHeat(obj.heatOnEnter);
+      }
+      if (driving && obj.squeakPulse && Math.abs(target.speed) > 4) {
+        squeakCool -= dt;
+        if (squeakCool <= 0) {
+          squeakCool = 5;
+          deps.play('whistle');
+          say('*SQUEAK!* Nearby gnomes panic and scatter!');
+          for (const n of deps.npcs.list) {
+            if (Math.hypot(n.x - target.x, n.z - target.z) < 18) deps.npcs.scare(n, target.x, target.z);
+          }
+          if (deps.watch && deps.watch.heat > 0 && deps.watch.heat < 2) deps.watch.clear();
+        }
+      }
+      if (driving && obj.banter && banterIdx < obj.banter.length) {
+        banterCool -= dt;
+        if (banterCool <= 0) {
+          say(obj.banter[banterIdx++]);
+          banterCool = 6;
+        }
       }
       if (obj.maxDamage !== undefined && (1 - target.hp > obj.maxDamage || target.exploded)) {
         repairVehicle(target);
@@ -131,7 +153,7 @@ export function chaseFollowRun(
   const next = obj.waypoints[1] ?? start;
   const startYaw = Math.atan2(next[0] - start[0], next[1] - start[1]);
   const leader = createVehicle(deps.scene, obj.leaderKind, start[0], start[1], startYaw);
-  const look = randomTownLook();
+  const look = { ...randomTownLook(), ...(obj.leaderLook ?? {}) };
   const rider = makeGnome(leader.object, look);
   rider.object.position.set(...leader.spec.seat);
   rider.update(gnomeState(0, 0, 0, 0, 0, true), 0);
@@ -236,6 +258,7 @@ export function convoyAmbushRun(
 
   let wpIdx = 1;
   let doneFlag = false;
+  let warnCool = 0;
   let t = 0;
 
   return {
@@ -251,6 +274,7 @@ export function convoyAmbushRun(
     done: () => doneFlag,
     update(dt) {
       t += dt;
+      warnCool = Math.max(0, warnCool - dt);
       marker.rotation.y = t * 2.5;
       if (doneFlag) return;
 
@@ -265,9 +289,17 @@ export function convoyAmbushRun(
       if (deps.player?.vehicle === hauler) {
         marker.visible = false;
         if (Math.hypot(hauler.x - obj.dropAt[0], hauler.z - obj.dropAt[1]) <= 12) {
-          doneFlag = true;
-          say('Convoy hijacked and delivered!');
-          changed();
+          const remainingEscorts = escorts.filter((e) => !crackedSet.has(e) && e.state !== 'ragdoll').length;
+          if (remainingEscorts > 0) {
+            if (warnCool <= 0) {
+              say(`Clear the remaining ${remainingEscorts} HOA escort(s) first!`);
+              warnCool = 3;
+            }
+          } else {
+            doneFlag = true;
+            say('Convoy hijacked and delivered!');
+            changed();
+          }
         }
       } else {
         marker.visible = true;
@@ -285,6 +317,7 @@ export function convoyAmbushRun(
     },
     cracked: () => [],
     cleanup() {
+      deps.watch?.despawnSquad?.(escorts);
       hauler.object.remove(marker);
       deps.scene.remove(ring);
       ring.geometry.dispose();

@@ -88,6 +88,7 @@ export const STATIONS: readonly Station[] = [
       { who: 'ROOSTER (on the line)', text: 'THE BAROMETER IS DROPPING! VESPERS IN THE CLOUDS! — DOCK: We\'ll take that as a no, Rooster. — ROOSTER: IT IS A YES!' },
       { who: 'ROOSTER (on the line)', text: 'THE SPRINKLERS ARE TALKING IN A PATTERN, DOCK! THE PATTERN IS SPELLING "GRASS"! — DOCK: That\'s a sprinkler, Rooster. — ROOSTER: THAT IS WHAT THEY WANT YOU TO THINK!' },
       { who: 'CALLER (Greenhouse Strip)', text: 'My Ride-On was borrowed outside the Gnomecino. — DOCK: Was it a good borrowing? — CALLER: Very polite. It left the hat on the seat. — DOCK: Thank you, that\'s the nicest thing I\'ve heard all week.' },
+      { who: 'CALLER (THE GIANT ARMADILLO)', text: 'IT\'S BACK! THE GIANT ARMADILLO JUST ROLLED OVER THREE PANSIES ON ROUTE SOUTH! — DOCK: That\'s a Combine, sir. — CALLER: IT HAD A SHELL AND AN ATTITUDE!' },
     ],
   },
   {
@@ -194,6 +195,8 @@ export const ADS: readonly Line[] = [
   { who: 'AD', text: 'Pay \'n\' Glaze: hot pink, shiny, and happy to take your acorns the moment you tell them your name. Hit the wrong side of a Code-Enforcement Van? Pay \'n\' Glaze.' },
   { who: 'AD', text: 'Pigeon-Drop Couriers: dropped from altitude, good luck. Snail-Mail Express: eventually is still on time. Choose one. Both have a branch in Cloverfield, and both are looking for drivers.' },
   { who: 'AD', text: 'Black Dew. Amber and chrome. Ask for it by its proper name, and nobody in Turfton will be surprised. The Black Dew Co. is not responsible for what you do with it in the Greenhouse Strip.' },
+  { who: 'AD', text: 'Husky-Blade! Cobalt blue, two-stroke, and loud enough to wake the Tall Ones! If your neighbours can still hear their own sprinklers, you\'re not revving hard enough.' },
+  { who: 'AD', text: 'Chirp & Crumb! Hot acorn-waffles, lukewarm coffee, and a drive-through wide enough for a Zero-Turn. Chirp & Crumb: technically food!' },
 ];
 
 /** Hat Watch bulletins, by heat level (1-Hat, 2-Hat, 3-Hat, 4-Hat "THE HOA"). The Watch tops out at four (MAX_HEAT). */
@@ -354,9 +357,41 @@ export const EVENT_BULLETINS: Readonly<Record<string, readonly Line[]>> = {
     { who: 'BULLETIN', text: 'THE EVEN CUT: The Grand Combine rolled down the central avenue under air assault until the Fescue Stopping Stone jammed its blades for good!' },
     { who: 'BULLETIN', text: 'Turfton\'s skyline is quiet at last — Side-Valve Salvage is sweeping out the bay, Mayor Mulch is ordering fresh red paint, and the Grand Combine sits silent in the canal.' },
   ],
+  'sq-grid-truthers': [
+    { who: 'BULLETIN', text: 'Downtown traffic note: Mossley "Plumb-Line" Inkcap has unearthed a redwood-sized Tall-One Pencil under Center Datum (0, 0) and is selling the graphite as artisan eyebrow pencil.' },
+    { who: 'BULLETIN', text: 'Survey crews confirm Turfton is laid out on a suspiciously exact sixty-unit grid. The HOA has declined to comment on why the pencil is yellow.' },
+  ],
+  'sq-porcelain-blues': [
+    { who: 'BULLETIN', text: 'Three stolen wax lanterns have been returned to the Tall House Porch after a quiet skirmish in Mossy Wood. Clara says the porcelain glaze is safe for another night.' },
+    { who: 'BULLETIN', text: 'HOA scavengers in Mossy Wood report being chased off the Tall House Porch by an unnamed clay courier. The lanterns are lit once more.' },
+  ],
+  'sq-fescue-fugitive': [
+    { who: 'BULLETIN', text: 'Patio Heights gossip: Vesper Thorne\'s patio door keeps slamming shut after someone liberated the Replica Stopping Stone he was using as a doorstop.' },
+    { who: 'BULLETIN', text: 'Whether it\'s back in Unmowed Hollow or sitting on Granny Gnertrude\'s scale, the Replica Stopping Stone is officially out of Patio Heights.' },
+  ],
+  'sq-hoa-audit': [
+    { who: 'BULLETIN', text: 'Scandal at Thorne Tower! Five HOA citation inspectors across all five biomes have been cracked and their clipboards leaked—proving the Tall Ones aren\'t even on the board.' },
+    { who: 'BULLETIN', text: 'Former clerk Burt has released the HOA overtime ledgers. Highlights include a 40-Acorn fine issued to a Dust Flats cactus for "unruly needles."' },
+  ],
+  'sq-castaway-drydock': [
+    { who: 'BULLETIN', text: 'Maritime bulletin on the Southern Drainage Canal: Driftwood\'s turf-raft has been hauled across Cloverfield by a Combine and moored safely at (55, 230).' },
+    { who: 'BULLETIN', text: 'Canal traffic alert: Driftwood is back on the water, warning passersby about "forged lawn sharks" near the south culvert.' },
+  ],
+  'sq-mulch-pyramid': [
+    { who: 'BULLETIN', text: 'Consumer alert in Patio Heights: "Artisanal Miracle Mulch" is actually dyed sawdust and craft glitter, and the wasps are furious. Cedric "Double-Bag" Peat is unavailable for comment.' },
+    { who: 'BULLETIN', text: 'The Chapel of Mulch\'s glitter-sawdust pyramid scheme has collapsed after a rogue driver repoed the spreader back to Side-Valve Salvage.' },
+  ],
+  'sq-biscuit-hotdog': [
+    { who: 'BULLETIN', text: 'Cloverfield Farms update: a Combine Harvester was seen dragging a bus-sized rubber hotdog out of Biscuit\'s Nap crater, squeaking loud enough to scatter two Hat Watch cruisers.' },
+    { who: 'BULLETIN', text: 'Farmer Bramble\'s barn is safe tonight after Biscuit\'s giant squeaky hotdog was winched out of the crater and parked indoors.' },
+  ],
   'sq-snail-rigging': [
     { who: 'BULLETIN', text: 'Turfton alley bookies are howling after the Espresso-Fed Slugs nodded off mid-sprint, handing the underground Snail Derby to Shelldon "No-Trail" Mucilage\'s team!' },
     { who: 'BULLETIN', text: 'A Dandelion Puff-Grenade cleared out the rival slug paddock behind the alley dumpsters tonight. Shelldon\'s courier snails are back on schedule.' },
+  ],
+  'sq-porcelain-support': [
+    { who: 'BULLETIN', text: 'A shock-absorbed Ride-On Lowrider was spotted hopping over Mossy Wood roots tonight, ferrying four porcelain refugees to a padded bunker without a single chip.' },
+    { who: 'BULLETIN', text: 'Clara\'s Porcelain Support Group has reached Unmowed Hollow safely. Witnesses say the passengers spent the entire ride arguing about toaster theology.' },
   ],
   'sq-hose-revolt': [
     { who: 'BULLETIN', text: 'Baroness Brenda of the Vinyl Lounge has declared the southern canal "The Sovereign Republic of New Puddle" after four kinked garden hoses flooded Vesper\'s putting green!' },

@@ -29,43 +29,51 @@ export const CHAPTER_1_QUESTS: readonly QuestDef[] = [
       lines: [
         {
           speaker: 'Narrator',
-          text: 'Every gnome thinks they are limited edition—until they step off the snail-coach in Turfton and realize half the block was cast from the same garden-centre mould.',
+          text: 'Every gnome thinks they are limited edition—until they step off the snail-coach in Turfton with 5,000 Acorns of Clay-Mart Kiln-Debt and realize half the block was cast from the same garden-centre mould.',
           hz: 130,
         },
         {
           speaker: 'Pip Potsworth',
-          text: 'Don\'t look at me like that! Technically it\'s not stealing if the owner left the key in the ignition and went inside a flowerpot.',
+          text: 'Don\'t look at me like that! Technically it\'s not stealing if the owner left the key in the ignition and went inside a flowerpot for an Acorn-Cola.',
           look: PIP_LOOK,
           hz: 210,
         },
         {
           speaker: 'Pip Potsworth',
-          text: 'Grab that Ride-On at the kerb and follow me past The Gnomecino to Side-Valve Salvage. Tansy\'s got a Fescue crate that hums like a battery.',
+          text: 'Grab a Ride-On at the kerb and follow me past The Gnomecino to Side-Valve Salvage. Tansy\'s got a Fescue crate that hums like a battery—and smells faintly of Chirp & Crumb.',
           look: PIP_LOOK,
           hz: 215,
+        },
+        {
+          speaker: 'John Bodega',
+          text: 'Down at Bodega & Sons, Asphalt bats a bottlecap across the counter as a Push-Mower Bike and a borrowed Ride-On tear past the neon window.',
+          look: BODEGA_LOOK,
+          hz: 140,
+          bodegaCameo: true,
         },
       ],
     },
     objectives: [
       {
         kind: 'chase-follow',
-        text: 'Follow Pip Potsworth through Turfton to Side-Valve Salvage',
+        text: 'Follow Pip Potsworth past The Gnomecino to Side-Valve Salvage',
         leaderName: 'Pip Potsworth',
         leaderKind: 'push-bike',
-        waypoints: [[-10, 18], [30, 0], [90, -50], [0, 0], [-90, 60], [SIDE_VALVE.bay.x, SIDE_VALVE.bay.z]],
+        leaderLook: PIP_LOOK,
+        waypoints: [[-10, 18], [30, 0], [60, -30], [0, 0], [-90, 60], [SIDE_VALVE.bay.x, SIDE_VALVE.bay.z]],
         speed: 14,
         maxDist: 65,
-        hint: 'Follow Pip on his Push-Mower Bike',
+        hint: 'Follow Pip past The Gnomecino',
       },
       {
         kind: 'visit',
-        text: 'Meet Tansy Clayfoot at Side-Valve Salvage',
+        text: 'Meet Tansy Clayfoot by her smoking Zero-Turn at Side-Valve Salvage',
         at: [SIDE_VALVE.bay.x, SIDE_VALVE.bay.z],
         radius: 8,
         hint: 'Side-Valve Salvage bay',
       },
     ],
-    doneText: 'Okay, yeah—that humming Golden Acorn in the grass-catcher is definitely not grass.',
+    doneText: 'Tansy pries open the Fescue crate: a humming Golden Acorn rolls out into the grass-catcher. Definitely not grass.',
   },
   {
     id: 'first-contract',
@@ -73,10 +81,10 @@ export const CHAPTER_1_QUESTS: readonly QuestDef[] = [
     giver: 'mulch-club',
     chapter: 1,
     rewardAcorns: 1000,
-    radioBulletin: 'first-contract',
+    radioBulletin: 'gta-first-contract',
     cutscene: { kind: 'contract' },
     achievement: 'gta-first-contract',
-    doneText: 'Contract complete. Don Compost taps his armrest once—your first 1,000 Acorns of Kiln-Debt are cleared.',
+    doneText: 'Contract complete. Don Compost taps his armrest three times—Made Gnome status (Wiseguy Hat) unlocked and 1,000 Acorns of Kiln-Debt cleared.',
     objectives: [
       {
         kind: 'crack',
@@ -103,13 +111,19 @@ export const CHAPTER_1_QUESTS: readonly QuestDef[] = [
       lines: [
         {
           speaker: 'Tansy Clayfoot',
-          text: 'The HOA put a "boot" on my client\'s Push-Mower Bike at block (60, -60). Technically it\'s a giant clothespin, and technically I can\'t touch it.',
+          text: 'The HOA put giant clothespins on three Cloverfield farmers\' Push-Mower Bikes at block (60, -60). Technically they\'re "code-enforced", and technically my chicory coffee hasn\'t kicked in.',
           look: TANSY_LOOK,
           hz: 165,
         },
         {
+          speaker: 'Pip Potsworth',
+          text: 'Husky-Blade two-strokes! Loud enough to wake the Tall Ones—and nobody\'ll hear us crack the HOA enforcers.',
+          look: PIP_LOOK,
+          hz: 215,
+        },
+        {
           speaker: 'Tansy Clayfoot',
-          text: 'Good thing you\'re not me. Crack the two HOA enforcers watching it and bring the bike back to my bay.',
+          text: 'Crack the HOA enforcers, haul the bikes back to my bay, and watch out for process servers.',
           look: TANSY_LOOK,
           hz: 160,
         },
@@ -118,7 +132,7 @@ export const CHAPTER_1_QUESTS: readonly QuestDef[] = [
     objectives: [
       {
         kind: 'crack',
-        text: 'Crack the HOA Enforcers guarding the clamped bike',
+        text: 'Crack the HOA Enforcers guarding the clamped Cloverfield bikes',
         targets: [
           { id: 'hoa-clamp-1', name: 'HOA Enforcer Finch', near: [56, -60], hint: 'Downtown Block (60, -60)', look: HOA_LOOK },
           { id: 'hoa-clamp-2', name: 'HOA Enforcer Bramble', near: [64, -60], hint: 'Downtown Block (60, -60)', look: HOA_LOOK },
@@ -126,7 +140,7 @@ export const CHAPTER_1_QUESTS: readonly QuestDef[] = [
       },
       {
         kind: 'steal-deliver',
-        text: 'Repo the Push-Mower Bike and return to Side-Valve Salvage',
+        text: 'Repo the first clamped Push-Mower Bike to Side-Valve Salvage',
         vehicleKind: 'push-bike',
         spawnAt: [60, -56, 0],
         dropAt: [SIDE_VALVE.bay.x, SIDE_VALVE.bay.z],
@@ -134,8 +148,25 @@ export const CHAPTER_1_QUESTS: readonly QuestDef[] = [
         hint: 'Side-Valve Salvage bay',
         heatOnEnter: 1,
       },
+      {
+        kind: 'steal-deliver',
+        text: 'Repo the second Cloverfield Push-Mower Bike to Side-Valve Salvage',
+        vehicleKind: 'push-bike',
+        spawnAt: [64, -64, Math.PI / 2],
+        dropAt: [SIDE_VALVE.bay.x, SIDE_VALVE.bay.z],
+        radius: 8,
+        hint: 'Side-Valve Salvage bay',
+        heatOnEnter: 1,
+      },
+      {
+        kind: 'crack',
+        text: 'Crack the HOA Process Server taping an eviction notice to Side-Valve Salvage',
+        targets: [
+          { id: 'hoa-process-server', name: 'HOA Process Server Penn', near: [-142, 66], hint: 'Outside Side-Valve Salvage', look: HOA_LOOK },
+        ],
+      },
     ],
-    doneText: 'Bike recovered—but taped to the handlebars is an HOA eviction notice addressed to Tansy\'s own garage.',
+    doneText: 'Cloverfield bikes recovered—and taped to Tansy\'s bay door is an HOA eviction notice.',
   },
   {
     id: 'ch1-two-coat-tail',
@@ -151,9 +182,15 @@ export const CHAPTER_1_QUESTS: readonly QuestDef[] = [
       lines: [
         {
           speaker: 'Councilwoman Juniper Vance',
-          text: 'Mayor Barnaby "Two-Coat" Mulch is meeting someone in Patio Heights after dark. Tail his Ride-On without spooking him.',
+          text: 'They call me "The Trowel", and my brother Reginald calls Vesper\'s 400-page Grass Height Impact Studies "light reading." Mayor Barnaby "Two-Coat" Mulch is sneaking out to Patio Heights.',
           look: JUNIPER_LOOK,
           hz: 195,
+        },
+        {
+          speaker: 'Councilwoman Juniper Vance',
+          text: 'Tail his Ride-On past Bodega\'s, catch the handover, and bring the evidence back to City Hall.',
+          look: JUNIPER_LOOK,
+          hz: 190,
         },
         {
           speaker: 'John Bodega',
@@ -167,13 +204,14 @@ export const CHAPTER_1_QUESTS: readonly QuestDef[] = [
     objectives: [
       {
         kind: 'chase-follow',
-        text: 'Tail Mayor Mulch to Patio Heights',
+        text: 'Tail Mayor Mulch past Bodega & Sons to Patio Heights',
         leaderName: 'Mayor Barnaby Mulch',
         leaderKind: 'ride-on',
-        waypoints: [[0, -60], [60, -60], [120, -120], [160, -160]],
+        leaderLook: { hat: 0x2c3e50, shirt: 0x8b1e24, beard: 0xeeeeee, glasses: true },
+        waypoints: [[0, -60], [-60, 60], [0, 0], [60, -60], [120, -120], [160, -160]],
         speed: 15,
         maxDist: 75,
-        hint: 'Follow Mayor Mulch northeast',
+        hint: 'Follow Mayor Mulch to Patio Heights',
       },
       {
         kind: 'visit',
@@ -181,6 +219,22 @@ export const CHAPTER_1_QUESTS: readonly QuestDef[] = [
         at: [165, -165],
         radius: 12,
         hint: 'Patio Heights courtyard',
+        toastOnEnter: 'Mulch: "That was a different glaze!" — Vesper\'s HOA guards spotted you!',
+      },
+      {
+        kind: 'crack',
+        text: 'Crack Vesper\'s HOA bodyguards covering the handover',
+        targets: [
+          { id: 'tail-hoa-1', name: 'HOA Bodyguard Felt', near: [160, -160], hint: 'Patio Heights', look: HOA_LOOK },
+          { id: 'tail-hoa-2', name: 'HOA Bodyguard Loam', near: [170, -170], hint: 'Patio Heights', look: HOA_LOOK },
+        ],
+      },
+      {
+        kind: 'visit',
+        text: 'Deliver the kickback photos to Councilwoman Vance at City Hall',
+        at: [0, -72],
+        radius: 10,
+        hint: 'City Hall',
       },
     ],
     doneText: 'Caught on tape: Mayor Mulch signing Turfton\'s median leases straight over to Vesper Thorne.',
@@ -199,15 +253,21 @@ export const CHAPTER_1_QUESTS: readonly QuestDef[] = [
       lines: [
         {
           speaker: 'Vesper Thorne',
-          text: 'A forty-eight-hour foreclosure lien, Ms. Clayfoot. Cracks are a failure of discipline—and do not open that Fescue crate.',
+          text: 'A forty-eight-hour foreclosure lien, Ms. Clayfoot. Nice hat, by the way—shame if it cracked. Do not open that Seed-Cell crate.',
           look: VESPER_LOOK,
           hz: 125,
         },
         {
           speaker: 'Tansy Clayfoot',
-          text: 'Vesper filed my deed at the Glaze & Tax Office by Thorne Tower. Crack his auditors, grab the blueprint, and roll out in the heavy Combine.',
+          text: 'Vesper filed my deed at the Glaze & Tax Office by Thorne Tower. Crack his auditors, raid the vault, and hotwire the Buck-Iron Combine—famous for opening with a butter knife.',
           look: TANSY_LOOK,
           hz: 165,
+        },
+        {
+          speaker: 'Pip Potsworth',
+          text: 'I brought two butter knives! One for the ignition, one for emergency toast.',
+          look: PIP_LOOK,
+          hz: 215,
         },
       ],
     },
@@ -221,8 +281,16 @@ export const CHAPTER_1_QUESTS: readonly QuestDef[] = [
         ],
       },
       {
+        kind: 'visit',
+        text: 'Grab Tansy\'s deed and the Grand Combine blueprints from the Glaze & Tax vault',
+        at: [25, -45],
+        radius: 8,
+        hint: 'Glaze & Tax Office',
+        toastOnEnter: 'Recovered deed & Grand Combine blueprints! Smash out in the Combine!',
+      },
+      {
         kind: 'steal-deliver',
-        text: 'Steal the Combine Harvester and smash back to Side-Valve Salvage',
+        text: 'Steal the Buck-Iron Combine Harvester and smash back to Side-Valve Salvage',
         vehicleKind: 'combine',
         spawnAt: [0, -48, Math.PI],
         dropAt: [SIDE_VALVE.bay.x, SIDE_VALVE.bay.z],
@@ -254,7 +322,7 @@ export const CHAPTER_1_QUESTS: readonly QuestDef[] = [
         },
         {
           speaker: 'Pip Potsworth',
-          text: 'Hear me out: what if we steal the 30-foot Gnorwin Clayfoot Boot parade float and park it straight inside the jury box?',
+          text: 'Reginald "Quarter-Inch" Vance is out there with his brass calipers citing Municipal Code §404-B. What if we steal the 30-foot Gnorwin Clayfoot Boot parade float and park it straight inside the jury box?',
           look: PIP_LOOK,
           hz: 215,
         },
@@ -282,11 +350,14 @@ export const CHAPTER_1_QUESTS: readonly QuestDef[] = [
         ],
       },
       {
-        kind: 'visit',
-        text: 'Escape back to Side-Valve Salvage',
-        at: [SIDE_VALVE.bay.x, SIDE_VALVE.bay.z],
+        kind: 'steal-deliver',
+        text: 'Escape the 4-Hat HOA Van pursuit in Pip\'s getaway Combine back to Side-Valve Salvage',
+        vehicleKind: 'combine',
+        spawnAt: [AMPHITHEATER.x - 16, AMPHITHEATER.z + 10, Math.PI],
+        dropAt: [SIDE_VALVE.bay.x, SIDE_VALVE.bay.z],
         radius: 10,
         hint: 'Side-Valve Salvage bay',
+        heatOnEnter: 4,
       },
     ],
     doneText: 'Tribunal adjourned. Tansy\'s deed is stamped, and Vesper knows you\'re not playing by HOA rules.',
