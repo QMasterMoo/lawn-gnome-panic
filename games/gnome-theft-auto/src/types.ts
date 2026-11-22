@@ -397,6 +397,8 @@ export interface Watch {
   despawnSquad?(npcs: Npc[]): void;
   /** Make nearby Hat Watch officers sneeze (hands up / drop aggro for 6s). Returns count affected. */
   onSneeze(x: number, z: number, radius: number): number;
+  /** Fling nearby Hat Watch / HOA / Guard units into ragdolls. Returns count affected. */
+  knockArea?(x: number, z: number, radius: number, force: number, up: number, fromX: number, fromZ: number): number;
   /** Eject the officer driver when the player steals a pursuit mower or HOA van. */
   ejectPursuitDriver?(v: Vehicle): void;
 }

@@ -13,7 +13,9 @@ import { createFx } from './fx';
 import { createGarages } from './garages';
 import { clearHandsUp } from './gnomes';
 import { createHud } from './hud';
+import { createIntroTour } from './introTour';
 import { createCutscene } from './quests/cutscene';
+import { createQuestJournal } from './quests/journal';
 import { createRadio } from './radio/player';
 import { createQuests } from './quests/quests';
 import { createInput } from './input';
@@ -65,7 +67,11 @@ const hud = createHud(ui);
 const world = buildWorld(scene, renderer);
 hud.setWorld(world);
 const fx = createFx(scene);
-const input = createInput(canvas, ui, { handbrake: simActive, hop: () => player.vehicle?.kind === 'lowrider' });
+const input = createInput(canvas, ui, {
+  handbrake: simActive,
+  hop: () => player.vehicle?.kind === 'lowrider',
+  canLock: () => !cutscene.active && !introTour.active && !journal.isOpen() && !garages.isOpen(),
+});
 const chase = createChaseCamera(camera);
 const player = createPlayer(scene, myLook);
 player.respawn(world.spawn.x, world.spawn.z, world.spawn.yaw);
@@ -123,6 +129,14 @@ const quests = createQuests({
   onRadioBulletin: (id) => reportNews(id),
 });
 const worldEvents = createWorldEvents({ scene, world, hud, vehicles, economy, play });
+const journal = createQuestJournal(ui, quests, hud);
+const introTour = createIntroTour(ui, {
+  setUiVisible(vis) { hud.setVisible(vis); input.setVisible(vis); },
+  onDone() {
+    chase.yaw = player.yaw;
+    hud.toast('Welcome to Turfton. Mowers are for borrowing.', 4000);
+  },
+});
 setChuteHook(() => play('chute'));
 
 const pickTint = (): number => MOWER_TINTS[Math.floor(Math.random() * MOWER_TINTS.length)];
@@ -340,6 +354,7 @@ function hitTest(x: number, y: number, z: number): boolean {
       const d = Math.hypot(n.x - b.x, n.z - b.z);
       if (d < 8) npcs.knock(n, (n.x - b.x) * 2, 7, (n.z - b.z) * 2, 8, b.x, b.z);
     }
+    watch.knockArea?.(b.x, b.z, 8, 12, 7, b.x, b.z);
     for (const v of vehicles) {
       if (!v.exploded && Math.hypot(v.x - b.x, v.z - b.z) < 7) {
         damageVehicle(v, 0.7);
@@ -426,6 +441,13 @@ window.addEventListener('keydown', (e) => {
 function frame(now: number): void {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+  if (introTour.active) {
+    input.read();
+    introTour.update(dt, camera, player);
+    renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+    return;
+  }
   const rawInp = input.read();
   // A cutscene owns the screen: any key or tap skips it, and the game stands still.
   cutscene.update(dt, camera);
@@ -445,12 +467,16 @@ function frame(now: number): void {
     if (deathT <= 0) wakeAtHospital();
   }
 
-  // Enter / exit (no getting in or out while falling).
+  // Enter / exit (no getting in or out while falling). Vehicles take priority when closer than a quest giver.
   const near = player.vehicle || player.airborne ? null : nearestVehicle();
+  const nearDist = near ? Math.hypot(near.x - player.x, near.z - player.z) - (near.spec.radius - 1) : Infinity;
   const giverPrompt = player.vehicle || player.airborne || deathT > 0 ? null : quests.prompt(player.x, player.z);
+  const giverDist = giverPrompt ? (quests.giverDist?.(player.x, player.z) ?? 0) : Infinity;
+  const preferVehicle = !!near && nearDist <= giverDist;
   const garagePrompt = player.vehicle || player.airborne || deathT > 0 ? null : garages.prompt(player);
   if (inp.enterExit && !player.airborne) {
     if (player.vehicle) getOut();
+    else if (preferVehicle && near) getIn(near);
     else if (giverPrompt) quests.interact(player.x, player.z);
     else if (garagePrompt) garages.openTuningModal();
     else if (near) getIn(near);
@@ -654,7 +680,7 @@ function frame(now: number): void {
   // Camera.
   const mode: CameraMode = player.airborne ? 'chute' : v ? (v.spec.flies ? 'fly' : 'drive') : 'foot';
   input.setMode(mode);
-  const enterLabel = v ? 'Exit' : giverPrompt ? 'Enter' : garagePrompt ? 'Tune' : near ? (near.driver === 'npc' ? 'Steal' : 'Drive') : null;
+  const enterLabel = v ? 'Exit' : preferVehicle && near ? (near.driver === 'npc' ? 'Steal' : 'Drive') : giverPrompt ? 'Enter' : garagePrompt ? 'Tune' : near ? (near.driver === 'npc' ? 'Steal' : 'Drive') : null;
   input.setEnterLabel(enterLabel);
   if (v) target.set(v.x, v.y, v.z);
   else if (deathT > 0) target.set(deathTarget.x, deathTarget.y, deathTarget.z);
@@ -695,7 +721,7 @@ function frame(now: number): void {
     cracked: stats.cracked,
     acorns: econ.acorns,
     debt: econ.debtRemaining,
-    prompt: giverPrompt ?? garagePrompt ?? (near ? `${near.driver === 'npc' ? 'Steal' : 'Drive'} ${near.spec.name}` : null),
+    prompt: preferVehicle && near ? `${near.driver === 'npc' ? 'Steal' : 'Drive'} ${near.spec.name}` : giverPrompt ?? garagePrompt ?? (near ? `${near.driver === 'npc' ? 'Steal' : 'Drive'} ${near.spec.name}` : null),
     player: { x: player.x, z: player.z, yaw: v ? v.yaw : player.yaw },
     blips,
     online: onlineText,
@@ -756,7 +782,8 @@ if (startParams.has('herd')) {
   }
 }
 
-hud.toast('Welcome to Turfton. Mowers are for borrowing.', 4000);
+introTour.startIfFirstTime(startParams);
+if (!introTour.active) hud.toast('Welcome to Turfton. Mowers are for borrowing.', 4000);
 requestAnimationFrame(frame);
 
 // Test hook for scripted checks and demos: ?debug exposes the live objects.

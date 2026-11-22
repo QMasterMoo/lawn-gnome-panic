@@ -224,6 +224,7 @@ export function createWeapons(scene: THREE.Scene, fx: Fx): Weapons {
       ctx.npcs.knock(n, (rx / d) * force, 5 + Math.random() * 3, (rz / d) * force, (Math.random() - 0.5) * 8, muzzle.x, muzzle.z);
       hits++;
     }
+    hits += ctx.watch.knockArea?.(muzzle.x + dx * 6, muzzle.z + dz * 6, 10, 14, 6, muzzle.x, muzzle.z) ?? 0;
     for (const v of ctx.vehicles) {
       if (v.driver === 'player' || v.exploded || v.spec.mass > 5) continue;
       const rx = v.x - muzzle.x;
@@ -267,6 +268,7 @@ export function createWeapons(scene: THREE.Scene, fx: Fx): Weapons {
       ctx.npcs.knock(n, -dx * 8, 4.5, -dz * 8, 6, muzzle.x, muzzle.z);
       hits++;
     }
+    hits += ctx.watch.knockArea?.(muzzle.x + dx * 2.5, muzzle.z + dz * 2.5, 3.5, 8, 4.5, muzzle.x, muzzle.z) ?? 0;
     for (const v of ctx.vehicles) {
       if (v.driver === 'player' || v.exploded) continue;
       const rx = v.x - muzzle.x;
@@ -322,6 +324,7 @@ export function createWeapons(scene: THREE.Scene, fx: Fx): Weapons {
             ctx.npcs.knock(n, nx * 10, 6.5, nz * 10, 7, p.x, p.z);
           }
         }
+        ctx.watch.knockArea?.(p.x, p.z, 6, 11, 6.5, p.x, p.z);
         for (const v of ctx.vehicles) {
           if (v.driver === 'player' || v.exploded) continue;
           const d = Math.hypot(v.x - p.x, v.z - p.z);

@@ -529,6 +529,7 @@ export function createCutscene(scene: THREE.Scene, ui: HTMLElement, hooks: { set
 
     play(req, done) {
       if (cs.active || phase !== 'off') return;
+      if (typeof document !== 'undefined' && document.pointerLockElement) document.exitPointerLock();
       cs.active = true;
       onDone = done;
       hooks.setUiVisible(false);

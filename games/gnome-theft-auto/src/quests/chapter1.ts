@@ -60,9 +60,9 @@ export const CHAPTER_1_QUESTS: readonly QuestDef[] = [
         leaderName: 'Pip Potsworth',
         leaderKind: 'push-bike',
         leaderLook: PIP_LOOK,
-        waypoints: [[-10, 18], [30, 0], [60, -30], [0, 0], [-90, 60], [SIDE_VALVE.bay.x, SIDE_VALVE.bay.z]],
-        speed: 14,
-        maxDist: 65,
+        waypoints: [[0, 18], [0, -30], [60, -30], [0, 0], [-120, 60], [SIDE_VALVE.bay.x, SIDE_VALVE.bay.z]],
+        speed: 11,
+        maxDist: 75,
         hint: 'Follow Pip past The Gnomecino',
       },
       {

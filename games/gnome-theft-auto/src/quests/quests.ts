@@ -21,12 +21,21 @@ const GIVER_COLOR = '#ffffff';
 const SPOOK_DISTANCE = 16;
 const SPOOK_COOLDOWN = 5;
 /** How near the player must stand to a giver to use it. */
-const GIVER_RANGE = 6;
+const GIVER_RANGE = 4.2;
 /** What a target wears under the colours its definition sets, so its poster and its body always match. */
 const TARGET_BASE: GnomeLook = {
   hat: 0xffd23f, shirt: 0x5b4636, pants: 0x2c3e50, skin: 0xf1c27d, boots: 0x222222, beard: 0xdddddd,
   hair: null, freckles: false, dress: false, glasses: false, bowlCut: null,
 };
+
+export interface JournalSnapshot {
+  activeId: string | null;
+  activeStep: number;
+  activeLines: string[];
+  saves: Record<string, QuestSave>;
+  quests: readonly QuestDef[];
+  givers: Record<string, GiverDef>;
+}
 
 export interface Quests {
   update(dt: number, px: number, pz: number): void;
@@ -35,10 +44,16 @@ export interface Quests {
   hint(): string | null;
   /** The prompt label of a giver within reach of (x, z), or null. */
   prompt(x: number, z: number): string | null;
+  /** Distance to the nearest waiting giver, or Infinity. */
+  giverDist?(x: number, z: number): number;
   /** Use the giver within reach of (x, z). Returns true if there was one. */
   interact(x: number, z: number): boolean;
   /** main calls this for every pedestrian the player cracks. */
   onCracked(npc: Npc): void;
+  /** Quest Journal snapshot & controls. */
+  getJournal(): JournalSnapshot;
+  abandonActive(): boolean;
+  restartActive(): boolean;
 }
 
 type Maker = (obj: never, deps: QuestDeps, save: QuestSave, changed: () => void, say: (t: string) => void) => Run;
@@ -321,10 +336,10 @@ export function createQuests(
     badges.set(g.id, badge);
   }
 
-  const waitingAt = (id: string): boolean => questList.some((qd) => qd.giver === id && isQuestAvailable(qd, saves));
+  const waitingAt = (id: string): boolean => activeId === null && questList.some((qd) => qd.giver === id && isQuestAvailable(qd, saves));
   const quest = (id: string): QuestDef | undefined => questList.find((q) => q.id === id);
   const giverOf = (x: number, z: number): GiverDef | null => {
-    for (const g of Object.values(giversMap)) if (Math.hypot(g.x - x, g.z - z) <= GIVER_RANGE) return g;
+    for (const g of Object.values(giversMap)) if (waitingAt(g.id) && Math.hypot(g.x - x, g.z - z) <= GIVER_RANGE) return g;
     return null;
   };
 
@@ -481,15 +496,26 @@ export function createQuests(
       return g ? g.label : null;
     },
 
-    interact(x, z) {
+    giverDist(x, z) {
       const g = giverOf(x, z);
-      if (!g || deps.cutscene.active) return false;
-      const mine = questList.filter((q) => q.giver === g.id);
-      const open = mine.find((q) => saves[q.id]?.state === 'active');
-      if (open) {
-        deps.hud.toast(`Your contract is still open: ${open.objectives[saves[open.id].step].text}.`, 4000);
-        return true;
+      return g ? Math.hypot(g.x - x, g.z - z) : Infinity;
+    },
+
+    interact(x, z) {
+      if (deps.cutscene.active) return false;
+      if (activeId !== null) {
+        for (const g of Object.values(giversMap)) {
+          if (Math.hypot(g.x - x, g.z - z) <= GIVER_RANGE) {
+            const cur = quest(activeId);
+            deps.hud.toast(`Finish or abandon "${cur?.title ?? activeId}" in the Quest Journal (J) first!`, 4000);
+            return true;
+          }
+        }
+        return false;
       }
+      const g = giverOf(x, z);
+      if (!g) return false;
+      const mine = questList.filter((q) => q.giver === g.id);
       const next = mine.find((q) => isQuestAvailable(q, saves));
       if (!next) {
         deps.hud.toast('No more work here right now. Check back later!', 5000);
@@ -506,6 +532,42 @@ export function createQuests(
 
     onCracked(npc) {
       run?.onCracked(npc);
+    },
+
+    getJournal() {
+      return {
+        activeId,
+        activeStep: activeId ? (saves[activeId]?.step ?? 0) : 0,
+        activeLines: run ? run.lines() : [],
+        saves: { ...saves },
+        quests: questList,
+        givers: giversMap,
+      };
+    },
+
+    abandonActive() {
+      if (!activeId) return false;
+      run?.cleanup();
+      run = null;
+      delete saves[activeId];
+      activeId = null;
+      storeSaves(saves);
+      cloudSlot.pushSave();
+      deps.hud.setObjective(null);
+      deps.hud.toast('Quest abandoned.', 3000);
+      return true;
+    },
+
+    restartActive() {
+      if (!activeId) return false;
+      const q = quest(activeId);
+      if (!q || !saves[activeId]) return false;
+      saves[activeId].cracked = [];
+      storeSaves(saves);
+      cloudSlot.pushSave();
+      startStep(q);
+      deps.hud.toast('Objective step restarted.', 3000);
+      return true;
     },
   };
 }

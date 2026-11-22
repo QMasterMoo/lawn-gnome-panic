@@ -155,7 +155,7 @@ export function surviveDerbyRun(
         const dx = px - v.x;
         const dz = pz - v.z;
         const diff = angleDiff(Math.atan2(dx, dz), v.yaw);
-        stepVehicle(v, { throttle: 0.9, steer: Math.max(-1, Math.min(1, diff * 2.5)), lift: 0 }, dt, deps.world);
+        stepVehicle(v, { throttle: 0.9, steer: Math.max(-1, Math.min(1, -diff * 2.5)), lift: 0 }, dt, deps.world);
         syncVehicleMesh(v, dt);
       }
       if (deps.vehicles) collideVehicles(deps.vehicles);
