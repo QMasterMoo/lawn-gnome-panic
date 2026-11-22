@@ -3,7 +3,7 @@ import type { MarkerDef } from '@lawn/level';
 import type { SpawnGroup, WorldObjectSpec } from './config';
 import { OBJECTS, ZONES } from './content';
 import { ORIGINS } from './data/layout';
-import { resolveObject, resolveSpawn } from './placement';
+import { resolveLeash, resolveObject, resolveSpawn } from './placement';
 
 const spec = (over: Partial<WorldObjectSpec> = {}): WorldObjectSpec => ({
   id: 'test-obj', zone: 'verge', name: 'Test', model: 'chest', verb: 'Open', examine: 'x', ...over,
@@ -132,5 +132,35 @@ describe('resolveSpawn', () => {
   it('ignores unknown data keys', () => {
     const { errors } = resolveSpawn(spawnSpec(), 'verge', spawnMarker({ v: 1, tint: '#ff0000' }));
     expect(errors).toEqual([]);
+  });
+});
+
+const leashMarker = (data: Record<string, unknown> | undefined, over: Partial<MarkerDef> = {}): MarkerDef => ({
+  id: 'leash-test', kind: 'leash', x: 10, z: -20, r: 16, data: data as MarkerDef['data'], ...over,
+});
+
+describe('resolveLeash', () => {
+  it('resolves a valid leash marker with and without spawn', () => {
+    const a = resolveLeash(leashMarker({ v: 1, spawn: 'mb-spawn-8' }), 'mossbottom');
+    expect(a.errors).toEqual([]);
+    expect(a.def).toEqual({ id: 'leash-test', zone: 'mossbottom', x: 10, z: -20, r: 16, spawn: 'mb-spawn-8' });
+
+    const b = resolveLeash(leashMarker({ v: 1 }), 'mossbottom');
+    expect(b.errors).toEqual([]);
+    expect(b.def).toEqual({ id: 'leash-test', zone: 'mossbottom', x: 10, z: -20, r: 16 });
+  });
+
+  it('rejects non-positive radius, unsupported version, wrong kind, and empty spawn', () => {
+    expect(resolveLeash(leashMarker({ v: 1 }, { r: 0 }), 'mossbottom').def).toBeNull();
+    expect(resolveLeash(leashMarker({ v: 1 }, { r: -5 }), 'mossbottom').errors).toContain('marker r must be a finite number > 0');
+    expect(resolveLeash(leashMarker({ v: 2 }), 'mossbottom').def).toBeNull();
+    expect(resolveLeash(leashMarker({ v: 1 }, { kind: 'spawn' }), 'mossbottom').def).toBeNull();
+    expect(resolveLeash(leashMarker({ v: 1, spawn: '' }), 'mossbottom').def).toBeNull();
+  });
+
+  it('ignores unknown data keys', () => {
+    const { def, errors } = resolveLeash(leashMarker({ v: 1, note: 'arena' }), 'mossbottom');
+    expect(errors).toEqual([]);
+    expect(def).not.toBeNull();
   });
 });

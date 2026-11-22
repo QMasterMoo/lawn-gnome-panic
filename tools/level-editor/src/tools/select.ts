@@ -106,8 +106,9 @@ function commitField(c: CollectionDef, index: number, f: FieldDef, raw: string):
   }
   ctx.editZone(`Edit ${c.label} ${f.label}`, ctx.zone, (def) => {
     const it = c.items(def)[index];
-    const prev = it[f.key];
-    it[f.key] = value;
+    const prev = f.get ? f.get(it) : it[f.key];
+    if (f.set) f.set(it, value);
+    else it[f.key] = value;
     // A prop's solid radius follows its prefab's footprint (x its scale) unless somebody set it by hand.
     if (f.type === 'prefab' && c.id === 'props') {
       const scale = Number(it.scale ?? 1);
@@ -122,7 +123,7 @@ function commitField(c: CollectionDef, index: number, f: FieldDef, raw: string):
 function fieldRow(c: CollectionDef, index: number, f: FieldDef, item: Item): HTMLElement {
   const row = document.createElement('label');
   row.textContent = f.label;
-  const current = item[f.key];
+  const current = f.get ? f.get(item) : item[f.key];
   if (f.type === 'enum') {
     const s = document.createElement('select');
     for (const o of f.options) {

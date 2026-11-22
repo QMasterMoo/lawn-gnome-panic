@@ -55,3 +55,49 @@ describe('objects collection', () => {
     expect(ctx.zones.mossbottom.markers?.[0].data).toEqual({ v: 1 });
   });
 });
+
+describe('leashes collection', () => {
+  it('filters markers to kind "leash" and creates valid leash markers', () => {
+    const def = zoneWith([
+      { id: 'obj-1', kind: 'object', x: 0, z: 0, data: { v: 1 } },
+      { id: 'leash-1', kind: 'leash', x: 10, z: -20, r: 16, data: { v: 1, spawn: 'mb-spawn-8' } },
+    ]);
+    const c = collection('leashes');
+    expect(c.fixed).toBeUndefined();
+    const raw = c.items(def);
+    const visible = raw.filter((it) => !c.accepts || c.accepts(it));
+    expect(visible.map((v) => v.id)).toEqual(['leash-1']);
+    expect(c.radius(visible[0])).toBe(16);
+
+    const created = c.make(5, 6, 0) as unknown as MarkerDef;
+    expect(created.kind).toBe('leash');
+    expect(created.r).toBe(16);
+    expect(created.data).toEqual({ v: 1 });
+  });
+
+  it('reads and writes data.spawn via the spawn field getter/setter and supports undo', () => {
+    const ctx = createContext(createWorld(), gnomomiaAdapter);
+    ctx.viewport = { refresh() {} } as never;
+    const c = collection('leashes');
+    const spawnField = c.fields.find((f) => f.key === 'spawn')!;
+    expect(spawnField.get).toBeTypeOf('function');
+    expect(spawnField.set).toBeTypeOf('function');
+
+    ctx.editZone('Add leash', 'mossbottom', (def) => {
+      def.markers = [{ id: 'leash-x', kind: 'leash', x: 1, z: 2, r: 14, data: { v: 1 } }];
+    });
+    ctx.editZone('Bind spawn', 'mossbottom', (def) => {
+      const m = c.items(def)[0];
+      spawnField.set!(m, 'mb-spawn-8');
+      m.r = 18;
+    });
+    const m = ctx.zones.mossbottom.markers?.[0];
+    expect(m?.r).toBe(18);
+    expect(m?.data).toEqual({ v: 1, spawn: 'mb-spawn-8' });
+    expect(spawnField.get!(m as never)).toBe('mb-spawn-8');
+
+    ctx.history.undo();
+    expect(ctx.zones.mossbottom.markers?.[0].r).toBe(14);
+    expect(ctx.zones.mossbottom.markers?.[0].data).toEqual({ v: 1 });
+  });
+});

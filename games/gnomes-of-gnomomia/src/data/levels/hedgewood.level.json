@@ -252,6 +252,17 @@
   ],
   "markers": [
     {
+      "id": "leash-c5-spawn-9",
+      "kind": "leash",
+      "x": -74,
+      "z": 38,
+      "r": 18,
+      "data": {
+        "v": 1,
+        "spawn": "c5-spawn-9"
+      }
+    },
+    {
       "id": "c5-cocoon",
       "kind": "object",
       "x": 56,

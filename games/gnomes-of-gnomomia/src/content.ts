@@ -8,7 +8,7 @@ import { doorSpots, hashString, layoutInterior, mulberry32 } from './data/interi
 export { FURNITURE_RADIUS } from './data/interiors';
 import { ORIGINS } from './data/layout';
 import type { MarkerDef } from '@lawn/level';
-import { isObjectMarker, resolveObject, resolveSpawn, SPAWN_MARKER_KIND, type ObjectPlacementMarker } from './placement';
+import { isObjectMarker, LEASH_MARKER_KIND, resolveLeash, resolveObject, resolveSpawn, SPAWN_MARKER_KIND, type ObjectPlacementMarker } from './placement';
 
 import { PACK as mossbottom } from './data/packs/mossbottom';
 import { PACK as ch2 } from './data/packs/ch2-thatchford';
@@ -180,6 +180,48 @@ for (const p of PACKS) {
   }
 }
 
+// Pass 1c: leash zones. A `leash` marker in a zone's level file binds either the named `data.spawn` or any spawn
+// in that zone whose centre falls inside the circle (explicit `data.spawn` takes precedence).
+{
+  const explicitSpawnLeash = new Set<string>();
+  const areaLeashes: { zone: ZoneId; x: number; z: number; r: number }[] = [];
+  for (const zone of Object.values(ZONES)) {
+    for (const m of zone.markers ?? []) {
+      if (m.kind !== LEASH_MARKER_KIND) continue;
+      const { def, errors } = resolveLeash(m, zone.id);
+      for (const e of errors) loadError(`leash ${m.id} in ${zone.id}: ${e}`);
+      if (!def) continue;
+      if (def.spawn !== undefined) {
+        const target = SPAWNS.find((s) => s.id === def.spawn);
+        if (!target) {
+          loadError(`leash ${m.id} in ${zone.id}: unknown spawn '${def.spawn}'`);
+          continue;
+        }
+        if (target.zone !== zone.id) {
+          loadError(`leash ${m.id} in ${zone.id}: spawn '${def.spawn}' is in ${target.zone}`);
+          continue;
+        }
+        if (explicitSpawnLeash.has(def.spawn)) {
+          loadError(`leash ${m.id} in ${zone.id}: duplicate leash for spawn '${def.spawn}'`);
+          continue;
+        }
+        explicitSpawnLeash.add(def.spawn);
+        target.leash = { x: def.x, z: def.z, r: def.r };
+      } else {
+        areaLeashes.push({ zone: zone.id, x: def.x, z: def.z, r: def.r });
+      }
+    }
+  }
+  for (const area of areaLeashes) {
+    for (const g of SPAWNS) {
+      if (g.zone !== area.zone || g.leash) continue;
+      if (Math.hypot(g.x - area.x, g.z - area.z) <= area.r) {
+        g.leash = { x: area.x, z: area.z, r: area.r };
+      }
+    }
+  }
+}
+
 // Pass 2b: building interiors. Each house becomes a small indoor zone (an instance, like the Deeps) with its own origin
 // far beyond the Deeps; its door is a teleport exit both ways. Everything here is authored zone-local (room-local inside),
 // so pass 3 below moves it into the world like any other content. Furniture is laid out after the packs merged, so it
@@ -343,7 +385,12 @@ for (const npc of Object.values(NPCS)) {
 for (const [npcId, opts] of Object.entries(TOPICS)) TOPICS[npcId] = opts.map(worldOption);
 for (let i = 0; i < SPAWNS.length; i++) {
   const g = SPAWNS[i];
-  SPAWNS[i] = { ...g, x: shiftX(g.zone, g.x), z: shiftZ(g.zone, g.z) };
+  SPAWNS[i] = {
+    ...g,
+    x: shiftX(g.zone, g.x),
+    z: shiftZ(g.zone, g.z),
+    ...(g.leash ? { leash: { x: shiftX(g.zone, g.leash.x), z: shiftZ(g.zone, g.leash.z), r: g.leash.r } } : {}),
+  };
 }
 for (const [id, def] of Object.entries(OBJECTS)) OBJECTS[id] = { ...def, x: shiftX(def.zone, def.x), z: shiftZ(def.zone, def.z) };
 for (const [id, q] of Object.entries(QUESTS)) {

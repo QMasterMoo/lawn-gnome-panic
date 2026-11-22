@@ -11,7 +11,41 @@
   "stamps": [],
   "paths": [],
   "props": [],
-  "markers": [],
+  "markers": [
+    {
+      "id": "leash-c3-spawn-3",
+      "kind": "leash",
+      "x": 0,
+      "z": 42,
+      "r": 14,
+      "data": {
+        "v": 1,
+        "spawn": "c3-spawn-3"
+      }
+    },
+    {
+      "id": "leash-c5-spawn-13",
+      "kind": "leash",
+      "x": 0,
+      "z": -14,
+      "r": 14,
+      "data": {
+        "v": 1,
+        "spawn": "c5-spawn-13"
+      }
+    },
+    {
+      "id": "leash-c6-spawn-12",
+      "kind": "leash",
+      "x": 0,
+      "z": -86,
+      "r": 16,
+      "data": {
+        "v": 1,
+        "spawn": "c6-spawn-12"
+      }
+    }
+  ],
   "data": {
     "levels": [
       10,

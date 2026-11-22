@@ -212,8 +212,11 @@ export interface EnemyDef {
   onDeathFlag?: { flag: string; value: string };   // set when this enemy dies
 }
 
+/** Circular leash boundary (world or zone-local metres depending on phase). */
+export interface LeashArea { x: number; z: number; r: number }
+
 /** stable id; the level file's spawn marker refers to it */
-export interface SpawnGroup { id?: string; zone: ZoneId; enemy: string; x: number; z: number; count: number; spread: number; when?: Condition }
+export interface SpawnGroup { id?: string; zone: ZoneId; enemy: string; x: number; z: number; count: number; spread: number; when?: Condition; leash?: LeashArea }
 /** A spawn as a pack writes it: x and z may be left out when a spawn marker in the zone file gives them. */
 export type SpawnSpec = Omit<SpawnGroup, 'x' | 'z'> & { x?: number; z?: number };
 
@@ -447,6 +450,8 @@ export interface Entity {
   position: THREE.Vector3;
   /** Spawn point (enemies return here; NPCs wander around it). */
   home: THREE.Vector3;
+  /** Optional authored leash area (world metres); falls back to TUNING.leashRange around home. */
+  leash?: LeashArea;
   facing: number;
   /** Root of the model; it and every child mesh has userData.entityId = id (for raycast picking). */
   object: THREE.Object3D;

@@ -6,8 +6,9 @@ import { heightAt, isBlocked, zoneAt } from './terrain';
 import { enemyAttack, speedFactor, canAct } from './combat';
 import { bus, say } from './events';
 import { PLAYER_ID, TUNING, UI } from './config';
-import type { DamageType, Entity, EnemyDef, InvSlot, NpcDef, StatusId, ZoneId } from './config';
+import type { DamageType, Entity, EnemyDef, InvSlot, LeashArea, NpcDef, StatusId, ZoneId } from './config';
 import { ENEMIES, NPCS, QUESTS, SPAWNS } from './content';
+import { isBossRank, isWithinLeash } from './leash';
 import { checkCondition } from './quests';
 import { enemyStats } from './rules';
 import { setFlag, state } from './state';
@@ -149,6 +150,7 @@ function addSlot(p: {
   gold?: number;
   syncKey?: string;
   zone?: ZoneId;
+  leash?: LeashArea;
 }): Slot {
   const id = nextId++;
   const home = new THREE.Vector3(p.x, heightAt(p.x, p.z), p.z);
@@ -160,6 +162,7 @@ function addSlot(p: {
     level: p.level,
     position: home.clone(),
     home,
+    ...(p.leash ? { leash: p.leash } : {}),
     facing: 0,
     object: p.rig.object,
     hp: p.hp,
@@ -249,7 +252,7 @@ function spawnGroup(index: number, group: (typeof SPAWNS)[number]): void {
     const syncKey = `s:${index}:${i}`;
     const slot = addSlot({
       kind: 'enemy', defId: def.id, name: def.name, level: def.level, x, z,
-      rig: createEnemyRig(def), hp: enemyStats(def).hp, enemy: def, syncKey, zone: group.zone,
+      rig: createEnemyRig(def), hp: enemyStats(def).hp, enemy: def, syncKey, zone: group.zone, leash: group.leash,
     });
     slot.timer = Math.random() * 3;
     members.push(slot.entity.id);
@@ -398,8 +401,7 @@ function findAggroTarget(slot: Slot): { id: number; dist: number } | null {
   let bestDist: number = TUNING.aggroRange;
   if (!player.dead) {
     const d = Math.hypot(player.position.x - e.position.x, player.position.z - e.position.z);
-    const fromHome = Math.hypot(player.position.x - e.home.x, player.position.z - e.home.z);
-    if (d < bestDist && fromHome < TUNING.leashRange) {
+    if (d < bestDist && isWithinLeash(e, player.position.x, player.position.z)) {
       bestDist = d;
       bestId = PLAYER_ID;
     }
@@ -407,8 +409,7 @@ function findAggroTarget(slot: Slot): { id: number; dist: number } | null {
   const consider = (rt: RemoteTarget): void => {
     if (rt.dead || rt.zone !== slot.zone) return;
     const d = Math.hypot(rt.x - e.position.x, rt.z - e.position.z);
-    const fromHome = Math.hypot(rt.x - e.home.x, rt.z - e.home.z);
-    if (d < bestDist && fromHome < TUNING.leashRange) {
+    if (d < bestDist && isWithinLeash(e, rt.x, rt.z)) {
       bestDist = d;
       bestId = rt.id;
     }
@@ -472,8 +473,8 @@ function updateEnemy(slot: Slot, def: EnemyDef, dt: number): void {
   e.attackTimer -= dt;
   const homeDist = Math.hypot(e.position.x - e.home.x, e.position.z - e.home.z);
 
-  // Aggro: an aggressive enemy starts a fight when any living player comes near and is not too far from home.
-  if (!e.inCombat && def.aggressive) {
+  // Aggro: an aggressive enemy starts a fight when any living player comes near and is inside its leash zone.
+  if (!e.inCombat && !slot.returning && def.aggressive) {
     const aggro = findAggroTarget(slot);
     if (aggro) {
       e.inCombat = true;
@@ -484,12 +485,16 @@ function updateEnemy(slot: Slot, def: EnemyDef, dt: number): void {
 
   if (e.inCombat) {
     const tgt = resolveTarget(slot);
-    if (tgt.dead || homeDist > TUNING.leashRange) {
-      // Give up: heal and walk home (handled below).
+    const enforceTargetLeash = Boolean(e.leash) || isBossRank(def.rank);
+    const outOfLeash = !isWithinLeash(e, e.position.x, e.position.z)
+      || (enforceTargetLeash && !isWithinLeash(e, tgt.x, tgt.z));
+    if (tgt.dead || outOfLeash) {
+      // Give up: heal, cancel active moves, and walk home (handled below).
       e.inCombat = false;
       e.hp = e.maxHp;
       slot.returning = true;
       slot.targetPlayerId = null;
+      bus.emit('enemy-reset', { entityId: e.id });
     } else {
       const toTarget = Math.hypot(tgt.x - e.position.x, tgt.z - e.position.z);
       if (toTarget > TUNING.meleeRange * 0.9) {
