@@ -85,6 +85,26 @@ export function insideBox(x: number, y: number, z: number, boxes: readonly Box[]
   return false;
 }
 
+/** Highest walk-on surface (`b.h` or `0` for ground) under circle `(x, z, r)` with top at or below `maxY + 0.35`. */
+export function groundHeight(x: number, z: number, r: number, boxes: readonly Box[], maxY: number): number {
+  let best = 0;
+  const g = gridOf(boxes);
+  const i0 = Math.floor((x - r) / CELL), i1 = Math.floor((x + r) / CELL);
+  const j0 = Math.floor((z - r) / CELL), j1 = Math.floor((z + r) / CELL);
+  const r2 = r * r;
+  for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+    for (const b of g.cells.get(cellKey(i, j)) ?? EMPTY) {
+      if (b.h <= best || b.h > maxY + 0.35) continue;
+      const cx = Math.max(b.minX, Math.min(x, b.maxX));
+      const cz = Math.max(b.minZ, Math.min(z, b.maxZ));
+      const dx = x - cx;
+      const dz = z - cz;
+      if (dx * dx + dz * dz < r2) best = b.h;
+    }
+  }
+  return best;
+}
+
 /** Shortest signed difference between two angles, in (-PI, PI]. */
 export function angleDiff(to: number, from: number): number {
   let d = (to - from) % (Math.PI * 2);
