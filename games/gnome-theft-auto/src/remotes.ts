@@ -9,9 +9,11 @@ import type { PlayerInfo } from '@lawn/mp/protocol';
 import { clearHands, poseHands } from './driverHands';
 import { poseHandsUp, randomTownLook } from './gnomes';
 import { decodeGunWire } from './gunMods';
+import { clearGunArms, placeInHand, poseGunArms } from './gunHold';
 import { buildModdedGun } from './gunRig';
 import { VEHICLE_CODES, type RemotePose } from './net';
 import type { StationId } from './radio/content';
+import { GUNS } from './config';
 import { passengerCount } from './seats';
 import { aboveGround } from './terrain';
 import type { Vehicle } from './types';
@@ -38,6 +40,19 @@ interface Puppet {
   station: StationId | null;
   /** The gun in this player's right hand (built from their gun code), or null. */
   held: THREE.Object3D | null;
+  /** The prefab id of `held`, or null. */
+  heldPrefab: string | null;
+  /** True while the gun pose (gunHold.ts) is on the arms. */
+  gunPosed: boolean;
+  /** Aim pitch shown on the gun pose, eased toward the latest pose's pitch (radians). */
+  pitch: number;
+}
+
+/** How fast a remote player's shown aim pitch catches up with the wire (per second; ~60 ms to close most of a step). */
+const PITCH_EASE = 16;
+/** Ease `shown` toward `target` over dt seconds, frame-rate independent. */
+export function easePitch(shown: number, target: number, dt: number): number {
+  return shown + (target - shown) * (1 - Math.exp(-PITCH_EASE * dt));
 }
 
 /** Where a boarding player's vehicle and identity come from on this client. */
@@ -165,14 +180,15 @@ export function createRemotes(scene: THREE.Scene, deps: RemotesDeps): Remotes {
     if (p.held) {
       p.model.arms.right.remove(p.held);
       p.held = null;
+      p.heldPrefab = null;
     }
     try {
       const d = code ? decodeGunWire(code) : null;
-      const gun = buildModdedGun(d?.gun ?? 'pistol', d?.loadout ?? {});
-      gun.position.set(0, -0.32, 0.02);
-      gun.rotation.x = Math.PI;
-      p.model.arms.right.add(gun);
+      const kind = d?.gun ?? 'pistol';
+      const gun = buildModdedGun(kind, d?.loadout ?? {});
+      placeInHand(gun, GUNS[kind].prefab, p.model.arms.right);
       p.held = gun;
+      p.heldPrefab = GUNS[kind].prefab;
     } catch { /* prefab missing: no gun */ }
   }
 
@@ -238,9 +254,12 @@ export function createRemotes(scene: THREE.Scene, deps: RemotesDeps): Remotes {
       // Airborne without a canopy: arms out.
       p.model.arms.left.rotation.z = 1.3;
       p.model.arms.right.rotation.z = -1.3;
-    } else if (pose.aiming) p.model.arms.right.rotation.x = -Math.PI / 2;
-    // Aiming on foot: the gun arm comes up, as the local player's does. Not under a canopy (its straps win) or while hurt.
-    if (onFoot && pose.aiming && !pose.hurt && !pose.chute) p.model.arms.right.rotation.x = -Math.PI / 2;
+    }
+    // Guns: the same pose as the local player (gunHold.ts): at the ready on foot, raised along their aim pitch while aiming.
+    p.pitch = easePitch(p.pitch, pose.aiming ? pose.pitch : 0, dt);
+    const gunPose = onFoot && !pose.chute && !pose.hurt && y <= 2 && !!p.held;
+    if (gunPose) { poseGunArms(p.model, p.heldPrefab, { aiming: pose.aiming, pitch: p.pitch }, p.held); p.gunPosed = true; }
+    else if (p.gunPosed) { clearGunArms(p.model, p.held); p.gunPosed = false; }
     // Driving: the hands follow the wheel. Runs last so it wins over the arm poses above.
     if (p.vehicle) poseHands(p.model, p.vehicle, 0, dt);
   }
@@ -290,7 +309,7 @@ export function createRemotes(scene: THREE.Scene, deps: RemotesDeps): Remotes {
         id: info.id, name: info.name, model, label,
         interp: new Interp({ angles: [3], pos: [0, 1, 2], snapDist: 25 }),
         s: [0, 0, 0, 0],
-        pose: null, vehicle: null, vehCode: -1, x: 0, y: 0, z: 0, t: 0, canopy: null, station: null, held: null,
+        pose: null, vehicle: null, vehCode: -1, x: 0, y: 0, z: 0, t: 0, canopy: null, station: null, held: null, heldPrefab: null, gunPosed: false, pitch: 0,
       };
       holdGun(p, guns.get(info.id));
       puppets.set(info.id, p);

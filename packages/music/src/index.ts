@@ -39,6 +39,7 @@ export {
   type SongSpatial,
   type Tone,
 } from './engine';
+export { MODES, chordTones, degreeToMidi, midiToNote, mulberry32, voiceLead, type ModeName } from './theory';
 export { buildSectorTrack, themeForSeed, type SectorOptions } from './sectorTrack';
 export { SECTOR_THEMES, type SectorTheme } from './sectorThemes';
 export { buildRunTrack } from './runTrack';

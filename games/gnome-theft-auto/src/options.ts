@@ -5,9 +5,11 @@ import { TUNES, getTune, type Tune } from './simdrive';
 import type { TimeMode } from './atmosphere';
 import { getRadioText, setRadioText } from './radio/prefs';
 import { TEXT_SPEEDS, getTextSpeed, setTextSpeed, type TextSpeed } from './cutscene/textSpeed';
+import { KEYS } from './keys';
 import { getMapPlayers, setMapPlayers } from './mapPrefs';
 import { exportSaveBundle, importSaveBundle, resetSaveBundle } from './saveIO';
 import { mountSoundOptions } from './sound/volumeUi';
+import { mountCloudStatus } from './cloudSave';
 
 /** Builds the gear and its settings panel. Returns the Controls slot inside it, for the Steam Controller button. */
 export function createOptions(
@@ -172,13 +174,15 @@ export function createOptions(
 
   // Sound: World and Ambience volume sliders (src/sound/volumeUi.ts).
   mountSoundOptions(panel);
+  // Cloud save: synced / syncing / offline (src/cloudSave.ts).
+  mountCloudStatus(panel);
 
   // Experimental: dev-testing tools to export, import, or reset local save data.
   const expHeading = document.createElement('h3');
   expHeading.textContent = 'Experimental';
   const expNote = document.createElement('div');
   expNote.className = 'gta-opt-note';
-  expNote.textContent = 'Dev testing: back up, restore, or wipe your Turfton save (quests, acorns, collectibles).';
+  expNote.textContent = 'Dev testing: back up, restore, or wipe your Turfton save (quests, acorns, collectibles, shop and garage work, bests). A wipe also clears the cloud copy.';
   const expList = document.createElement('div');
   expList.className = 'gta-opt-list';
   const expStatus = document.createElement('div');
@@ -341,7 +345,7 @@ export function createOptions(
   panel.querySelector('.gta-opt-close')?.addEventListener('click', () => setOpen(false));
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
-    if (e.code === 'KeyO' && !e.repeat) toggle();
+    if (e.code === KEYS.options && !e.repeat) toggle();
   });
   mark();
   return extras;

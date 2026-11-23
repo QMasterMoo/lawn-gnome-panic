@@ -29,7 +29,12 @@ export type VehicleKind =
   // Tessie (Wild World Epic 7): the loch's giant turtle, ridden like a boat (spec.boat). Spawned only by the Tessie quest and world event.
   | 'tessie'
   // The Turfton Taxi (taxi.ts): summoned by the player, drives them back to the Central Bus Stop. Never parked or in traffic.
-  | 'taxi';
+  | 'taxi'
+  // Odd rides: slow, impractical garden-scale vehicles that turn up in ambient traffic (config.ts VEHICLES).
+  | 'pot-rod'
+  | 'lawn-roller'
+  | 'teacup-trundler'
+  | 'barrow-buggy';
 export type GunKind =
   | 'pistol'
   | 'smg'
@@ -45,6 +50,17 @@ export type BiomeId = 'city' | 'desert' | 'forest' | 'tundra' | 'farmland' | 'lo
 
 /** Static collider: an axis-aligned box on the ground, h tall. Flyers above h pass over it. */
 export interface Box { minX: number; maxX: number; minZ: number; maxZ: number; h: number }
+
+/** One placed vending machine. `object` is the prefab group (origin on the ground, rotation.y = yaw, front/chute on its local +z); `box` is its collider in world.boxes. */
+export interface VendingSpot {
+  x: number;
+  z: number;
+  yaw: number;
+  /** What it sells: 'cola' = Acorn-Cola (prefab gta-vending-cola), 'fizz' = Dandelion Fizz (gta-vending-fizz). */
+  brand: 'cola' | 'fizz';
+  object: THREE.Group;
+  box: Box;
+}
 
 export interface RoadNode { id: number; x: number; z: number; links: number[] }
 export interface RoadGraph {
@@ -101,6 +117,8 @@ export interface World {
   airfield: Airfield;
   /** Shootable Black Dew barrels placed in biomes. */
   dewBarrels?: DewBarrel[];
+  /** Downtown vending machines (world.ts scatterVendingMachines); vending.ts wobbles them and spills cans when a vehicle hits one. */
+  vending?: VendingSpot[];
   /** Lighting refs for dynamic day/night atmosphere. */
   sun?: THREE.DirectionalLight;
   hemi?: THREE.HemisphereLight;
@@ -352,6 +370,14 @@ export interface Player {
   swimming?: boolean;
   /** True from bailing out of a flyer until the feet touch the ground. main calls updateAir (not updateFoot) while true. */
   airborne: boolean;
+  /** True while the gnome tumbles as a ragdoll (thrown from a moving vehicle, or hit by one). main calls updateRagdoll (not updateFoot) while true. */
+  ragdolling: boolean;
+  /** Leave vehicle `v` while it moves: start at the seat as a ragdoll with world velocity (vx, vy, vz) m/s. The vehicle is not touched. */
+  throwFrom(v: Vehicle, vx: number, vy: number, vz: number): void;
+  /** On foot: go limp with world velocity (vx, vy, vz) m/s added (hit by a vehicle). Adds to the tumble when already ragdolling. */
+  ragdoll(vx: number, vy: number, vz: number): void;
+  /** One frame of the tumble; when the body has settled the gnome gets up (ragdolling = false, standing, upright). */
+  updateRagdoll(dt: number, world: World): void;
   /** Canopy openness 0 (stowed) .. 1 (open). Free fall is airborne with chute 0. */
   chute: number;
   /** Leave a flyer v in mid-air (v.y > BAIL_MIN_ALTITUDE): start at the seat, falling, vehicle left empty. */
@@ -422,6 +448,12 @@ export interface Weapons {
   reloading: boolean;
   /** Show the held gun on this hand object. */
   attachTo(hand: THREE.Object3D): void;
+  /** Pose the holder's arms and the held gun (gunHold.ts). Call every frame after the player's model update, on foot only. */
+  poseArms(model: GnomeModel, aiming: boolean, pitch: number): void;
+  /** Put the arms and gun back to the plain hand placement; does something only on the first call after poseArms. */
+  relaxArms(model: GnomeModel): void;
+  /** The held gun's muzzle in world space into `out`; false (out untouched) when no gun is held. */
+  muzzleWorld(out: THREE.Vector3): boolean;
   setVisible(v: boolean): void;
   switchGun(): void;
   unlock(kind: GunKind): void;
@@ -503,9 +535,18 @@ export interface Npcs {
   setKeepOut?(zones: readonly { x: number; z: number; r: number }[] | null): void;
 }
 
+/** Where the camera is and the way it looks on the ground plane (unit dirX, dirZ), so traffic never appears in view. */
+export interface TrafficView { x: number; z: number; dirX: number; dirZ: number }
+
 export interface Traffic {
-  /** Spawn NPC-driven mowers into `vehicles` (up to TRAFFIC_COUNT), drive every driver==='npc' vehicle along the roads. */
-  update(dt: number, vehicles: Vehicle[], world: World, playerX: number, playerZ: number): void;
+  /**
+   * Keep the ambient population (trafficSim.ts: off-screen cars out to TRAFFIC.simRadius, real vehicles near the player in
+   * `vehicles`), drive every driver==='npc' vehicle along the roads. `view` is the camera; without it, new cars only appear
+   * beyond TRAFFIC.hideDistance.
+   */
+  update(dt: number, vehicles: Vehicle[], world: World, playerX: number, playerZ: number, view?: TrafficView): void;
+  /** Tests and ?debug: every ambient car, near (live) or off-screen. */
+  debugGhosts?(): readonly { id: number; kind: VehicleKind; x: number; z: number; live: boolean; from: number; to: number }[];
   /** The NPC driver leaves v (rider model removed, v.driver = 'none'). Returns where they stand, their look and where they were headed (an errand, "to the park for a picnic"), or null if none. */
   ejectDriver(v: Vehicle): { x: number; z: number; look: GnomeLook; reason: string | null } | null;
   /** Dispatch a multi-vehicle convoy along a sequence of road node IDs. */
@@ -557,9 +598,11 @@ export interface Blip {
    * 'taxi' = the Turfton Taxi on its way or waiting (yellow "T" square). 'shop' = a store (Ammu-Gnation: olive disc with an
    * orange crosshair), drawn where it is, with no edge arrow and no `quest` label needed. 'speedway' = the Lost & Found
    * Speedway (chequered flag) and 'glaze' = a Pay 'n' Glaze station (pink drop): places drawn like 'shop', with `label`
-   * on the big map. Absent: the plain gold pin other systems use.
+   * on the big map. The other place kinds (`PoiKind` in mapIcons.ts: hospital, salvage, whirligig, casino, mart, tower,
+   * stage, airfield) are drawn the same way, each with its own icon. Absent: the plain gold pin other systems use.
    */
-  kind?: 'main' | 'side' | 'objective' | 'taxi' | 'shop' | 'speedway' | 'glaze';
+  kind?: 'main' | 'side' | 'objective' | 'taxi' | 'shop' | 'speedway' | 'glaze'
+    | 'hospital' | 'salvage' | 'whirligig' | 'casino' | 'mart' | 'tower' | 'stage' | 'airfield';
 }
 
 /** The route the HUD draws to the active waypoint: a polyline in world x/z, from the player to the target. */

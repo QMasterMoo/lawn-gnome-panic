@@ -128,8 +128,8 @@ runs lists side by side. Camera steps and `shake` never wait (add `wait: true` t
 | `spawn` / `despawn` `id [at yaw]` | Put an actor, vehicle or prop on or off stage |
 | `hold` `who prop\|null` | Put a prefab in the right hand |
 | `give` `from to [prop s]` | Hand it over (both reach, it swaps halfway) |
-| `enter` `who vehicle [seat]` | Get in with the real mount sequence (walk, door, climb). Waits until seated |
-| `exit` `who` | Get out to the vehicle's exit side. Waits until standing |
+| `enter` `who vehicle [seat]` | Get in with the real mount sequence (walk, door, climb) into the seat it names. Waits until seated |
+| `exit` `who` | Get out of its own seat to that seat's side (`seats.ts` `exitLocal`: beside the seat, or the door on that side; seats that would land on the same spot step back a pace). Waits until standing; if the real sequence finishes first, the actor holds its last pose |
 | `drive` `vehicle path speed [spline depart arrive]` | Drive / sail / fly a Catmull-Rom spline. `depart` eases from a stop, `arrive` eases to a stop (both default true) |
 | `lights` `vehicle on`, `horn` `vehicle` | Headlights, horn |
 | `cam` `shot` | Camera (see below) |
@@ -177,6 +177,12 @@ steps: [
 ],
 ```
 
+Drivers (seat 0) put their hands on the steering grips like the player and put their held prop away while they drive;
+a Pay 'n' Glaze seat cover (hay bale, throne...) lifts whoever sits on it (`seatCover.ts`). Dev labs to look at all
+this: `?cutscene=seat-lab` (every cast member in their own glazed ride), `?cutscene=exit-lab` (everyone out of a
+ride-on, a four-seat lowrider and the van at once, then two guns raised), `?cutscene=gun-lab` (the four guns, lowered
+and aimed). Actors holding a gun (`held: 'gta-rifle'`) carry it at the ready and aim it on a `point` gesture.
+
 Wheels turn with the speed, the body works its suspension, the engine hums by speed and distance, and the horn and
 headlights are real. Seated actors ride in the seat (`seat: 0` driver, `1..` passengers). For an arrival in what the
 player drove, use `{ id: 'ride', kind: 'ride-on', from: 'player', at: [...] }` and seat the `player: true` actor in it.
@@ -184,7 +190,9 @@ player drove, use `{ id: 'ride', kind: 'ride-on', from: 'player', at: [...] }` a
 ## Dialogue
 
 A `say` line types out letter by letter at the player's **Text speed** (Options > Dialogue: Slow 22, Normal 40, Fast
-75 characters a second, or Instant; saved per browser), with mutter voice blips per word at the speaker's pitch; the
+75 characters a second, or Instant; saved per browser), with mutter voice blips per word in the speaker's own voice
+(`src/voice/voices.ts`: a `VoiceSpec` per cast key, a derived voice for any other label, `hz` on the line or actor
+changes only the pitch; played through the Voices slider by `src/voice/speech.ts`); the
 speaker nods and gestures while it types. Then it holds for reading time: 238 words a minute, at least 1.5 s, and moves
 on by itself. A tap, click, Space or Enter finishes the typing; the next one ends the line. Escape or Skip ends the scene.
 Next / Skip buttons are 44 px for phones. Keep lines short (one or two sentences) and check names and facts against
@@ -290,3 +298,10 @@ target. Thresholds are `PACING` (quoted in the bible).
 - Use `async: true` to let an actor walk while someone talks.
 - `call` steps are how a scene changes the game; keep them at the end, or make them safe to fire early when skipped.
 - Find coordinates in the game with `?debug` (`__gta.player.x / z`).
+
+## Mission comms
+
+Scenes are short, so a quest can also explain itself while it is played: `src/quests/comms.ts` holds a talking-head
+briefing for objective 0 (shown right after the intro scene) and phone-style calls for later objectives (shown as each
+begins, after any beat scene). Same rules as scene lines: at most 16 words, the speaker's own voice, one place name.
+`?briefing=<questId>[:<step>]` shows one at once. Story-wide who-is-who: `story-edit-pass.md`.

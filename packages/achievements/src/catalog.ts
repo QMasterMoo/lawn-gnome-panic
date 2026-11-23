@@ -612,6 +612,16 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     title: 'Snail-Mail Saboteur', description: 'Rig the underground alley snail races for Shelldon.',
     reward: { slot: 'head', prefabId: 'snail-shell-cap', label: 'Racing Snail Cap' },
   },
+  {
+    id: 'gta-bail-out', game: 'gnome-theft-auto', gameTitle: 'Gnome Theft Auto',
+    title: 'Tuck and Roll', description: 'Bail out of a moving vehicle.',
+    reward: { slot: 'head', prefabId: 'gta-crash-helmet', label: 'Kiln-Shield Crash Helmet' },
+  },
+  {
+    id: 'gta-cola-jackpot', game: 'gnome-theft-auto', gameTitle: 'Gnome Theft Auto',
+    title: 'Exact Change', description: 'Shake the cans out of a vending machine with a vehicle.',
+    reward: { slot: 'hand', prefabId: 'gta-can-cola', label: 'Acorn-Cola Can' },
+  },
   // The Lost & Found Speedway (games/gnome-theft-auto/src/raceTrack, races in src/quests/races.ts).
   {
     id: 'gta-speedway-lap', game: 'gnome-theft-auto', gameTitle: 'Gnome Theft Auto',
@@ -720,6 +730,13 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     description: 'Take the helm of every boat: the Walnut Dinghy, Gravy Boat, Clog Cruiser, Watering-Can Steamer and HOA Patrol Boat.',
     target: 5,
     reward: { slot: 'head', prefabId: 'captain-cap', label: "Captain's Cap", exclusive: true },
+  },
+  {
+    id: 'gta-sunday-driver', game: 'gnome-theft-auto', gameTitle: 'Gnome Theft Auto',
+    title: 'Sunday Driver',
+    description: 'Drive every odd ride: the Pot Rod, Lawn Roller, Teacup Trundler and Barrow Buggy.',
+    target: 4,
+    reward: { slot: 'head', prefabId: 'sunday-driver-cap', label: "Sunday Driver's Cap" },
   },
   {
     id: 'gta-new-coat', game: 'gnome-theft-auto', gameTitle: 'Gnome Theft Auto',

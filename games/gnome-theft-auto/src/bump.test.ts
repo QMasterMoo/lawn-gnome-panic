@@ -1,12 +1,13 @@
 // Vehicle-vehicle bumps: weight decides who gets thrown (combine vs push-bike), and a bump slides and spins the lighter one.
 import { describe, expect, it, vi } from 'vitest';
+import * as THREE from 'three';
 import { VehicleController, qRotate, qYaw, v3 } from '@lawn/vehicle';
 import { DEFAULT_MODE_ID, tuneById, vehicleConfig } from './handling';
 import { VEHICLES } from './config';
 import type { Vehicle, VehicleKind, World } from './types';
 
 vi.mock('./audio', () => ({ play: () => undefined }));
-const { collideVehicles, stepKnock } = await import('./vehicles');
+const { collideVehicles, stepKnock, stepVehicle } = await import('./vehicles');
 
 const world = { boxes: [], half: 600 } as unknown as World;
 const make = (id: number, kind: VehicleKind, x: number, z: number, yaw: number, speed: number): Vehicle => ({
@@ -79,6 +80,35 @@ describe('bumps', () => {
     }
   });
 
+  it('two ride-ons head-on at 30 m/s each, stepped at dt 0.05, never swap their order along z', () => {
+    const a = make(1, 'ride-on', 0, 0, 0, 30);
+    const b = make(2, 'ride-on', 0, 6, Math.PI, 30);
+    for (const v of [a, b]) v.object = { children: [] } as unknown as Vehicle['object'];
+    const dt = 0.05;
+    for (let i = 0; i < 60; i++) {
+      for (const v of [a, b]) {
+        v.x += Math.sin(v.yaw) * v.speed * dt;
+        v.z += Math.cos(v.yaw) * v.speed * dt;
+      }
+      collideVehicles([a, b], dt);
+      stepKnock([a, b], dt, world);
+      expect(a.z).toBeLessThan(b.z);
+    }
+  });
+
+  it('an arcade player vehicle at 40 m/s never gets past a thin wall 5 m ahead', () => {
+    const wallBox = { minX: -20, maxX: 20, minZ: 5, maxZ: 5.3, h: 3 };
+    const w = { boxes: [wallBox], half: 600 } as unknown as World;
+    const car = make(3, 'ride-on', 0, 0, 0, 40);
+    car.driver = 'player';
+    car.object = { children: [] } as unknown as Vehicle['object'];
+    const dt = 0.05;
+    for (let i = 0; i < 20; i++) {
+      stepVehicle(car, { throttle: 1, steer: 0, lift: 0 }, dt, w);
+      expect(car.z).toBeLessThan(5.3);
+    }
+  });
+
   it('a player on the physics model glancing a combine stays upright, turns the right way, and does not spin wildly', () => {
     const tune = tuneById(DEFAULT_MODE_ID)!;
     const spec = VEHICLES['push-bike'];
@@ -110,5 +140,47 @@ describe('bumps', () => {
     expect(maxYawRate).toBeLessThan(5.5);
     // Hit on its right side while moving along +z at x = 3 (the combine is to the left, at x = 0): the nose is knocked to the right, +x, so yaw goes positive.
     expect(turned).toBeGreaterThan(0);
+  });
+});
+
+describe('bump damage', () => {
+  // Damage uses the closing speed along the contact normal, so vehicles moving together take no damage.
+  const hit = (id: number, x: number, z: number, yaw: number, speed: number, driver: Vehicle['driver'] = 'npc'): Vehicle => {
+    const v = make(id, 'ride-on', x, z, yaw, speed);
+    v.driver = driver;
+    v.object = new THREE.Group() as unknown as Vehicle['object'];
+    return v;
+  };
+
+  it('two ride-ons grazing side by side, both heading the same way, take no damage', () => {
+    const a = hit(1, 0, 0, 0, 14);
+    const b = hit(2, 2.5, 0, 0, 14);
+    run([a, b], 1);
+    expect(a.hp).toBe(1);
+    expect(b.hp).toBe(1);
+  });
+
+  it('a ride-on nudging the back of one in the same lane at a 2 m/s closing speed takes no damage', () => {
+    const rear = hit(1, 0, -0.5, 0, 15);
+    const front = hit(2, 0, 0, 0, 13);
+    run([rear, front], 1);
+    expect(rear.hp).toBe(1);
+    expect(front.hp).toBe(1);
+  });
+
+  it('a head-on bump at 12 m/s each damages both', () => {
+    // Ride-on radius is 1.4 m each, so the bump needs them closer than 2.8 m (3 m apart would not touch).
+    const a = hit(1, 0, 0, 0, 12);
+    const b = hit(2, 0, 2.4, Math.PI, 12);
+    run([a, b], 0.5);
+    expect(a.hp).toBeLessThan(1);
+    expect(b.hp).toBeLessThan(1);
+  });
+
+  it('a ride-on at 20 m/s hitting a parked one from behind damages the parked one', () => {
+    const parked = hit(1, 0, 0, 0, 0, 'none');
+    const fast = hit(2, 0, -2.4, 0, 20);
+    run([parked, fast], 0.5);
+    expect(parked.hp).toBeLessThan(1);
   });
 });
