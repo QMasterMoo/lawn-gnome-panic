@@ -23,6 +23,26 @@ const BUILDING_PREFAB_BY_ARCH: Partial<Record<NonNullable<GsrBuilding['arch']>, 
   'glass-pavilion': 'gsr-bldg-neon-pavilion',
   'fountain-basin': 'gsr-bldg-neon-pavilion',
   'lighthouse-spire': 'gsr-bldg-neon-pavilion',
+  'arcade-marquee': 'gsr-bldg-arcade-hall',
+  'alley-tenement': 'gsr-bldg-arcade-hall',
+  'mulch-club-annex': 'gsr-bldg-arcade-hall',
+  'crt-spire': 'gsr-bldg-arcade-hall',
+  'mall-kiosk': 'gsr-bldg-mall-atrium',
+  'storefront-wing': 'gsr-bldg-mall-atrium',
+  'atrium-bridge': 'gsr-bldg-mall-atrium',
+  'register-spire': 'gsr-bldg-mall-atrium',
+  'hoa-manor': 'gsr-bldg-hoa-manor',
+  'topiary-pavilion': 'gsr-bldg-hoa-manor',
+  'megaphone-tower': 'gsr-bldg-hoa-manor',
+  'relay-bunker': 'gsr-bldg-relay-bunker',
+  'reel-vault': 'gsr-bldg-relay-bunker',
+  'acoustic-dish': 'gsr-bldg-relay-bunker',
+  'antenna-rig': 'gsr-bldg-relay-bunker',
+  'tuning-spire': 'gsr-bldg-relay-bunker',
+  'dead-wax-gate': 'gsr-bldg-zenith-monolith',
+  'monolith-spire': 'gsr-bldg-zenith-monolith',
+  'choir-amphitheater': 'gsr-bldg-zenith-monolith',
+  'turntable-crown': 'gsr-bldg-zenith-monolith',
 };
 
 const ROUND_BUILDING_PREFABS = new Set([
@@ -467,7 +487,7 @@ export function buildWorldVisuals(doc: GsrLevelDoc): WorldVisuals {
         const barMat = track(
           flatLayer(
             new THREE.MeshBasicMaterial({ color: det.color, transparent: true, opacity: 0.72 }),
-            LAYER.marking,
+            LAYER.decal,
           ),
         );
         const bar = new THREE.Mesh(barGeo, barMat);
@@ -659,6 +679,59 @@ export function buildWorldVisuals(doc: GsrLevelDoc): WorldVisuals {
       const rim = new THREE.Mesh(rimGeo, rimMat);
       rim.position.set(det.x, det.y + 0.16, det.z);
       group.add(rim);
+    } else if (det.kind === 'arcade-grid') {
+      const cols = 4;
+      const rows = Math.max(4, Math.round((det.d ?? 16) / 3));
+      const tileMatA = track(flatLayer(new THREE.MeshBasicMaterial({ color: det.color, transparent: true, opacity: 0.78 }), LAYER.decal));
+      const tileMatB = track(flatLayer(new THREE.MeshBasicMaterial({ color: det.accentColor ?? '#120824', transparent: true, opacity: 0.85 }), LAYER.decal));
+      const tileGeo = track(new THREE.PlaneGeometry(1.8, 1.8));
+      tileGeo.rotateX(-Math.PI / 2);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const m = new THREE.Mesh(tileGeo, (r + c) % 2 === 0 ? tileMatA : tileMatB);
+          m.position.set(det.x + (c - (cols - 1) * 0.5) * 2.0, det.y + 0.1, det.z + (r - (rows - 1) * 0.5) * 2.0);
+          group.add(m);
+        }
+      }
+    } else if (det.kind === 'mall-skylight') {
+      const sc = det.scale ?? 1;
+      const ribGeo = track(new THREE.TorusGeometry(14 * sc, 0.24 * sc, 8, 28, Math.PI));
+      const ribMat = track(new THREE.MeshStandardMaterial({ color: det.color, emissive: det.color, emissiveIntensity: 0.55, transparent: true, opacity: 0.72 }));
+      for (const dz of [-14, 0, 14]) {
+        const rib = new THREE.Mesh(ribGeo, ribMat);
+        rib.position.set(det.x, det.y, det.z + dz * sc);
+        group.add(rib);
+      }
+    } else if (det.kind === 'hedge-trim') {
+      const len = det.d ?? 20;
+      const count = Math.max(3, Math.floor(len / 4));
+      const boxGeo = track(new THREE.BoxGeometry(1.6, 1.1, 1.6));
+      const boxMat = track(new THREE.MeshStandardMaterial({ color: det.color, roughness: 0.8 }));
+      for (let i = 0; i < count; i++) {
+        const hMesh = new THREE.Mesh(boxGeo, boxMat);
+        hMesh.position.set(det.x, det.y + 0.55, det.z - len * 0.45 + (i * len * 0.9) / Math.max(1, count - 1));
+        group.add(hMesh);
+      }
+    } else if (det.kind === 'dish-ring') {
+      const rad = (det.w ?? 20) * 0.5;
+      for (const mul of [0.55, 0.8, 1.0]) {
+        const rGeo = track(new THREE.RingGeometry(rad * mul - 0.35, rad * mul, 28));
+        rGeo.rotateX(-Math.PI / 2);
+        const rMat = track(flatLayer(new THREE.MeshBasicMaterial({ color: det.color, side: THREE.DoubleSide, transparent: true, opacity: 0.7 }), LAYER.decal));
+        const rMesh = new THREE.Mesh(rGeo, rMat);
+        rMesh.position.set(det.x, det.y + 0.1, det.z);
+        group.add(rMesh);
+      }
+    } else if (det.kind === 'vinyl-groove-ring') {
+      const rad = (det.w ?? 28) * 0.5;
+      for (const mul of [0.4, 0.65, 0.85, 1.0]) {
+        const gGeo = track(new THREE.RingGeometry(rad * mul - 0.4, rad * mul, 32));
+        gGeo.rotateX(-Math.PI / 2);
+        const gMat = track(flatLayer(new THREE.MeshBasicMaterial({ color: mul === 0.4 ? (det.accentColor ?? '#ffd740') : det.color, side: THREE.DoubleSide, transparent: true, opacity: 0.78 }), LAYER.decal));
+        const gMesh = new THREE.Mesh(gGeo, gMat);
+        gMesh.position.set(det.x, det.y + 0.1, det.z);
+        group.add(gMesh);
+      }
     } else if (det.kind === 'placed-prop' && det.prefab) {
       const propObj = buildPrefab(det.prefab, { scale: det.scale ?? 1 });
       if (propObj) {
@@ -1051,6 +1124,86 @@ function decorateBuilding(
     addCornerPosts(0.1, 0.18, 2.4, glowMat);
   } else if (arch === 'resort-terrace') {
     addCornerPosts(0.18, 0.14, 1.6, glowMat);
+  } else if (arch === 'arcade-marquee' || arch === 'crt-spire') {
+    const marq = new THREE.Mesh(track(new THREE.BoxGeometry(b.w + 0.85, 0.55, b.d + 0.85)), glowMat);
+    marq.position.set(b.x, b.yBase + b.h * 0.72, b.z);
+    group.add(marq);
+    const crt = new THREE.Mesh(track(new THREE.BoxGeometry(b.w * 0.52, b.h * 0.35, 0.42)), darkMat);
+    crt.position.set(b.x, b.yBase + b.h * 0.42, b.z + b.d * 0.5 + 0.55);
+    group.add(crt);
+    if (arch === 'crt-spire') {
+      const ant = new THREE.Mesh(track(new THREE.CylinderGeometry(0.08, 0.14, 3.2, 8)), glowMat);
+      ant.position.set(b.x, roofTop + 1.5, b.z);
+      group.add(ant);
+    }
+    addCornerPosts(0.14, 0.18, 1.5, glowMat);
+  } else if (arch === 'alley-tenement' || arch === 'mulch-club-annex') {
+    const stairMat = darkMat;
+    for (let s = 0; s < 3; s++) {
+      const ledge = new THREE.Mesh(track(new THREE.BoxGeometry(b.w * 0.75, 0.24, 0.9)), stairMat);
+      ledge.position.set(b.x, b.yBase + b.h * (0.25 + s * 0.25), b.z + b.d * 0.5 + 0.5);
+      group.add(ledge);
+    }
+    const sign = new THREE.Mesh(track(new THREE.BoxGeometry(b.w * 0.5, 0.7, 0.35)), glowMat);
+    sign.position.set(b.x, b.yBase + b.h * 0.65, b.z - b.d * 0.5 - 0.25);
+    group.add(sign);
+    addCornerPosts(0.12, 0.14, 1.3, lightMat);
+  } else if (arch === 'mall-kiosk' || arch === 'storefront-wing' || arch === 'atrium-bridge' || arch === 'register-spire') {
+    const awn = new THREE.Mesh(track(new THREE.BoxGeometry(b.w + 1.1, 0.26, b.d + 1.1)), glowMat);
+    awn.position.set(b.x, b.yBase + b.h * 0.62, b.z);
+    group.add(awn);
+    const glass = new THREE.Mesh(track(new THREE.BoxGeometry(b.w * 0.76, b.h * 0.45, 0.36)), lightMat);
+    glass.position.set(b.x, b.yBase + b.h * 0.34, b.z + b.d * 0.5 + 0.25);
+    group.add(glass);
+    if (arch === 'register-spire') {
+      const halo = new THREE.Mesh(track(new THREE.TorusGeometry(Math.min(b.w, b.d) * 0.42, 0.22, 8, 24)), glowMat);
+      halo.rotation.x = Math.PI / 2;
+      halo.position.set(b.x, roofTop + 1.4, b.z);
+      group.add(halo);
+    }
+    addCornerPosts(0.14, 0.16, 1.4, glowMat);
+  } else if (arch === 'hoa-manor' || arch === 'topiary-pavilion' || arch === 'megaphone-tower') {
+    const trim = new THREE.Mesh(track(new THREE.BoxGeometry(b.w + 0.68, 0.36, b.d + 0.68)), lightMat);
+    trim.position.set(b.x, b.yBase + b.h * 0.5, b.z);
+    group.add(trim);
+    const cornice = new THREE.Mesh(track(new THREE.BoxGeometry(b.w + 0.74, 0.28, b.d + 0.74)), glowMat);
+    cornice.position.set(b.x, roofTop - 0.32, b.z);
+    group.add(cornice);
+    if (arch === 'megaphone-tower') {
+      const bell = new THREE.Mesh(track(new THREE.ConeGeometry(2.2, 2.8, 12)), glowMat);
+      bell.position.set(b.x, roofTop + 1.3, b.z);
+      group.add(bell);
+    }
+    addCornerPosts(0.18, 0.22, 1.5, lightMat);
+  } else if (arch === 'relay-bunker' || arch === 'reel-vault' || arch === 'acoustic-dish' || arch === 'antenna-rig' || arch === 'tuning-spire') {
+    const band = new THREE.Mesh(track(new THREE.BoxGeometry(b.w + 0.72, 0.4, b.d + 0.72)), glowMat);
+    band.position.set(b.x, b.yBase + b.h * 0.48, b.z);
+    group.add(band);
+    if (arch === 'reel-vault') {
+      const reelGroup = new THREE.Group();
+      reelGroup.position.set(b.x, b.yBase + b.h * 0.55, b.z + b.d * 0.5 + 0.3);
+      const wheel = new THREE.Mesh(track(new THREE.CylinderGeometry(2.2, 2.2, 0.28, 18)), glowMat);
+      wheel.rotation.x = Math.PI / 2;
+      reelGroup.add(wheel);
+      group.add(reelGroup);
+      animatedSpinners.push(reelGroup);
+    } else if (arch === 'tuning-spire') {
+      for (const ox of [-1.4, 1.4]) {
+        const tine = new THREE.Mesh(track(new THREE.BoxGeometry(0.45, 3.8, 0.45)), glowMat);
+        tine.position.set(b.x + ox, roofTop + 1.8, b.z);
+        group.add(tine);
+      }
+    }
+    addCornerPosts(0.14, 0.18, 1.9, darkMat);
+  } else if (arch === 'dead-wax-gate' || arch === 'monolith-spire' || arch === 'choir-amphitheater' || arch === 'turntable-crown') {
+    const ring = new THREE.Mesh(track(new THREE.TorusGeometry(Math.min(b.w, b.d) * 0.48, 0.2, 8, 24)), glowMat);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(b.x, roofTop + 0.9, b.z);
+    group.add(ring);
+    const band = new THREE.Mesh(track(new THREE.BoxGeometry(b.w + 0.65, 0.28, b.d + 0.65)), lightMat);
+    band.position.set(b.x, b.yBase + b.h * 0.5, b.z);
+    group.add(band);
+    addCornerPosts(0.12, 0.16, 2.1, glowMat);
   }
 }
 
