@@ -40,6 +40,8 @@ const (
 	Game_GAME_GNOME_SWEET_GNOME Game = 10 // gnome-sweet-gnome
 	Game_GAME_GNOME_JAM         Game = 11 // gnome-jam
 	Game_GAME_DAYG              Game = 12 // dayg
+	// Not a game: the arcade-wide acorn account (packages/oakcount): acorns, Gnomecino chips, shop purchases.
+	Game_GAME_OAKCOUNT Game = 13
 )
 
 // Enum value maps for Game.
@@ -58,6 +60,7 @@ var (
 		10: "GAME_GNOME_SWEET_GNOME",
 		11: "GAME_GNOME_JAM",
 		12: "GAME_DAYG",
+		13: "GAME_OAKCOUNT",
 	}
 	Game_value = map[string]int32{
 		"GAME_UNSPECIFIED":       0,
@@ -73,6 +76,7 @@ var (
 		"GAME_GNOME_SWEET_GNOME": 10,
 		"GAME_GNOME_JAM":         11,
 		"GAME_DAYG":              12,
+		"GAME_OAKCOUNT":          13,
 	}
 )
 
@@ -107,7 +111,7 @@ var File_gnome_common_v1_common_proto protoreflect.FileDescriptor
 
 const file_gnome_common_v1_common_proto_rawDesc = "" +
 	"\n" +
-	"\x1cgnome/common/v1/common.proto\x12\x0fgnome.common.v1*\x9d\x02\n" +
+	"\x1cgnome/common/v1/common.proto\x12\x0fgnome.common.v1*\xb0\x02\n" +
 	"\x04Game\x12\x14\n" +
 	"\x10GAME_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15GAME_LAWN_GNOME_PANIC\x10\x01\x12\x14\n" +
@@ -123,7 +127,8 @@ const file_gnome_common_v1_common_proto_rawDesc = "" +
 	"\x16GAME_GNOME_SWEET_GNOME\x10\n" +
 	"\x12\x12\n" +
 	"\x0eGAME_GNOME_JAM\x10\v\x12\r\n" +
-	"\tGAME_DAYG\x10\fB\xdd\x01\n" +
+	"\tGAME_DAYG\x10\f\x12\x11\n" +
+	"\rGAME_OAKCOUNT\x10\rB\xdd\x01\n" +
 	"\x13com.gnome.common.v1B\vCommonProtoP\x01Z[github.com/cstabnick/lawn-gnome-panic/packages/platform-server/gen/gnome/common/v1;commonv1\xa2\x02\x03GCX\xaa\x02\x0fGnome.Common.V1\xca\x02\x0fGnome\\Common\\V1\xe2\x02\x1bGnome\\Common\\V1\\GPBMetadata\xea\x02\x11Gnome::Common::V1b\x06proto3"
 
 var (

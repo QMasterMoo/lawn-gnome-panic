@@ -649,3 +649,17 @@ as one gnome in two places.
 **Ruling:** NPC lines are dry, plain and short: one or two sentences, present tense in talk and past tense in the chronicle. Gnomes say "shattered" for a gnome and "put down" for a Hatless, never "killed". Acorns are the money and are counted ("two acorns"). Quest titles are a plain imperative or a noun phrase ("Bring salt to the Tap", "The bitten at the Willow"). Notice-board posts sign with the poster's name or faction. NPC names follow the core style: plant first names, soil-and-tool surnames. No swearing, no gore.
 **Applies to:** apocrypha, dayg.  **Date:** 2026-11-23.
 **Why:** one house style for every DayG line keeps the phrase bank, notice boards and quest titles consistent, and the wording for the dead follows the Hatless rule (they crack and are put down, nothing bleeds).
+
+## R-134
+
+**Question:** Chicory Waymark explains Club Gnome to new players ("tap the yellow button", "press Shift+Tab"); the house style says no fourth-wall jokes. May a gnome speak to the player as a player?
+**Ruling:** Chicory alone may speak to the player as a player, plainly and briefly, like a game's helper, only to explain controls and places. It is help, not a joke; nobody else in the Yard does it, and Chicory never explains why they can.
+**Applies to:** club-gnome.  **Date:** 2026-11-23.
+**Why:** new players need one clear voice; keeping it to one gnome keeps the rest of the Yard in-world.
+
+## R-135
+
+**Question:** What are Club Gnome's acorns and chips?
+**Ruling:** Acorns are a gnome's own treasure kept in the Oakcount, shared by every game. The Gnomecino sells chips for acorns and never buys them back (the house keeps the acorns), and chips are staked at the Gnomecino tables and slots and buy Prize Counter prizes.
+**Applies to:** club-gnome (the-yard).  **Date:** 2026-11-23.
+**Why:** one currency across games, and a one-way casino currency that cannot leak back into the rest of the economy.

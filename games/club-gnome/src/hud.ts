@@ -42,7 +42,7 @@ export interface Hud {
   focusChat(): void;
   /** Hides the whole HUD while a game is open over the town, shows it again after. */
   setVisible(visible: boolean): void;
-  /** Adds an element (the volume button) under the map name, top left. It hides with the HUD. */
+  /** Adds an element under the map name, top left, below the ones added before (volume, wallet, help). It hides with the HUD. */
   addTopControl(el: HTMLElement): void;
   /** The animated emotes shown first in the emote row (the player's equipped ones, max 4). */
   setAnimEmotes(list: readonly { id: string; label: string; icon: string }[]): void;
@@ -65,7 +65,8 @@ const CSS = `
 .th-pill{background:rgba(20,20,28,0.72);border-radius:14px;padding:6px 12px;max-width:60vw;box-sizing:border-box;}
 .th-map{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .th-status{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.th-vol{position:absolute;left:calc(env(safe-area-inset-left) + 8px);top:calc(env(safe-area-inset-top) + 64px);pointer-events:auto;}
+.th-vol{position:absolute;left:calc(env(safe-area-inset-left) + 8px);top:calc(env(safe-area-inset-top) + 64px);pointer-events:none;display:flex;flex-direction:column;align-items:flex-start;gap:8px;}
+.th-vol > *{pointer-events:auto;}
 .th-top-right{display:flex;gap:8px;margin-left:auto;}
 .th-btn{pointer-events:auto;min-width:44px;min-height:44px;padding:0 12px;border:none;border-radius:12px;background:rgba(20,20,28,0.78);color:#fff;font-family:inherit;font-size:16px;font-weight:600;white-space:nowrap;cursor:pointer;box-sizing:border-box;}
 .th-acct{max-width:40vw;overflow:hidden;text-overflow:ellipsis;}
@@ -97,7 +98,7 @@ const CSS = `
 .th-privacy:hover{opacity:1;text-decoration:underline;}
 .th-controls{display:flex;gap:8px;pointer-events:none;}
 .th-round{pointer-events:auto;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;border:none;border-radius:50%;background:rgba(20,20,28,0.78);color:#fff;font-family:inherit;font-size:20px;line-height:1;cursor:pointer;box-sizing:border-box;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.35);}
-.th-panel-wrap{position:fixed;inset:0;pointer-events:auto;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);box-sizing:border-box;padding:calc(env(safe-area-inset-top) + 16px) calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 16px) calc(env(safe-area-inset-left) + 16px);}
+.th-panel-wrap{position:fixed;inset:0;z-index:20;pointer-events:auto;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);box-sizing:border-box;padding:calc(env(safe-area-inset-top) + 16px) calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 16px) calc(env(safe-area-inset-left) + 16px);}
 .th-panel{width:100%;max-width:360px;max-height:80vh;overflow-y:auto;overscroll-behavior:contain;background:#1b1d2a;border-radius:16px;padding:14px;box-sizing:border-box;box-shadow:0 10px 30px rgba(0,0,0,0.5);}
 .th-panel-head{display:flex;justify-content:space-between;align-items:center;}
 .th-panel h2{margin:0;font-size:18px;}
@@ -185,6 +186,8 @@ export function createHud(ui: HTMLElement, h: HudHandlers): Hud {
   pill.append(mapLabel, statusLine);
 
   const topRight = el('div', 'th-top-right');
+  /** The column under the map name that addTopControl fills (volume, wallet, help), top to bottom. */
+  const topStack = el('div', 'th-vol');
   const mapBtn = button('th-btn', '🗺️ Map');
   const accountBtn = button('th-btn th-acct', '👤 Guest');
   const creatorBtn = button('th-btn', '🎨 Gnome');
@@ -430,8 +433,8 @@ export function createHud(ui: HTMLElement, h: HudHandlers): Hud {
       input.focus();
     },
     addTopControl(el: HTMLElement) {
-      el.className = 'th-vol';
-      root.append(el);
+      if (!topStack.isConnected) root.append(topStack);
+      topStack.append(el);
     },
     setAnimEmotes(list) {
       const items: HTMLButtonElement[] = list.map((e) => {
