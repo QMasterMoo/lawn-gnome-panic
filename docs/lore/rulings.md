@@ -642,3 +642,10 @@ as one gnome in two places.
 **Ruling:** Burdock's starting flag is his chequered tea towel (prefab `speedway-tea-towel`); he counts the grid twice, out loud, before every race. He says he left the Hat Watch over the tea towel in the Rookie Mow-Down and never again (still only his claim). Dock Hoewright is Pip Potsworth's cousin and says so on the grid. Auntie Periwinkle's snail is Doris. Shelldon refuses the Snail-Coach podium because it is paved, and his medal goes by snail. The Carburettors set their noise against Vesper's silent electric carts.
 **Applies to:** apocrypha, gnome-theft-auto.  **Date:** 2026-11-23.
 **Why:** the race scenes now carry each race's rival and stakes as data; writing the facts down keeps later Speedway scenes from contradicting the grid.
+
+## R-132
+
+**Question:** DayG speech. How do DayG's NPCs talk: what tone, how long, what tense, and what words do gnomes use for the dead and the broken? How are quest titles, notice-board posts and NPC names written?
+**Ruling:** NPC lines are dry, plain and short: one or two sentences, present tense in talk and past tense in the chronicle. Gnomes say "shattered" for a gnome and "put down" for a Hatless, never "killed". Acorns are the money and are counted ("two acorns"). Quest titles are a plain imperative or a noun phrase ("Bring salt to the Tap", "The bitten at the Willow"). Notice-board posts sign with the poster's name or faction. NPC names follow the core style: plant first names, soil-and-tool surnames. No swearing, no gore.
+**Applies to:** apocrypha, dayg.  **Date:** 2026-11-23.
+**Why:** one house style for every DayG line keeps the phrase bank, notice boards and quest titles consistent, and the wording for the dead follows the Hatless rule (they crack and are put down, nothing bleeds).
