@@ -1734,6 +1734,27 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
     title: 'Kiln Siege', description: 'Destroy 10 enemy towers or Patrons in Gnomelock.', target: 10,
     reward: { slot: 'head', prefabId: 'kiln-visor', label: 'Kiln-Warden Visor' },
   },
+  // ---- Gnome Souls ----
+  {
+    id: 'gnome-souls-first-ember', game: 'gnome-souls', gameTitle: 'Gnome Souls',
+    title: 'Ember Restored', description: 'Rest at the Kiln-Ember Shrine in Gnome Souls.',
+    reward: { slot: 'neck', prefabId: 'glaze-ember-charm', label: 'Glaze Ember Charm' },
+  },
+  {
+    id: 'gnome-souls-slay-slink', game: 'gnome-souls', gameTitle: 'Gnome Souls',
+    title: 'Spigot Sealed', description: 'Defeat Slink, the Uncoiled Hose in Gnome Souls.',
+    reward: { slot: 'head', prefabId: 'spigot-helm', label: 'Spigot Knight Helm' },
+  },
+  {
+    id: 'gnome-souls-no-flask', game: 'gnome-souls', gameTitle: 'Gnome Souls',
+    title: 'Unfired Clay', description: 'Defeat Slink without drinking a Glaze Flask.',
+    reward: { slot: 'hand', prefabId: 'kiln-breaker-greatsword', label: 'Kiln-Breaker Greatsword', exclusive: true },
+  },
+  {
+    id: 'gnome-souls-coop-slay', game: 'gnome-souls', gameTitle: 'Gnome Souls',
+    title: 'Jolly Glazing', description: 'Defeat Slink with another gnome in online co-op.',
+    reward: { slot: 'back', prefabId: 'hose-coil-cloak', label: 'Hose-Coil Cloak' },
+  },
 ];
 
 const BY_ID = new Map(ACHIEVEMENTS.map((a) => [a.id, a]));

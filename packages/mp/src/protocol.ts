@@ -9,7 +9,7 @@
 export const PROTOCOL_VERSION = 3;
 
 /** Games the server knows. A hello without `game` is Lawn Gnome Panic (older clients never sent one). */
-export type GameId = 'lawn-gnome-panic' | 'gnome-front' | 'gnaft' | 'gnome-golf' | 'gnome-bowling' | 'mower-chain' | 'gnome-party' | 'music-room' | 'gnomomia' | 'gnome-blackjack' | 'club-gnome' | 'gnome-theft-auto' | 'gnome-billiards' | 'gba-gjam' | 'gnomillion' | 'gnome-set-radio' | 'dayg' | 'gnomelock';
+export type GameId = 'lawn-gnome-panic' | 'gnome-front' | 'gnaft' | 'gnome-golf' | 'gnome-bowling' | 'mower-chain' | 'gnome-party' | 'music-room' | 'gnomomia' | 'gnome-blackjack' | 'club-gnome' | 'gnome-theft-auto' | 'gnome-billiards' | 'gba-gjam' | 'gnomillion' | 'gnome-set-radio' | 'dayg' | 'gnomelock' | 'gnome-souls';
 export const DEFAULT_GAME: GameId = 'lawn-gnome-panic';
 
 /** Per-game matchmaking rules. Queues, rooms and matches never mix games. */
@@ -73,6 +73,8 @@ export const GAMES: Record<GameId, GameRules> = {
   'dayg': { minPlayers: 1, maxPlayers: 16, publicWaitS: 0, privateWaitS: 0, lateJoin: true, roomCodeOnly: true },
   // Gnomelock: 2v2 third-person MOBA in The Bramble District; bots fill empty slots, drop-in supported.
   'gnomelock': { minPlayers: 1, maxPlayers: 4, publicWaitS: 10, privateWaitS: 30, lateJoin: true },
+  // Gnome Souls: co-op Soulsborne boss demo in the Sunken Spigot; host runs the world, up to 4 gnomes drop in.
+  'gnome-souls': { minPlayers: 1, maxPlayers: 4, publicWaitS: 0, privateWaitS: 0, lateJoin: true },
 };
 
 export function isGameId(v: unknown): v is GameId {
