@@ -130,6 +130,7 @@ import { GTA_AIRCRAFT } from './gta-aircraft';
 import { GTA_SKY_TRAFFIC } from './gta-sky-traffic';
 import { GTA_SKYWAY_WORKS } from './gta-skyway-works';
 import { GNOMELOCK_GEAR } from './gnomelock';
+import { GNOME_SOULS } from './gnome-souls';
 
 export const CATALOG: readonly PrefabDef[] = [
   ...WEAPONS, ...ARMOR, ...CONSUMABLES, ...MATERIALS, ...TRINKETS, ...DOCUMENTS, ...TOOLS, ...FURNITURE, ...PROPS, ...BOWLING, ...CASINO, ...GNOMEOKEMON,
@@ -155,4 +156,5 @@ export const CATALOG: readonly PrefabDef[] = [
   ...GTA_STREET_KIT, ...GTA_STREET_KIT_B, ...GTA_PARK_KIT, ...GTA_PARK_KIT_B,
   ...GTA_FRINGE_KIT, ...GTA_FRINGE_KIT_B, ...GTA_FRINGE_YARD,
   ...GNOMELOCK_GEAR,
+  ...GNOME_SOULS,
 ];
