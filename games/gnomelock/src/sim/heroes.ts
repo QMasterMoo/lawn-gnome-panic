@@ -111,7 +111,7 @@ export const HEROES: Record<HeroId, HeroDef> = {
     weapon: {
       prefabId: 'acorn-rifle',
       name: 'Acorn Rifle',
-      damage: 35.5,
+      damage: 33.8,
       pellets: 1,
       spreadRad: 0.015,
       fireIntervalS: 0.24,
@@ -171,7 +171,7 @@ export const HEROES: Record<HeroId, HeroDef> = {
     weapon: {
       prefabId: 'acorn-rifle',
       name: 'Acorn Rifle',
-      damage: 22,
+      damage: 23.2,
       pellets: 1,
       spreadRad: 0.018,
       fireIntervalS: 0.28,
@@ -201,7 +201,7 @@ export const HEROES: Record<HeroId, HeroDef> = {
     weapon: {
       prefabId: 'seed-sprayer',
       name: 'Seed Sprayer',
-      damage: 13.8,
+      damage: 12.8,
       pellets: 1,
       spreadRad: 0.022,
       fireIntervalS: 0.15,

@@ -2,11 +2,19 @@
 import { createVolumeButton } from '@arcade/volume';
 import { prefabIconElement } from '@lawn/prefabs';
 import { volumeStore } from './audio';
+import {
+  BOT_DIFFICULTY_SKILL,
+  DEFAULT_BOT_HEROES,
+  type BotDifficulty,
+  type MatchCustomConfig,
+  type TeamMode,
+} from './net/protocol';
 import { MATCH_CONFIG, TEAM_NAMES, type AbilitySlot, type HeroId, type Team } from './sim/config';
 import { HERO_LIST, HEROES } from './sim/heroes';
 import { ITEMS, type ItemCategory } from './sim/items';
 import { isNearShop, MAP_BOUNDS, RELIC_ALTAR, SHOPS } from './sim/map';
 import { teamTotalAcorns, type MatchState } from './sim/world';
+import { spellIconSvg } from './spellIcons';
 
 interface FloatingText {
   el: HTMLDivElement;
@@ -25,6 +33,13 @@ export class GnomelockUI {
   private endEl: HTMLDivElement;
 
   private selectedHero: HeroId = 'bramble';
+  private customConfig: MatchCustomConfig = {
+    mode: 'versus',
+    difficulty: 'normal',
+    localSlotPref: 0,
+    botHeroes: [...DEFAULT_BOT_HEROES],
+    botSkills: [1, 1, 1, 1],
+  };
   private shopOpen = false;
   private shopTab: ItemCategory = 'weapon';
   private floating: FloatingText[] = [];
@@ -41,9 +56,11 @@ export class GnomelockUI {
   private ammoEl!: HTMLDivElement;
   private staminaWrapEl!: HTMLDivElement;
   private flowBadgeEl!: HTMLDivElement;
+  private flowBarFillEl!: HTMLDivElement;
   private hitmarkerEl!: HTMLDivElement;
   private speedVignetteEl!: HTMLDivElement;
-  private abilityEls = new Map<AbilitySlot, { el: HTMLDivElement; cd: HTMLDivElement }>();
+  private abilityEls = new Map<AbilitySlot, { el: HTMLDivElement; icon: HTMLDivElement; cd: HTMLDivElement; dim: HTMLDivElement }>();
+  private lastHudHeroId: HeroId | null = null;
   private ownedItemsEl!: HTMLDivElement;
   private shopHintEl!: HTMLDivElement;
   private minimapCanvas!: HTMLCanvasElement;
@@ -52,8 +69,8 @@ export class GnomelockUI {
   private statusEl!: HTMLDivElement;
 
   private callbacks: {
-    onPlaySolo: (hero: HeroId) => void;
-    onPlayOnline: (hero: HeroId, roomCode: string | null) => void;
+    onPlaySolo: (hero: HeroId, config: MatchCustomConfig) => void;
+    onPlayOnline: (hero: HeroId, roomCode: string | null, config: MatchCustomConfig) => void;
     onBuyItem: (itemId: string) => void;
     onShopToggle: (open: boolean) => void;
     onPlayAgain: () => void;
@@ -62,8 +79,8 @@ export class GnomelockUI {
   constructor(
     uiParent: HTMLElement,
     callbacks: {
-      onPlaySolo: (hero: HeroId) => void;
-      onPlayOnline: (hero: HeroId, roomCode: string | null) => void;
+      onPlaySolo: (hero: HeroId, config: MatchCustomConfig) => void;
+      onPlayOnline: (hero: HeroId, roomCode: string | null, config: MatchCustomConfig) => void;
       onBuyItem: (itemId: string) => void;
       onShopToggle: (open: boolean) => void;
       onPlayAgain: () => void;
@@ -115,10 +132,17 @@ export class GnomelockUI {
         background:rgba(255,255,255,0.07);border:2px solid rgba(255,255,255,0.16);
         transition:transform 0.12s,border-color 0.12s;
       `;
+      const miniIcons = (['Q', 'E', 'F', 'X'] as const)
+        .map((s) => {
+          const ic = spellIconSvg(h.id, s);
+          return `<span title="${h.abilities[s].name}" style="display:inline-flex;width:16px;height:16px;color:${ic.color}">${ic.svg}</span>`;
+        })
+        .join('');
       card.innerHTML = `
         <div style="font-weight:800;font-size:16px;color:#ffd54f">${h.name}</div>
-        <div style="font-size:11px;color:#93c5fd;margin-bottom:6px">${h.title} • ${h.role}</div>
-        <div style="font-size:11px;color:#cbd5e1;line-height:1.35">${h.weapon.name}<br/>HP ${h.baseHp} • ${h.abilities.X.name}</div>
+        <div style="font-size:11px;color:#93c5fd;margin-bottom:4px">${h.title} • ${h.role}</div>
+        <div style="font-size:11px;color:#cbd5e1;line-height:1.3;margin-bottom:6px">${h.weapon.name} • HP ${h.baseHp}</div>
+        <div style="display:flex;gap:5px;align-items:center">${miniIcons}</div>
       `;
       card.onclick = () => {
         this.selectedHero = h.id;
@@ -130,6 +154,178 @@ export class GnomelockUI {
       cards.appendChild(card);
     }
 
+    // ---- 2v2 Player & Team Setup Panel ----
+    const setupBox = document.createElement('div');
+    setupBox.id = 'custom-players-panel';
+    setupBox.style.cssText = `
+      width:min(820px,100%);padding:12px;border-radius:10px;
+      background:rgba(0,0,0,0.34);border:1px solid rgba(255,255,255,0.16);
+      display:flex;flex-direction:column;gap:10px;
+    `;
+
+    const presetRow = document.createElement('div');
+    presetRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;';
+    const presetLabel = document.createElement('div');
+    presetLabel.textContent = '2v2 Team Setup:';
+    presetLabel.style.cssText = 'font-size:12px;font-weight:800;color:#ffd54f;';
+
+    const presetBtns = document.createElement('div');
+    presetBtns.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+    const modeDefs: { mode: TeamMode; label: string }[] = [
+      { mode: 'versus', label: '1H+1B vs 1H+1B (Versus)' },
+      { mode: 'coop', label: '2H vs 2B (Co-op)' },
+      { mode: 'custom', label: 'Custom Slots' },
+    ];
+    const modeBtnEls = new Map<TeamMode, HTMLButtonElement>();
+
+    const diffRow = document.createElement('div');
+    diffRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;';
+    const diffLabel = document.createElement('div');
+    diffLabel.textContent = 'Bot Difficulty:';
+    diffLabel.style.cssText = 'font-size:12px;font-weight:800;color:#93c5fd;';
+    const diffBtns = document.createElement('div');
+    diffBtns.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+    const diffDefs: { diff: BotDifficulty; label: string }[] = [
+      { diff: 'easy', label: 'Easy' },
+      { diff: 'normal', label: 'Normal' },
+      { diff: 'hard', label: 'Hard' },
+      { diff: 'nightmare', label: 'Nightmare' },
+    ];
+    const diffBtnEls = new Map<BotDifficulty, HTMLButtonElement>();
+
+    const slotsGrid = document.createElement('div');
+    slotsGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:8px;';
+
+    const renderSetup = () => {
+      for (const [m, b] of modeBtnEls) {
+        const active = this.customConfig.mode === m;
+        b.style.background = active ? '#e67e22' : 'rgba(255,255,255,0.1)';
+        b.style.borderColor = active ? '#ffd54f' : 'rgba(255,255,255,0.2)';
+      }
+      for (const [d, b] of diffBtnEls) {
+        const active = this.customConfig.difficulty === d;
+        b.style.background = active ? '#2f64c9' : 'rgba(255,255,255,0.1)';
+        b.style.borderColor = active ? '#74b9ff' : 'rgba(255,255,255,0.2)';
+      }
+
+      // In versus/coop presets, slot 0 is always P1 unless user switches to custom
+      if (this.customConfig.mode !== 'custom') {
+        this.customConfig.localSlotPref = 0;
+      }
+
+      slotsGrid.innerHTML = '';
+      const p2Slot = this.customConfig.mode === 'versus' ? 2 : this.customConfig.mode === 'coop' ? 1 : -1;
+
+      for (let slot = 0; slot < 4; slot++) {
+        const isAmber = slot < 2;
+        const isLocal = this.customConfig.localSlotPref === slot;
+        const isP2Online = slot === p2Slot;
+
+        const cell = document.createElement('div');
+        cell.style.cssText = `
+          padding:8px;border-radius:8px;display:flex;flex-direction:column;gap:5px;
+          background:${isAmber ? 'rgba(217,54,54,0.14)' : 'rgba(47,100,201,0.14)'};
+          border:1px solid ${isLocal ? '#ffd54f' : isAmber ? 'rgba(255,118,117,0.35)' : 'rgba(116,185,255,0.35)'};
+        `;
+
+        const head = document.createElement('div');
+        head.style.cssText = 'display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:800;';
+        const teamTag = isAmber ? `Amber ${slot + 1}` : `Sapphire ${slot - 1}`;
+        const roleTag = isLocal
+          ? '<span style="color:#ffd54f">YOU</span>'
+          : isP2Online
+            ? '<span style="color:#8ce99a">P2 (or Bot)</span>'
+            : '<span style="color:#94a3b8">BOT</span>';
+        head.innerHTML = `<span style="color:${isAmber ? '#ff7675' : '#74b9ff'}">${teamTag}</span>${roleTag}`;
+        cell.appendChild(head);
+
+        if (isLocal) {
+          const youInfo = document.createElement('div');
+          youInfo.style.cssText = 'font-size:12px;font-weight:700;color:#fff;';
+          youInfo.textContent = `${HEROES[this.selectedHero].name} (Player)`;
+          cell.appendChild(youInfo);
+        } else {
+          const heroSel = document.createElement('select');
+          heroSel.style.cssText = 'padding:4px 6px;border-radius:5px;background:#131826;color:#fff;border:1px solid rgba(255,255,255,0.2);font-size:11px;';
+          for (const h of HERO_LIST) {
+            const opt = document.createElement('option');
+            opt.value = h.id;
+            opt.textContent = `${h.name} (${h.role.split(' ')[0]})`;
+            if (this.customConfig.botHeroes[slot] === h.id) opt.selected = true;
+            heroSel.appendChild(opt);
+          }
+          heroSel.onchange = () => {
+            this.customConfig.botHeroes[slot] = heroSel.value as HeroId;
+          };
+
+          const skillSel = document.createElement('select');
+          skillSel.style.cssText = 'padding:4px 6px;border-radius:5px;background:#131826;color:#cbd5e1;border:1px solid rgba(255,255,255,0.16);font-size:11px;';
+          for (const [val, lbl] of [
+            [0.72, 'Bot: Easy (0.72x)'],
+            [1.0, 'Bot: Normal (1.0x)'],
+            [1.18, 'Bot: Hard (1.18x)'],
+            [1.32, 'Bot: Nightmare (1.32x)'],
+          ] as const) {
+            const opt = document.createElement('option');
+            opt.value = String(val);
+            opt.textContent = lbl;
+            if (Math.abs(this.customConfig.botSkills[slot] - val) < 0.02) opt.selected = true;
+            skillSel.appendChild(opt);
+          }
+          skillSel.onchange = () => {
+            this.customConfig.botSkills[slot] = Number(skillSel.value);
+          };
+
+          const playHereBtn = document.createElement('button');
+          playHereBtn.type = 'button';
+          playHereBtn.textContent = 'Play Here';
+          playHereBtn.style.cssText = 'padding:4px 6px;border-radius:5px;border:1px solid rgba(255,255,255,0.22);background:rgba(255,255,255,0.08);color:#fff;font-size:10px;font-weight:700;cursor:pointer;';
+          playHereBtn.onclick = () => {
+            this.customConfig.mode = 'custom';
+            this.customConfig.localSlotPref = slot;
+            renderSetup();
+          };
+
+          cell.append(heroSel, skillSel, playHereBtn);
+        }
+
+        slotsGrid.appendChild(cell);
+      }
+    };
+
+    for (const def of modeDefs) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = def.label;
+      b.style.cssText = 'padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:11px;font-weight:700;cursor:pointer;';
+      b.onclick = () => {
+        this.customConfig.mode = def.mode;
+        renderSetup();
+      };
+      modeBtnEls.set(def.mode, b);
+      presetBtns.appendChild(b);
+    }
+
+    for (const def of diffDefs) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = def.label;
+      b.style.cssText = 'padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:11px;font-weight:700;cursor:pointer;';
+      b.onclick = () => {
+        this.customConfig.difficulty = def.diff;
+        const sk = BOT_DIFFICULTY_SKILL[def.diff];
+        this.customConfig.botSkills = [sk, sk, sk, sk];
+        renderSetup();
+      };
+      diffBtnEls.set(def.diff, b);
+      diffBtns.appendChild(b);
+    }
+
+    presetRow.append(presetLabel, presetBtns);
+    diffRow.append(diffLabel, diffBtns);
+    setupBox.append(presetRow, diffRow, slotsGrid);
+    renderSetup();
+
     const actions = document.createElement('div');
     actions.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:center;';
 
@@ -137,13 +333,13 @@ export class GnomelockUI {
     soloBtn.type = 'button';
     soloBtn.textContent = 'Play Solo (2v2 Bots)';
     soloBtn.style.cssText = 'padding:12px 22px;border-radius:8px;border:none;background:#e67e22;color:#fff;font-weight:800;font-size:15px;cursor:pointer;';
-    soloBtn.onclick = () => this.callbacks.onPlaySolo(this.selectedHero);
+    soloBtn.onclick = () => this.callbacks.onPlaySolo(this.selectedHero, this.customConfig);
 
     const onlineBtn = document.createElement('button');
     onlineBtn.type = 'button';
     onlineBtn.textContent = 'Play Online (2v2)';
     onlineBtn.style.cssText = 'padding:12px 20px;border-radius:8px;border:none;background:#2f64c9;color:#fff;font-weight:800;font-size:15px;cursor:pointer;';
-    onlineBtn.onclick = () => this.callbacks.onPlayOnline(this.selectedHero, null);
+    onlineBtn.onclick = () => this.callbacks.onPlayOnline(this.selectedHero, null, this.customConfig);
 
     const codeInput = document.createElement('input');
     codeInput.placeholder = 'ROOM CODE';
@@ -156,14 +352,14 @@ export class GnomelockUI {
     joinBtn.style.cssText = 'padding:12px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.12);color:#fff;font-weight:700;cursor:pointer;';
     joinBtn.onclick = () => {
       const c = codeInput.value.trim().toUpperCase();
-      this.callbacks.onPlayOnline(this.selectedHero, c || 'BRAMBLE');
+      this.callbacks.onPlayOnline(this.selectedHero, c || 'BRAMBLE', this.customConfig);
     };
 
     this.statusEl = document.createElement('div');
     this.statusEl.style.cssText = 'font-size:13px;color:#ffd54f;min-height:18px;';
 
     actions.append(soloBtn, onlineBtn, codeInput, joinBtn);
-    el.append(title, sub, cards, actions, this.statusEl);
+    el.append(title, sub, cards, setupBox, actions, this.statusEl);
     return el;
   }
 
@@ -218,8 +414,13 @@ export class GnomelockUI {
     center.appendChild(this.staminaWrapEl);
 
     this.flowBadgeEl = document.createElement('div');
-    this.flowBadgeEl.style.cssText = 'position:absolute;left:-42px;top:22px;width:92px;text-align:center;font-size:11px;font-weight:800;color:#74b9ff;text-shadow:0 1px 4px #000;';
-    center.appendChild(this.flowBadgeEl);
+    this.flowBadgeEl.style.cssText = 'position:absolute;left:-42px;top:20px;width:92px;text-align:center;font-size:11px;font-weight:800;color:#74b9ff;text-shadow:0 1px 4px #000;';
+    const flowBarBg = document.createElement('div');
+    flowBarBg.style.cssText = 'position:absolute;left:-28px;top:35px;width:64px;height:4px;border-radius:2px;background:rgba(255,255,255,0.16);overflow:hidden;';
+    this.flowBarFillEl = document.createElement('div');
+    this.flowBarFillEl.style.cssText = 'height:100%;width:0%;background:linear-gradient(90deg,#4fd8ff,#ffd54f);transition:width 0.08s;';
+    flowBarBg.appendChild(this.flowBarFillEl);
+    center.append(this.flowBadgeEl, flowBarBg);
     el.appendChild(center);
 
     // Bottom-left: HP, Acorns, Level, Ammo, Items
@@ -254,7 +455,7 @@ export class GnomelockUI {
     bl.append(hpBg, metaRow, this.ownedItemsEl, this.shopHintEl);
     el.appendChild(bl);
 
-    // Bottom-center abilities
+    // Bottom-center abilities with SVG spell icons + cooldown overlay
     const abBar = document.createElement('div');
     abBar.style.cssText = `
       position:fixed;left:50%;bottom:max(12px,env(safe-area-inset-bottom));transform:translateX(-50%);
@@ -263,17 +464,22 @@ export class GnomelockUI {
     for (const slot of ['Q', 'E', 'F', 'X'] as const) {
       const box = document.createElement('div');
       box.style.cssText = `
-        width:48px;height:48px;border-radius:8px;position:relative;overflow:hidden;
-        background:rgba(12,16,26,0.82);border:1px solid rgba(255,255,255,0.22);
-        display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;font-weight:800;
+        width:52px;height:52px;border-radius:10px;position:relative;overflow:hidden;
+        background:rgba(12,16,26,0.88);border:1.5px solid rgba(255,255,255,0.24);
+        display:flex;align-items:center;justify-content:center;font-weight:800;
       `;
-      const lbl = document.createElement('div');
-      lbl.textContent = slot;
+      const icon = document.createElement('div');
+      icon.style.cssText = 'width:28px;height:28px;display:flex;align-items:center;justify-content:center;';
+      const dim = document.createElement('div');
+      dim.style.cssText = 'position:absolute;inset:0;background:rgba(8,10,18,0.68);display:none;';
+      const keyBadge = document.createElement('div');
+      keyBadge.textContent = slot;
+      keyBadge.style.cssText = 'position:absolute;top:2px;left:4px;font-size:9px;color:#cbd5e1;font-weight:800;';
       const cd = document.createElement('div');
-      cd.style.cssText = 'font-size:10px;color:#ffd54f;';
-      box.append(lbl, cd);
+      cd.style.cssText = 'position:absolute;bottom:2px;right:4px;font-size:10px;color:#ffd54f;text-shadow:0 1px 2px #000;';
+      box.append(icon, dim, keyBadge, cd);
       abBar.appendChild(box);
-      this.abilityEls.set(slot, { el: box, cd });
+      this.abilityEls.set(slot, { el: box, icon, cd, dim });
     }
     el.appendChild(abBar);
 
@@ -538,18 +744,32 @@ export class GnomelockUI {
       this.staminaWrapEl.appendChild(bar);
     }
 
-    // Flow State badge & speed vignette
+    // Flow State badge, meter & speed vignette
     this.flowBadgeEl.textContent = local.move.flowTier > 0 ? `FLOW T${local.move.flowTier}` : '';
+    this.flowBarFillEl.style.width = `${Math.min(100, Math.round(local.move.flowScore))}%`;
     const spd = Math.hypot(local.move.vel.x, local.move.vel.z);
     this.speedVignetteEl.style.opacity = spd > 13.0 ? '1' : '0';
 
-    // Abilities
+    // Abilities (refresh SVG icons when local hero changes)
+    if (this.lastHudHeroId !== local.heroId) {
+      this.lastHudHeroId = local.heroId;
+      for (const slot of ['Q', 'E', 'F', 'X'] as const) {
+        const ref = this.abilityEls.get(slot);
+        if (!ref) continue;
+        const ic = spellIconSvg(local.heroId, slot);
+        ref.icon.innerHTML = ic.svg;
+        ref.icon.style.color = ic.color;
+        ref.el.title = HEROES[local.heroId].abilities[slot].name;
+      }
+    }
     for (const slot of ['Q', 'E', 'F', 'X'] as const) {
       const ref = this.abilityEls.get(slot);
       if (!ref) continue;
       const cd = local.cooldowns[slot];
-      ref.cd.textContent = cd > 0.1 ? `${cd.toFixed(1)}s` : 'RDY';
-      ref.el.style.opacity = cd > 0.1 ? '0.6' : '1';
+      const onCd = cd > 0.1;
+      ref.cd.textContent = onCd ? `${cd.toFixed(1)}` : '';
+      ref.dim.style.display = onCd ? 'block' : 'none';
+      ref.el.style.borderColor = onCd ? 'rgba(255,255,255,0.12)' : spellIconSvg(local.heroId, slot).color;
     }
 
     // Shop hint
@@ -626,6 +846,12 @@ export class GnomelockUI {
     for (const cr of state.creeps) {
       ctx.fillStyle = cr.team === 0 ? '#ffa8a8' : '#a5d8ff';
       ctx.fillRect(toMx(cr.x) - 1, toMy(cr.z) - 1, 2, 2);
+    }
+
+    // Jungle Neutrals
+    for (const n of state.neutrals) {
+      ctx.fillStyle = n.kind === 'golem' ? '#a9e34b' : '#ffd43b';
+      ctx.fillRect(toMx(n.x) - 2, toMy(n.z) - 2, 4, 4);
     }
 
     // Heroes

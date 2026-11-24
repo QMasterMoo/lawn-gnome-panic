@@ -228,16 +228,93 @@ describe('Gnomelock items, prefabs, and gear sync', () => {
     expect(distAfter).toBeLessThan(distBefore);
   });
 
-  it('preserves PlayerInfo.userId when building online roster slots (gear sync)', () => {
+  it('preserves PlayerInfo.userId and supports versus (1H+1B vs 1H+1B), coop (2H vs 2B), and custom slot modes', () => {
     const players: PlayerInfo[] = [
       { id: 10, name: 'Fern', character: 'g1.abcdefgh', color: 0xff5a5a, userId: 'u_fern123' },
       { id: 20, name: 'Moss', character: 'g1.ijklmnop', color: 0x4fd8ff, userId: 'u_moss456' },
     ];
-    const { slots, slotForPlayerId } = buildRosterSlots(players, new Map(), 'tansy', 10);
-    expect(slots[0].userId).toBe('u_fern123');
-    expect(slots[0].heroId).toBe('tansy');
-    expect(slots[1].userId).toBe('u_moss456');
-    expect(slots[2].isBot).toBe(true);
-    expect(slotForPlayerId.get(20)).toBe(1);
+
+    // 1. Versus: 1 Human + 1 Bot (Amber 0,1) vs 1 Human + 1 Bot (Sapphire 2,3)
+    const versus = buildRosterSlots(players, {
+      mode: 'versus',
+      localHeroId: 'tansy',
+      localId: 10,
+      botHeroes: ['bramble', 'loam', 'fernwick', 'hookwort'],
+    });
+    expect(versus.slots[0].userId).toBe('u_fern123');
+    expect(versus.slots[0].isBot).toBe(false);
+    expect(versus.slots[0].heroId).toBe('tansy');
+    expect(versus.slots[1].isBot).toBe(true);
+    expect(versus.slots[1].heroId).toBe('loam');
+    expect(versus.slots[2].userId).toBe('u_moss456');
+    expect(versus.slots[2].isBot).toBe(false);
+    expect(versus.slots[3].isBot).toBe(true);
+    expect(versus.slots[3].heroId).toBe('hookwort');
+    expect(versus.slotForPlayerId.get(20)).toBe(2);
+
+    // 2. Co-op: 2 Humans (Amber 0,1) vs 2 Bots (Sapphire 2,3)
+    const coop = buildRosterSlots(players, {
+      mode: 'coop',
+      localHeroId: 'buckshot',
+      localId: 10,
+      botHeroes: ['bramble', 'tansy', 'thistle', 'loam'],
+    });
+    expect(coop.slots[0].isBot).toBe(false);
+    expect(coop.slots[1].isBot).toBe(false);
+    expect(coop.slots[1].userId).toBe('u_moss456');
+    expect(coop.slots[2].isBot).toBe(true);
+    expect(coop.slots[2].heroId).toBe('thistle');
+    expect(coop.slots[3].isBot).toBe(true);
+    expect(coop.slots[3].heroId).toBe('loam');
+    expect(coop.slotForPlayerId.get(20)).toBe(1);
+
+    // 3. Custom: explicit slotPrefs places Moss in Sapphire slot 3 and preserves custom botSkills
+    const custom = buildRosterSlots(players, {
+      mode: 'custom',
+      slotPrefs: new Map([
+        [10, 0],
+        [20, 3],
+      ]),
+      botSkills: [1.0, 0.82, 1.15, 1.0],
+      localHeroId: 'loam',
+      localId: 10,
+    });
+    expect(custom.slotForPlayerId.get(10)).toBe(0);
+    expect(custom.slotForPlayerId.get(20)).toBe(3);
+    expect(custom.slots[3].userId).toBe('u_moss456');
+    expect(custom.botSkills).toEqual([1.0, 0.82, 1.15, 1.0]);
+  });
+
+  it('spawns jungle camps at 40s, aggros when shot, and awards Acorns + orb on kill', () => {
+    const state = createMatchState([
+      { heroId: 'potsworth', name: 'P0', isBot: false },
+      { heroId: 'bramble', name: 'B1', isBot: true },
+      { heroId: 'tansy', name: 'T2', isBot: true },
+      { heroId: 'fernwick', name: 'F3', isBot: true },
+    ]);
+    const idle: HeroActionInput = {
+      move: { forward: 0, right: 0, yaw: 0, jumpPressed: false, dashPressed: false, slideHeld: false },
+      pitch: 0,
+      fireHeld: false,
+      reloadPressed: false,
+      abilityPressed: null,
+    };
+
+    expect(state.neutrals.length).toBe(0);
+    for (let i = 0; i < 41; i++) {
+      stepWorld(state, [idle, idle, idle, idle], 1.0);
+    }
+    // 2 small camps (2 beetles each) + 2 medium camps (1 golem each) = 6 neutrals
+    expect(state.neutrals.length).toBe(6);
+
+    const golem = state.neutrals.find((n) => n.kind === 'golem')!;
+    golem.hp = 10;
+    state.heroes[0].move.pos = { x: golem.x, y: golem.y, z: golem.z + 5 };
+    const acornsBefore = state.heroes[0].acorns;
+    stepWorld(state, [{ ...idle, fireHeld: true }, idle, idle, idle], 1 / 30);
+
+    expect(state.heroes[0].acorns).toBeGreaterThan(acornsBefore + 100);
+    expect(state.orbs.length).toBeGreaterThanOrEqual(1);
+    expect(state.campTimers[golem.campId]).toBeCloseTo(70, 0);
   });
 });
