@@ -36,6 +36,7 @@ import { createContainerSystem } from './scene/containers';
 import { createTouchControls } from './ui/touch';
 import { createInventoryPanel } from './ui/inventoryPanel';
 import { createHud } from './ui/hud';
+import { createActionDock } from './ui/actionDock';
 import { installDaygTheme } from './ui/theme';
 import { createRecap } from './ui/recap';
 import { createBaseSystem } from './base/system';
@@ -453,6 +454,15 @@ const campPanel = createCampPanel(ui, {
   onSync: (c) => campView.sync(c),
   onToast: (t) => hud.toast(t),
 });
+
+const actionDock = createActionDock(ui);
+actionDock.addButton({ id: 'dayg-craft-btn', label: 'Craft', title: 'Survival Crafting (K)', group: 'play', onClick: () => craftPanel.toggle() });
+actionDock.addButton({ id: 'dayg-cook-btn', label: 'Cook', title: 'Campfire Cooking', group: 'play', onClick: () => cookingPanel.toggle() });
+actionDock.addButton({ id: 'dayg-camp-btn', label: 'Camp', title: 'Camp & Crew', group: 'play', onClick: () => campPanel.toggle() });
+actionDock.addButton({ id: 'dayg-ledger-btn', label: 'Journal', title: 'Journal (J)', group: 'play', onClick: () => ledgerPanel.toggle() });
+actionDock.addButton({ id: 'dayg-room-open', label: 'Worlds', title: 'Worlds & Multiplayer', group: 'system', onClick: () => roomPanel.open() });
+actionDock.addButton({ id: 'dayg-audio-btn', label: '🔊', title: 'Sound settings', group: 'system', onClick: () => audioPanel.toggle() });
+actionDock.addButton({ id: 'dayg-trainer-btn', label: '⚙ F9', title: 'Admin Trainer (F9)', group: 'system', accent: true, onClick: () => trainerPanel.toggle() });
 if (zoneSpawn.region) {
   const rName = world.graph.byId[zoneSpawn.region]?.name;
   if (rName) hud.toast(`Woke up in ${rName}`);
@@ -493,7 +503,8 @@ function frame(now: number): void {
     panelOpen: talkPanel.isOpen() || boardPanel.isOpen() || ledgerPanel.isOpen(),
     menu: roomPanel.isOpen(),
   });
-  touch.setVisible(!panel.isOpen() && !mapPanel.isOpen() && !audioPanel.isOpen() && !chestUi.isOpen() && !trainerPanel.isOpen() && player.alive);
+  touch.setVisible(!anyPanelOpen);
+  actionDock.setVisible(!anyPanelOpen);
   if (anyPanelOpen || use.busy() !== null || base.busy() !== null) {
     inp.moveX = 0; inp.moveZ = 0;
     inp.sprint = false; inp.climb = false; inp.attack = false; inp.action = false;
@@ -616,7 +627,7 @@ function frame(now: number): void {
 
   const cur = interact.update(player.pos);
   const tracked = quests.tracked();
-  hud.prompt(cur?.label() ?? climbHintText(hint) ?? null);
+  hud.prompt(anyPanelOpen ? null : (cur?.label() ?? climbHintText(hint) ?? null));
   hud.update({
     needs: needs.state, stamina: player.stamina, body: body.state,
     hourOfDay: clock.hourOfDay, day: clock.day, night: clock.night, season: clock.season,

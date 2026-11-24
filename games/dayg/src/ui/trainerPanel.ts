@@ -51,10 +51,7 @@ const CSS = `
 #dayg-trainer .dt-info{display:none;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,0.24);border:1px solid var(--dg-border);font:12px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--dg-muted)}
 #dayg-trainer .dt-range-row{display:flex;align-items:center;gap:8px}
 #dayg-trainer .dt-range-lbl{font-size:12px;color:var(--dg-text);min-width:74px;font-variant-numeric:tabular-nums}
-#dayg-trainer input[type=range]{flex:1;min-height:44px;accent-color:var(--dg-accent);cursor:pointer;touch-action:manipulation}
-#dayg-trainer-btn{position:fixed;top:calc(120px + env(safe-area-inset-top));right:calc(8px + env(safe-area-inset-right));z-index:40;
-  min-width:44px;min-height:44px;padding:0 6px;border-radius:8px;border:1px solid var(--dg-border);background:var(--dg-surface);
-  color:var(--dg-accent);font:700 13px var(--dg-font);cursor:pointer;touch-action:manipulation;pointer-events:auto}`;
+#dayg-trainer input[type=range]{flex:1;min-height:44px;accent-color:var(--dg-accent);cursor:pointer;touch-action:manipulation}`;
 
 export function createTrainerPanel(ui: HTMLElement, deps: TrainerDeps): TrainerPanel {
   if (!document.getElementById('dayg-trainer-style')) {
@@ -70,15 +67,6 @@ export function createTrainerPanel(ui: HTMLElement, deps: TrainerDeps): TrainerP
   root.setAttribute('role', 'dialog');
   root.setAttribute('aria-label', 'Admin Trainer');
   root.addEventListener('mousedown', (e) => e.stopPropagation());
-
-  const toggleBtn = document.createElement('button');
-  toggleBtn.id = 'dayg-trainer-btn';
-  toggleBtn.type = 'button';
-  toggleBtn.textContent = '⚙ F9';
-  toggleBtn.title = 'Admin Trainer (F9)';
-  toggleBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-  toggleBtn.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
-  ui.appendChild(toggleBtn);
 
   const mkBtn = (label: string, onClick: () => void): HTMLButtonElement => {
     const b = document.createElement('button');

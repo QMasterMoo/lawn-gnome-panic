@@ -41,10 +41,7 @@ const CSS = `
 #dayg-camp .dc-btn{min-height:44px;min-width:44px;padding:8px 12px;border-radius:8px;border:1px solid var(--dg-border);background:var(--dg-surface-2);color:var(--dg-text);font:13px var(--dg-font);cursor:pointer;touch-action:manipulation}
 #dayg-camp .dc-btn:hover:not(:disabled){background:var(--dg-surface-hover);border-color:var(--dg-border-strong)}
 #dayg-camp .dc-btn:disabled{opacity:.45;cursor:default}
-#dayg-camp input,#dayg-camp select{min-height:44px;padding:6px 10px;border-radius:8px;border:1px solid var(--dg-border);background:var(--dg-surface-2);color:var(--dg-text);font:14px var(--dg-font)}
-#dayg-camp-btn{position:absolute;top:calc(72px + env(safe-area-inset-top));right:calc(130px + env(safe-area-inset-right));z-index:50;
-  min-height:44px;min-width:44px;padding:0 10px;border-radius:8px;border:1px solid var(--dg-border);background:var(--dg-surface-2);
-  color:var(--dg-text);font:13px var(--dg-font);cursor:pointer;touch-action:manipulation;pointer-events:auto}`;
+#dayg-camp input,#dayg-camp select{min-height:44px;padding:6px 10px;border-radius:8px;border:1px solid var(--dg-border);background:var(--dg-surface-2);color:var(--dg-text);font:14px var(--dg-font)}`;
 
 export function createCampPanel(ui: HTMLElement, deps: {
   world: WorldState;
@@ -69,13 +66,6 @@ export function createCampPanel(ui: HTMLElement, deps: {
   root.setAttribute('aria-label', 'Camp and Crew');
   root.addEventListener('mousedown', (e) => e.stopPropagation());
 
-  const openBtn = document.createElement('button');
-  openBtn.id = 'dayg-camp-btn';
-  openBtn.type = 'button';
-  openBtn.textContent = 'Camp';
-  openBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-  openBtn.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
-  ui.appendChild(openBtn);
   ui.appendChild(root);
 
   let openFlag = false;

@@ -44,10 +44,7 @@ const CSS = `
 #dayg-craft .dk-btn{min-height:44px;min-width:44px;padding:8px 12px;border-radius:8px;border:1px solid var(--dg-border);
   background:var(--dg-surface-2);color:var(--dg-text);font:600 13px var(--dg-font);cursor:pointer;touch-action:manipulation}
 #dayg-craft .dk-btn:hover:not(:disabled){background:var(--dg-surface-hover);border-color:var(--dg-accent)}
-#dayg-craft .dk-btn:disabled{opacity:.45;cursor:not-allowed}
-#dayg-craft-btn{position:absolute;top:calc(72px + env(safe-area-inset-top));right:calc(242px + env(safe-area-inset-right));z-index:50;
-  min-height:44px;min-width:44px;padding:0 10px;border-radius:8px;border:1px solid var(--dg-border);background:var(--dg-surface-2);
-  color:var(--dg-text);font:13px var(--dg-font);cursor:pointer;touch-action:manipulation;pointer-events:auto}`;
+#dayg-craft .dk-btn:disabled{opacity:.45;cursor:not-allowed}`;
 
 export function createCraftPanel(ui: HTMLElement, deps: {
   inv: InventorySystem;
@@ -69,14 +66,6 @@ export function createCraftPanel(ui: HTMLElement, deps: {
   root.setAttribute('aria-label', 'Survival Crafting');
   root.addEventListener('mousedown', (e) => e.stopPropagation());
 
-  const openBtn = document.createElement('button');
-  openBtn.id = 'dayg-craft-btn';
-  openBtn.type = 'button';
-  openBtn.textContent = 'Craft';
-  openBtn.title = 'Survival Crafting (K)';
-  openBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-  openBtn.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
-  ui.appendChild(openBtn);
   ui.appendChild(root);
 
   let openFlag = false;

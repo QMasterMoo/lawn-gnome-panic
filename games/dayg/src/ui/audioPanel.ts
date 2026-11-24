@@ -107,15 +107,6 @@ export function createAudioPanel(ui: HTMLElement, audio: Audio): AudioPanel {
   root.append(card);
   ui.appendChild(root);
 
-  const button = document.createElement('button');
-  button.id = 'dayg-audio-btn';
-  button.type = 'button';
-  button.textContent = '🔊';
-  button.setAttribute('aria-label', 'Sound settings');
-  button.style.cssText = BUTTON + ';position:absolute;top:calc(120px + env(safe-area-inset-top));' +
-    'right:calc(8px + env(safe-area-inset-right));width:48px;height:48px;padding:0;font-size:20px;z-index:40;box-sizing:border-box';
-  ui.appendChild(button);
-
   let open = false;
   function sync(): void {
     const s = audio.getSettings();
@@ -135,7 +126,6 @@ export function createAudioPanel(ui: HTMLElement, audio: Audio): AudioPanel {
     }
   }
 
-  button.addEventListener('click', (e) => { e.stopPropagation(); setOpen(!open); });
   close.addEventListener('click', (e) => { e.stopPropagation(); setOpen(false); });
   window.addEventListener('keydown', (e) => { if (open && e.key === 'Escape') setOpen(false); });
 
