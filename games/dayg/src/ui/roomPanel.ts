@@ -311,11 +311,6 @@ export function createRoomPanel(ui: HTMLElement): RoomPanel {
   root.addEventListener('keydown', (e) => e.stopPropagation());
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !root.hidden) close(); }, true);
 
-  // The Worlds button, bottom of the HUD zone, right side.
-  const openBtn = btn('Worlds', open,
-    'position:absolute;z-index:50;pointer-events:auto;top:calc(72px + env(safe-area-inset-top));right:calc(60px + env(safe-area-inset-right))');
-  openBtn.id = 'dayg-room-open';
-  ui.appendChild(openBtn);
   ui.appendChild(root);
 
   return {

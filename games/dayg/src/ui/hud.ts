@@ -191,8 +191,8 @@ export function createHud(ui: HTMLElement, opts: { onToast?: () => void } = {}):
   prompt.className = 'dayg-hud-prompt';
 
   const toasts = document.createElement('div');
-  toasts.style.cssText = 'position:absolute;left:0;right:64px;text-align:center;' +
-    `top:calc(${LAYOUT.topBar + 8}px + env(safe-area-inset-top));display:flex;flex-direction:column;align-items:center;gap:4px`;
+  toasts.style.cssText = 'position:absolute;left:12px;right:12px;text-align:center;' +
+    `top:calc(${LAYOUT.topBar + 60}px + env(safe-area-inset-top));display:flex;flex-direction:column;align-items:center;gap:4px`;
 
   // Top-center: Compass Strip (visible when facing is provided).
   const compass = document.createElement('div');

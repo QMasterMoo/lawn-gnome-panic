@@ -29,10 +29,7 @@ const CSS = `
 #dayg-cook .dck-bar-wrap{padding:12px;border-radius:10px;background:var(--dg-surface-2);border:1px solid var(--dg-accent);display:flex;flex-direction:column;gap:10px}
 #dayg-cook .dck-bar{position:relative;height:28px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.2);
   background:linear-gradient(90deg,#9e342b 0%,#9e342b 25%,#4f7d3a 25%,#4f7d3a 42%,#e8c35a 42%,#e8c35a 58%,#4f7d3a 58%,#4f7d3a 75%,#9e342b 75%,#9e342b 100%)}
-#dayg-cook .dck-needle{position:absolute;top:-2px;bottom:-2px;width:6px;margin-left:-3px;background:#ffffff;border:1px solid #111;border-radius:3px;box-shadow:0 0 8px rgba(255,255,255,0.85)}
-#dayg-cook-btn{position:absolute;top:calc(72px + env(safe-area-inset-top));right:calc(186px + env(safe-area-inset-right));z-index:50;
-  min-height:44px;min-width:44px;padding:0 10px;border-radius:8px;border:1px solid var(--dg-border);background:var(--dg-surface-2);
-  color:var(--dg-text);font:13px var(--dg-font);cursor:pointer;touch-action:manipulation;pointer-events:auto}`;
+#dayg-cook .dck-needle{position:absolute;top:-2px;bottom:-2px;width:6px;margin-left:-3px;background:#ffffff;border:1px solid #111;border-radius:3px;box-shadow:0 0 8px rgba(255,255,255,0.85)}`;
 
 function canCookReason(
   meal: CampfireMeal,
@@ -76,14 +73,6 @@ export function createCookingPanel(
   root.setAttribute('aria-label', 'Campfire Cooking');
   root.addEventListener('mousedown', (e) => e.stopPropagation());
 
-  const openBtn = document.createElement('button');
-  openBtn.id = 'dayg-cook-btn';
-  openBtn.type = 'button';
-  openBtn.textContent = 'Cook';
-  openBtn.title = 'Campfire Cooking';
-  openBtn.addEventListener('mousedown', (e) => e.stopPropagation());
-  openBtn.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
-  ui.appendChild(openBtn);
   ui.appendChild(root);
 
   let openFlag = false;
