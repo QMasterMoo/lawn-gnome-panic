@@ -909,8 +909,8 @@ export class GnomelockScene {
 
         // Update overhead HP bar
         if (h.slot !== localSlot) {
-          hpGroup.visible = true;
-          hpGroup.quaternion.copy(this.camera.quaternion);
+          hpGroup.visible = h.alive;
+          hpGroup.lookAt(this.camera.position);
           const frac = Math.max(0.01, Math.min(1, h.hp / h.maxHp));
           hpFill.scale.x = frac;
           hpFill.position.x = -(1 - frac) * 0.59;

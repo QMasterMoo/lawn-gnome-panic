@@ -15,6 +15,12 @@ export function botReactionDelayS(skill: number): number {
   return 0.25 - t * 0.10;
 }
 
+/** Bot aim spread in radians: 0.16 on Easy (0.72) down to 0.042 on Pro (1.32). */
+export function botAimSpreadRad(skill: number): number {
+  const t = Math.max(0, Math.min(1, (skill - 0.72) / (1.32 - 0.72)));
+  return 0.16 - t * 0.118;
+}
+
 function aimAt(
   ox: number,
   oy: number,
@@ -83,6 +89,7 @@ export function computeBotInput(
   let hasTarget = false;
   let targetKind: 'orb' | 'creep' | 'hero' | 'tower' | 'relic' | 'none' = 'none';
   let targetKey = 'none';
+  let targetSpeed = 0;
 
   const orbChance = Math.max(0.22, Math.min(0.92, (cfg.skill - 0.4) * 0.85));
   if (state.orbs.length > 0 && state.rng() < orbChance) {
@@ -180,6 +187,7 @@ export function computeBotInput(
       targetX = bestHero.move.pos.x;
       targetY = bestHero.move.pos.y + 0.7;
       targetZ = bestHero.move.pos.z;
+      targetSpeed = Math.hypot(bestHero.move.vel.x, bestHero.move.vel.z);
       hasTarget = true;
       targetKind = 'hero';
       targetKey = `hero:${bestHero.slot}`;
@@ -241,10 +249,12 @@ export function computeBotInput(
   let pitch = 0;
   if (hasTarget) {
     const aimed = aimAt(px, py, pz, targetX, targetY, targetZ);
-    // Slight realistic aim jitter scaled by skill
-    const jitter = (1 - Math.min(1.1, cfg.skill)) * 0.08;
-    yaw = aimed.yaw + (state.rng() - 0.5) * jitter;
-    pitch = aimed.pitch;
+    const baseSpread = botAimSpreadRad(cfg.skill);
+    const kindMult = targetKind === 'tower' || targetKind === 'relic' ? 0.55 : 1.0;
+    const movingPenalty = targetKind === 'hero' && targetSpeed > 7 ? 0.045 : 0;
+    const spread = baseSpread * kindMult + movingPenalty;
+    yaw = aimed.yaw + (state.rng() - 0.5) * spread;
+    pitch = aimed.pitch + (state.rng() - 0.5) * spread * 0.65;
   } else {
     const aimed = aimAt(px, py, pz, moveX, py, moveZ);
     yaw = aimed.yaw;

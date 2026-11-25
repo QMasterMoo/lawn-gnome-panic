@@ -799,8 +799,8 @@ function fireWeapon(state: MatchState, h: HeroEntity): void {
     // 2. Check enemy heroes
     for (const other of state.heroes) {
       if (other.team === h.team || !other.alive) continue;
-      const cy = other.move.pos.y + (other.move.sliding ? 0.42 : 0.65);
-      const hit = intersectRaySphere(ox, oy, oz, dx, dy, dz, other.move.pos.x, cy, other.move.pos.z, 0.58, bestT);
+      const cy = other.move.pos.y + (other.move.sliding ? 0.45 : 0.70);
+      const hit = intersectRaySphere(ox, oy, oz, dx, dy, dz, other.move.pos.x, cy, other.move.pos.z, 0.68, bestT);
       if (hit && hit.t < bestT) {
         bestT = hit.t;
         hitKind = 'body';

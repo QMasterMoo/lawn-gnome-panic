@@ -1,25 +1,37 @@
-// Main Gnomelock game loop: solo vs bots or @lawn/mp online 2v2, achievements, audio, and 3D scene.
+// Main Gnomelock game loop: solo skirmish or @lawn/mp online Lobby Creator, achievements, audio, and 3D scene.
 import { createAchievementTracker } from '@lawn/achievements';
-import { prefetchLooks } from '@lawn/gnome';
+import { getMyGnome, prefetchLooks } from '@lawn/gnome';
 import { whileHidden } from '@lawn/mp/background';
 import { sfx } from './audio';
 import { createInputManager } from './input';
 import { mountMobileControls } from './mobile';
 import { playMusicStinger, startBattleMusic, startLobbyMusic } from './music';
 import {
+  addHumanToLobby,
+  clearAllBots,
+  clearSlotBot,
+  createLobbyState,
+  fillEmptyWithBots,
+  generateRoomCode,
+  lobbyToMatchSlots,
+  moveHumanToSlot,
+  removeHumanFromLobby,
+  setHumanHero,
+  setLobbyDifficulty,
+  setSlotBot,
+  swapHumanTeam,
+  type LobbyState,
+} from './net/lobby';
+import {
   BOT_DIFFICULTY_SKILL,
-  buildRosterSlots,
-  DEFAULT_BOT_HEROES,
   type BotDifficulty,
-  type MatchCustomConfig,
-  type TeamMode,
   type WorldSnapshotMsg,
 } from './net/protocol';
 import { startOnlineSession, type OnlineSession } from './net/session';
 import { GnomelockScene } from './scene';
 import { computeBotInput } from './sim/bot';
 import type { HeroId, Team } from './sim/config';
-import { HERO_LIST, HEROES } from './sim/heroes';
+import { HEROES } from './sim/heroes';
 import { createMatchState, teamTotalAcorns, tryBuyItem, type HeroActionInput, type MatchState, stepWorld } from './sim/world';
 import { GnomelockUI } from './ui';
 
@@ -34,33 +46,310 @@ export function bootGnomelock(): void {
 
   let state: MatchState | null = null;
   let session: OnlineSession | null = null;
+  let lobby: LobbyState | null = null;
   let localSlot = 0;
+  let localPlayerId = 0;
   let localHero: HeroId = (params.get('hero') as HeroId) || 'bramble';
   if (!HEROES[localHero]) localHero = 'bramble';
-  const defaultMode = (params.get('mode') as TeamMode) || 'versus';
-  const defaultDiff = (params.get('difficulty') as BotDifficulty) || 'normal';
-  const initSkill = BOT_DIFFICULTY_SKILL[defaultDiff] ?? 1.0;
-  let activeConfig: MatchCustomConfig = {
-    mode: defaultMode === 'coop' || defaultMode === 'custom' ? defaultMode : 'versus',
-    difficulty: BOT_DIFFICULTY_SKILL[defaultDiff] ? defaultDiff : 'normal',
-    localSlotPref: 0,
-    botHeroes: [...DEFAULT_BOT_HEROES],
-    botSkills: [initSkill, initSkill, initSkill, initSkill],
-  };
+  const rawDiff = (params.get('difficulty') as BotDifficulty) || 'normal';
+  const defaultDiff: BotDifficulty = BOT_DIFFICULTY_SKILL[rawDiff] ? rawDiff : 'normal';
+  const initSkill = BOT_DIFFICULTY_SKILL[defaultDiff];
+  let activeBotSkills: [number, number, number, number] = [initSkill, initSkill, initSkill, initSkill];
+  let activeSlotForPlayerId = new Map<number, number>();
   let matchEnded = false;
   let relicClaimedWhileTrailing = false;
   const guestInputs = new Map<number, HeroActionInput>();
 
+  function isHostOrOffline(): boolean {
+    return !lobby || !lobby.isOnline || lobby.hostId === localPlayerId;
+  }
+
+  function syncLobbyBroadcast(statusMsg?: string): void {
+    if (lobby && lobby.isOnline && session?.isHost()) {
+      session.sendLobbyState(lobby);
+    }
+    ui.renderLobby(lobby, localPlayerId, localHero, statusMsg);
+  }
+
+  function leaveToTitle(): void {
+    session?.close();
+    session = null;
+    lobby = null;
+    state = null;
+    matchEnded = false;
+    guestInputs.clear();
+    activeSlotForPlayerId.clear();
+    ui.setStatus('');
+    ui.showScreen('title');
+    input.setModalOpen(true);
+    startLobbyMusic();
+  }
+
+  function openSoloLobby(): void {
+    session?.close();
+    session = null;
+    guestInputs.clear();
+    const mine = getMyGnome();
+    localPlayerId = 0;
+    lobby = createLobbyState({
+      isOnline: false,
+      roomCode: null,
+      hostPlayer: {
+        id: 0,
+        name: mine?.name ?? 'You',
+        character: mine?.code ?? 'gnorman',
+        color: 0xffd54f,
+        userId: mine?.userId,
+      },
+      hostHero: localHero,
+      difficulty: defaultDiff,
+      fillBots: true,
+    });
+    ui.showScreen('lobby');
+    ui.renderLobby(lobby, localPlayerId, localHero, '');
+  }
+
+  function openOnlineLobby(roomCode: string | null): void {
+    session?.close();
+    lobby = null;
+    state = null;
+    matchEnded = false;
+    localPlayerId = -1;
+    guestInputs.clear();
+    ui.setStatus(roomCode ? `Connecting to room ${roomCode}...` : 'Connecting to public lobby...');
+
+    session = startOnlineSession(roomCode, params.get('mp') ?? undefined, {
+      onStatus: (msg) => ui.setStatus(msg),
+      onMatchReady: (isHost, players) => {
+        void prefetchLooks(players);
+        localPlayerId = session!.myId();
+        matchEnded = false;
+        relicClaimedWhileTrailing = false;
+        if (isHost) {
+          const hostPlayer = players.find((p) => p.id === localPlayerId) ?? players[0];
+          lobby = createLobbyState({
+            isOnline: true,
+            roomCode,
+            hostPlayer,
+            hostHero: localHero,
+            difficulty: defaultDiff,
+            fillBots: false,
+          });
+          for (const p of players) {
+            if (p.id !== hostPlayer.id) addHumanToLobby(lobby, p);
+          }
+          ui.showScreen('lobby');
+          syncLobbyBroadcast('');
+        } else {
+          ui.showScreen('lobby');
+          ui.renderLobby(null, localPlayerId, localHero, 'Syncing lobby from host...');
+          session!.sendPick(localHero);
+        }
+      },
+      onPlayerJoined: (player) => {
+        void prefetchLooks([player]);
+        if (!session?.isHost() || !lobby) return;
+        const assignedSlot = addHumanToLobby(lobby, player);
+        if (lobby.started && state && assignedSlot >= 0) {
+          const h = state.heroes[assignedSlot];
+          const s = lobby.slots[assignedSlot];
+          if (h && s) {
+            h.isBot = false;
+            h.name = player.name;
+            h.userId = player.userId;
+            h.characterCode = player.character;
+            h.heroId = s.heroId;
+            activeSlotForPlayerId.set(player.id, assignedSlot);
+          }
+          const built = lobbyToMatchSlots(lobby);
+          session.sendLobbyState(lobby);
+          session.sendStartMatch(built.slots, built.botSkills, [...built.slotForPlayerId.entries()]);
+        } else {
+          syncLobbyBroadcast();
+        }
+      },
+      onPlayerLeft: (playerId) => {
+        if (!session?.isHost() || !lobby) return;
+        const freedSlot = removeHumanFromLobby(lobby, playerId);
+        activeSlotForPlayerId.delete(playerId);
+        guestInputs.delete(playerId);
+        if (lobby.started && state && freedSlot >= 0 && state.heroes[freedSlot]) {
+          state.heroes[freedSlot].isBot = true;
+        }
+        session.sendLobbyState(lobby);
+        if (!lobby.started) {
+          ui.renderLobby(lobby, localPlayerId, localHero);
+        }
+      },
+      onHostTakeover: (newHostId) => {
+        if (session?.isHost() && lobby) {
+          lobby.hostId = newHostId;
+          syncLobbyBroadcast('You are now the host');
+        }
+      },
+      onHeroPick: (playerId, heroId) => {
+        if (!session?.isHost() || !lobby) return;
+        if (setHumanHero(lobby, playerId, heroId)) {
+          session.sendLobbyState(lobby);
+          if (!lobby.started) ui.renderLobby(lobby, localPlayerId, localHero);
+        }
+      },
+      onClaimSlot: (playerId, slot) => {
+        if (!session?.isHost() || !lobby) return;
+        if (moveHumanToSlot(lobby, playerId, slot)) {
+          session.sendLobbyState(lobby);
+          if (!lobby.started) ui.renderLobby(lobby, localPlayerId, localHero);
+        }
+      },
+      onLobbyState: (nextLobby) => {
+        if (session?.isHost()) return;
+        lobby = nextLobby;
+        if (!nextLobby.started && state) {
+          state = null;
+          matchEnded = false;
+          ui.showScreen('lobby');
+          input.setModalOpen(true);
+          startLobbyMusic();
+        }
+        if (!nextLobby.started) {
+          ui.renderLobby(lobby, localPlayerId, localHero, '');
+        }
+      },
+      onStartMatch: (msg) => {
+        if (session?.isHost()) return;
+        matchEnded = false;
+        relicClaimedWhileTrailing = false;
+        activeBotSkills = msg.botSkills;
+        activeSlotForPlayerId = new Map(msg.slotForPlayerId);
+        localSlot = activeSlotForPlayerId.get(session!.myId()) ?? 0;
+        state = createMatchState(msg.slots);
+        input.setYaw(state.heroes[localSlot].yaw);
+        input.setModalOpen(false);
+        ui.showScreen('hud');
+        mobile.setHeroIcons(state.heroes[localSlot].heroId);
+        beginBattleMusic();
+      },
+      onGuestInput: (playerId, inp) => {
+        guestInputs.set(playerId, inp);
+      },
+      onGuestBuy: (playerId, itemId) => {
+        if (!state || !session) return;
+        const slot = activeSlotForPlayerId.get(playerId);
+        if (slot !== undefined) tryBuyItem(state, slot, itemId);
+      },
+      onSnapshot: (snap) => {
+        if (session?.isHost()) return;
+        applySnapshot(snap);
+      },
+      onError: (msg) => ui.setStatus(msg),
+    });
+  }
+
+  function launchFromLobby(): void {
+    if (!lobby) return;
+    const built = lobbyToMatchSlots(lobby);
+    lobby.started = true;
+    matchEnded = false;
+    relicClaimedWhileTrailing = false;
+    activeBotSkills = built.botSkills;
+    activeSlotForPlayerId = built.slotForPlayerId;
+    localSlot = activeSlotForPlayerId.get(localPlayerId) ?? 0;
+    state = createMatchState(built.slots);
+    input.setYaw(state.heroes[localSlot].yaw);
+    input.setModalOpen(false);
+    ui.showScreen('hud');
+    mobile.setHeroIcons(state.heroes[localSlot].heroId);
+    if (session && session.isHost()) {
+      session.sendLobbyState(lobby);
+      session.sendStartMatch(built.slots, built.botSkills, [...built.slotForPlayerId.entries()]);
+    }
+    beginBattleMusic();
+  }
+
   const ui = new GnomelockUI(uiParent, {
-    onPlaySolo(hero, config) {
-      localHero = hero;
-      activeConfig = config;
-      startSoloMatch(hero, config);
+    onCreatePrivateLobby() {
+      openOnlineLobby(generateRoomCode());
     },
-    onPlayOnline(hero, roomCode, config) {
-      localHero = hero;
-      activeConfig = config;
-      startOnlineMatch(hero, roomCode, config);
+    onQuickPlayOnline() {
+      openOnlineLobby(null);
+    },
+    onJoinCode(roomCode) {
+      openOnlineLobby(roomCode);
+    },
+    onOpenSoloLobby() {
+      openSoloLobby();
+    },
+    onLeaveLobby() {
+      leaveToTitle();
+    },
+    onPickHero(heroId) {
+      localHero = heroId;
+      if (lobby && isHostOrOffline()) {
+        setHumanHero(lobby, localPlayerId, heroId);
+        syncLobbyBroadcast();
+      } else if (session) {
+        session.sendPick(heroId);
+        ui.renderLobby(lobby, localPlayerId, localHero);
+      }
+    },
+    onClaimSlot(slot) {
+      if (lobby && isHostOrOffline()) {
+        moveHumanToSlot(lobby, localPlayerId, slot);
+        syncLobbyBroadcast();
+      } else if (session) {
+        session.sendClaimSlot(slot);
+      }
+    },
+    onSwapTeam() {
+      if (lobby && isHostOrOffline()) {
+        swapHumanTeam(lobby, localPlayerId);
+        syncLobbyBroadcast();
+      } else if (session && lobby) {
+        const cur = lobby.slots.find((s) => s.kind === 'human' && s.playerId === localPlayerId);
+        if (!cur) return;
+        const targets = cur.team === 0 ? [2, 3] : [0, 1];
+        const dest = targets.find((i) => lobby!.slots[i].kind !== 'human');
+        if (dest !== undefined) session.sendClaimSlot(dest);
+      }
+    },
+    onAddBot(slot) {
+      if (!lobby || !isHostOrOffline()) return;
+      setSlotBot(lobby, slot);
+      syncLobbyBroadcast();
+    },
+    onRemoveBot(slot) {
+      if (!lobby || !isHostOrOffline()) return;
+      clearSlotBot(lobby, slot);
+      syncLobbyBroadcast();
+    },
+    onSetBotHero(slot, heroId) {
+      if (!lobby || !isHostOrOffline()) return;
+      setSlotBot(lobby, slot, heroId);
+      syncLobbyBroadcast();
+    },
+    onSetBotSkill(slot, skill) {
+      if (!lobby || !isHostOrOffline()) return;
+      setSlotBot(lobby, slot, undefined, skill);
+      syncLobbyBroadcast();
+    },
+    onFillBots() {
+      if (!lobby || !isHostOrOffline()) return;
+      fillEmptyWithBots(lobby);
+      syncLobbyBroadcast();
+    },
+    onClearBots() {
+      if (!lobby || !isHostOrOffline()) return;
+      clearAllBots(lobby);
+      syncLobbyBroadcast();
+    },
+    onSetDifficulty(difficulty) {
+      if (!lobby || !isHostOrOffline()) return;
+      setLobbyDifficulty(lobby, difficulty);
+      syncLobbyBroadcast();
+    },
+    onStartMatch() {
+      if (!lobby || !isHostOrOffline()) return;
+      launchFromLobby();
     },
     onBuyItem(itemId) {
       if (!state) return;
@@ -74,14 +363,26 @@ export function bootGnomelock(): void {
     onShopToggle(open) {
       input.setModalOpen(open);
     },
+    onReturnToLobby() {
+      if (!lobby) {
+        leaveToTitle();
+        return;
+      }
+      if (isHostOrOffline()) {
+        lobby.started = false;
+        state = null;
+        matchEnded = false;
+        ui.showScreen('lobby');
+        input.setModalOpen(true);
+        syncLobbyBroadcast('');
+        startLobbyMusic();
+      } else {
+        // Guests wait for host or can click Leave on lobby/title
+        leaveToTitle();
+      }
+    },
     onPlayAgain() {
-      session?.close();
-      session = null;
-      state = null;
-      matchEnded = false;
-      ui.showLobby(true);
-      input.setModalOpen(true);
-      startLobbyMusic();
+      leaveToTitle();
     },
   });
 
@@ -99,25 +400,6 @@ export function bootGnomelock(): void {
     },
     (open) => ui.setScoreboardVisible(open, state),
   );
-
-  function startSoloMatch(hero: HeroId, config: MatchCustomConfig = activeConfig): void {
-    matchEnded = false;
-    relicClaimedWhileTrailing = false;
-    localSlot = config.mode === 'custom' ? config.localSlotPref : 0;
-    const slots = [0, 1, 2, 3].map((slot) => {
-      if (slot === localSlot) {
-        return { heroId: hero, name: 'You', isBot: false };
-      }
-      const bh = config.botHeroes[slot] ?? DEFAULT_BOT_HEROES[slot];
-      return { heroId: bh, name: `${HEROES[bh].name} Bot`, isBot: true };
-    });
-    state = createMatchState(slots);
-    input.setYaw(state.heroes[localSlot].yaw);
-    input.setModalOpen(false);
-    ui.showLobby(false);
-    mobile.setHeroIcons(hero);
-    beginBattleMusic();
-  }
 
   function beginBattleMusic(): void {
     startBattleMusic({
@@ -138,56 +420,6 @@ export function bootGnomelock(): void {
         return Math.min(1, v);
       },
       combine: () => Boolean(state && (state.relic.alive || state.timeS >= 480)),
-    });
-  }
-
-  function startOnlineMatch(hero: HeroId, roomCode: string | null, config: MatchCustomConfig = activeConfig): void {
-    ui.setStatus('Connecting...');
-    session?.close();
-    session = startOnlineSession(roomCode, hero, config, params.get('mp') ?? undefined, {
-      onStatus: (msg) => ui.setStatus(msg),
-      onMatchReady: (isHost, players) => {
-        void prefetchLooks(players);
-        matchEnded = false;
-        relicClaimedWhileTrailing = false;
-        const built = buildRosterSlots(players, {
-          mode: config.mode,
-          picks: session!.picks,
-          slotPrefs: session!.slotPrefs,
-          botHeroes: config.botHeroes,
-          botSkills: config.botSkills,
-          localHeroId: localHero,
-          localId: session!.myId(),
-        });
-        localSlot = built.slotForPlayerId.get(session!.myId()) ?? 0;
-        if (isHost) {
-          state = createMatchState(built.slots);
-          input.setYaw(state.heroes[localSlot].yaw);
-        }
-        input.setModalOpen(false);
-        ui.showLobby(false);
-        mobile.setHeroIcons(localHero);
-        beginBattleMusic();
-      },
-      onRosterChanged: (players) => {
-        void prefetchLooks(players);
-      },
-      onHostTakeover: () => {
-        // Current state continues smoothly if host drops
-      },
-      onGuestInput: (playerId, inp) => {
-        guestInputs.set(playerId, inp);
-      },
-      onGuestBuy: (playerId, itemId) => {
-        if (!state || !session) return;
-        const slot = session.slotForPlayerId().get(playerId);
-        if (slot !== undefined) tryBuyItem(state, slot, itemId);
-      },
-      onSnapshot: (snap) => {
-        if (session?.isHost()) return;
-        applySnapshot(snap);
-      },
-      onError: (msg) => ui.setStatus(msg),
     });
   }
 
@@ -366,16 +598,13 @@ export function bootGnomelock(): void {
       return;
     }
 
-    const slotMap = session?.slotForPlayerId();
     const actions: HeroActionInput[] = state.heroes.map((h, idx) => {
-      const botSkill = activeConfig.botSkills[idx] ?? 1.0;
+      const botSkill = activeBotSkills[idx] ?? 1.0;
       if (idx === localSlot) return localInp;
       if (h.isBot) return computeBotInput(state!, idx, { skill: botSkill });
-      if (slotMap) {
-        for (const [pid, sIdx] of slotMap) {
-          if (sIdx === idx) {
-            return guestInputs.get(pid) ?? computeBotInput(state!, idx, { skill: botSkill });
-          }
+      for (const [pid, sIdx] of activeSlotForPlayerId) {
+        if (sIdx === idx) {
+          return guestInputs.get(pid) ?? computeBotInput(state!, idx, { skill: botSkill });
         }
       }
       return computeBotInput(state!, idx, { skill: botSkill });
@@ -410,7 +639,10 @@ export function bootGnomelock(): void {
   });
 
   if (params.get('autostart') === 'solo') {
-    startSoloMatch(localHero);
+    openSoloLobby();
+    launchFromLobby();
+  } else if (params.get('room')) {
+    openOnlineLobby(params.get('room')!.trim().toUpperCase());
   } else {
     input.setModalOpen(true);
     startLobbyMusic();

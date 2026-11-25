@@ -71,8 +71,8 @@ export const GAMES: Record<GameId, GameRules> = {
   'gnome-set-radio': { minPlayers: 1, maxPlayers: 16, publicWaitS: 0, privateWaitS: 0, lateJoin: true },
   // DayG: a persistent zombie-gnome world per room, hosted in a player's browser; join by room code only, drop in any time.
   'dayg': { minPlayers: 1, maxPlayers: 16, publicWaitS: 0, privateWaitS: 0, lateJoin: true, roomCodeOnly: true },
-  // Gnomelock: 2v2 third-person MOBA in The Bramble District; bots fill empty slots, drop-in supported.
-  'gnomelock': { minPlayers: 1, maxPlayers: 4, publicWaitS: 10, privateWaitS: 30, lateJoin: true },
+  // Gnomelock: 2v2 third-person MOBA in The Bramble District; first player opens a lobby and hosts it, others join (even mid-match), bots fill empty slots.
+  'gnomelock': { minPlayers: 1, maxPlayers: 4, publicWaitS: 0, privateWaitS: 0, lateJoin: true },
   // Gnome Souls: co-op Soulsborne boss demo in the Sunken Spigot; host runs the world, up to 4 gnomes drop in.
   'gnome-souls': { minPlayers: 1, maxPlayers: 4, publicWaitS: 0, privateWaitS: 0, lateJoin: true },
 };
