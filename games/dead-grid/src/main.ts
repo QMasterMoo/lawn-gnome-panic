@@ -49,6 +49,16 @@ async function main(): Promise<void> {
       sim.brushAirdrop(wx, wy, Math.max(4, Math.round(brushRadius * 0.7)));
     } else if (activeBrush === 'clear') {
       sim.brushClear(wx, wy, brushRadius);
+    } else if (activeBrush === 'wildfire') {
+      sim.disasterWildfire(wx, wy, brushRadius);
+    } else if (activeBrush === 'flood') {
+      sim.disasterFlood(wx, wy, brushRadius);
+    } else if (activeBrush === 'quake') {
+      sim.disasterQuake(wx, wy, brushRadius);
+    } else if (activeBrush === 'plague') {
+      sim.disasterPlague(wx, wy, brushRadius);
+    } else if (activeBrush === 'drought') {
+      sim.disasterDrought(wx, wy, brushRadius);
     }
     hud.updateStats(sim.readStats(), history);
   };
@@ -68,7 +78,7 @@ async function main(): Promise<void> {
       viewport.selectedTile = { x: Math.floor(wx), y: Math.floor(wy) };
       const tile = sim.inspectTile(wx, wy);
       const agent = ag >= 0 ? sim.inspectAgent(ag) : null;
-      hud.showInspection(tile, agent, sim.readFactions());
+      hud.showInspection(tile, agent, sim.readFactions(), sim.readRepublics());
     },
   });
 
@@ -99,7 +109,7 @@ async function main(): Promise<void> {
       tickAccum = 0;
       viewport.selectedAgent = -1;
       viewport.selectedTile = null;
-      hud.showInspection(null, null, []);
+      hud.showInspection(null, null, [], []);
       sim.reset(seed, params);
       viewport.syncWorldSize(sim.gridW, sim.gridH);
     },
@@ -182,19 +192,27 @@ async function main(): Promise<void> {
         avgFood: stats.avgFood,
         avgWater: stats.avgWater,
         avgGear: stats.avgGear,
+        republics: stats.republics,
+        roadTiles: stats.roadTiles,
+        roadsBuilt: stats.roadsBuilt,
+        territoryTiles: stats.territoryTiles,
+        farmsBuilt: stats.farmsBuilt,
+        terraforms: stats.terraforms,
+        disasters: stats.disasters,
       });
       if (history.length > 1000) history.shift();
     }
 
     const factions = sim.readFactions();
-    viewport.render(sim, factions);
+    const republics = sim.readRepublics();
+    viewport.render(sim, factions, republics);
     hud.updateStats(stats, history);
     hud.appendEvents(sim.drainEvents());
 
     if (viewport.selectedAgent >= 0) {
       const ag = sim.inspectAgent(viewport.selectedAgent);
       if (ag) {
-        hud.showInspection(sim.inspectTile(ag.x, ag.y), ag, factions);
+        hud.showInspection(sim.inspectTile(ag.x, ag.y), ag, factions, republics);
       }
     }
 

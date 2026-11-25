@@ -8,6 +8,7 @@ import {
   type FactionInfo,
   type GridSize,
   type OverlayMode,
+  type RepublicInfo,
   type SimEvent,
   type SimParams,
   type SimStats,
@@ -41,6 +42,13 @@ export interface HistorySample {
   avgFood: number;
   avgWater: number;
   avgGear: number;
+  republics: number;
+  roadTiles: number;
+  roadsBuilt: number;
+  territoryTiles: number;
+  farmsBuilt: number;
+  terraforms: number;
+  disasters: number;
 }
 
 export interface HudCallbacks {
@@ -64,7 +72,7 @@ const SPEED_OPTIONS = [
   { label: '40x', speed: 40, paused: false, title: '40x Speed (4)' },
 ];
 
-type GraphTab = 'populations' | 'social' | 'pd' | 'resources';
+type GraphTab = 'populations' | 'social' | 'pd' | 'resources' | 'nations';
 
 export class Hud {
   private readonly root: HTMLDivElement;
@@ -240,6 +248,7 @@ export class Hud {
       ['social', 'Social Tiers'],
       ['pd', "Prisoner's Dilemma"],
       ['resources', 'Inventory Avg'],
+      ['nations', 'Nations & Roads'],
     ];
     for (const [id, label] of tabs) {
       const tb = document.createElement('button');
@@ -373,6 +382,8 @@ export class Hud {
       [2, 'Loot'],
       [3, 'Noise'],
       [4, 'Topography'],
+      [5, 'Nations'],
+      [6, 'Water'],
     ];
     for (const [mode, label] of overlays) {
       const b = document.createElement('button');
@@ -404,6 +415,11 @@ export class Hud {
       ['animals', '+Animals'],
       ['airdrop', 'Airdrop'],
       ['clear', 'Clear'],
+      ['wildfire', '🔥 Fire'],
+      ['flood', '🌊 Flood'],
+      ['quake', '🌋 Quake'],
+      ['plague', '☣ Plague'],
+      ['drought', '☀ Drought'],
     ];
     for (const [tool, label] of brushes) {
       const b = document.createElement('button');
@@ -446,6 +462,10 @@ export class Hud {
     this.addSlider(d, 'settlementGrowth', 'Society Growth', 0.2, 2.5, 0.1, (v) => `${v.toFixed(1)}x`);
     this.addSlider(d, 'banditry', 'Banditry %', 0, 1.0, 0.05, (v) => `${Math.round(v * 100)}%`);
     this.addSlider(d, 'cooperationBias', 'PD Coop Bias', 0, 1.0, 0.05, (v) => `${Math.round(v * 100)}%`);
+    this.addSlider(d, 'roadDecayRate', 'Road Decay', 0, 1.5, 0.05, (v) => `${v.toFixed(2)}x`);
+    this.addSlider(d, 'roadBuildCost', 'Road Cost', 0.25, 2.5, 0.05, (v) => `${v.toFixed(2)}x`);
+    this.addSlider(d, 'waterFlowRate', 'Water Flow', 0, 2.0, 0.05, (v) => `${v.toFixed(2)}x`);
+    this.addSlider(d, 'disasterRate', 'Disaster Rate', 0, 2.0, 0.05, (v) => `${v.toFixed(2)}x`);
     this.addSlider(d, 'zombieMigration', 'Edge Migration', 0, 1.5, 0.1, (v) => `${v.toFixed(1)}x`);
 
     // World Generator
@@ -708,8 +728,8 @@ export class Hud {
       <span class="dg-stat dg-s">Hum <b>${stats.humans.toLocaleString()}</b></span>
       <span class="dg-stat dg-z">Zomb <b>${stats.zombies.toLocaleString()}</b></span>
       <span class="dg-stat dg-a">Wild <b>${stats.animals.toLocaleString()}</b></span>
-      <span class="dg-stat dg-f">Soc <b>${stats.settlements}</b></span>
-      <span class="dg-stat dg-i">PD <b>${stats.pdCoops}/${stats.pdDefects}</b></span>
+      <span class="dg-stat dg-f">Soc <b>${stats.settlements}</b> · Rep <b>${stats.republics}</b></span>
+      <span class="dg-stat dg-i">Roads <b>${stats.roadTiles.toLocaleString()}</b></span>
     `;
     this.drawSparkline(history);
     if (this.graphsModal.classList.contains('open')) {
@@ -734,6 +754,7 @@ export class Hud {
     tile: TileInspection | null,
     agent: AgentInspection | null,
     factions: FactionInfo[],
+    republics: RepublicInfo[] = [],
   ): void {
     if (!tile && !agent) {
       this.inspectorCard.classList.remove('open');
@@ -742,10 +763,13 @@ export class Hud {
     this.inspectorCard.classList.add('open');
     const facMap = new Map<number, FactionInfo>();
     for (const f of factions) facMap.set(f.id, f);
+    const repMap = new Map<number, RepublicInfo>();
+    for (const r of republics) repMap.set(r.id, r);
 
     const lines: string[] = [];
     if (agent) {
       const f = agent.socialName === 'Society' ? facMap.get(agent.groupId) : undefined;
+      const rep = f && f.republicId >= 0 ? repMap.get(f.republicId) : undefined;
       lines.push(
         `<div class="dg-ins-head"><strong>${agent.kind.toUpperCase()} · ${agent.subkindName}</strong><span>#${agent.index}</span></div>`,
         `<div>State: <b>${agent.stateName}</b> · Social: <b>${agent.socialName}${agent.socialName === 'Small Group' ? ` #${agent.groupId}` : ''}</b> · HP: <b>${agent.hp}</b></div>`,
@@ -755,19 +779,23 @@ export class Hud {
           `<div>Demands: Hunger <b>${agent.hunger}</b> · Thirst <b>${agent.thirst}</b> · Inf <b>${agent.infection > 0 ? `${Math.round((agent.infection / 250) * 100)}%` : '0%'}</b></div>`,
           `<div>Inv: Food <b>${agent.food}</b> · Water <b>${agent.water}</b> · Gear <b>${agent.gear}</b> · Meds <b>${agent.meds}</b> · Mats <b>${agent.mats}</b></div>`,
           `<div>Personality: Coop <b>${agent.coop}</b> · Brave <b>${agent.brave}</b> · Greed <b>${agent.greed}</b> · Trust <b>${agent.trust}</b> · Rep <b>${agent.rep}</b></div>`,
-          `<div>Society: <b style="color:${f ? f.colorCss : '#8b949e'}">${f ? f.name : 'None'}</b></div>`,
+          `<div>Society: <b style="color:${f ? f.colorCss : '#8b949e'}">${f ? f.name : 'None'}</b>${rep ? ` · Republic: <b style="color:${rep.colorCss}">${rep.name}</b>` : ''}</div>`,
         );
       }
     }
     if (tile) {
       const f = tile.claimFactionId >= 0 ? facMap.get(tile.claimFactionId) : undefined;
+      const rep = f && f.republicId >= 0 ? repMap.get(f.republicId) : undefined;
+      const condLabel = tile.tileType === 7
+        ? ` · Road Cond <b>${tile.roadCond >= 200 ? 'Pristine' : tile.roadCond >= 80 ? 'Worn' : 'Reclaiming'} (${tile.roadCond})</b>`
+        : '';
       lines.push(
-        `<div class="dg-ins-tile">Tile (${tile.x}, ${tile.y}): <b>${tile.tileName}</b> · Elev <b>${tile.elevation}</b></div>`,
-        `<div>Food: <b>${tile.food}</b> · Water: <b>${tile.water}</b> · Gear: <b>${tile.gear}</b> · Noise: <b>${tile.scent}</b></div>`,
+        `<div class="dg-ins-tile">Tile (${tile.x}, ${tile.y}): <b>${tile.tileName}</b> · Elev <b>${tile.elevation}</b>${condLabel}</div>`,
+        `<div>Water: <b>${tile.waterDepth}</b> · Fire: <b>${tile.fireHeat}</b> · Food: <b>${tile.food}</b> · Gear: <b>${tile.gear}</b> · Noise: <b>${tile.scent}</b></div>`,
       );
       if (f) {
         lines.push(
-          `<div>Claim: <b style="color:${f.colorCss}">${f.name}</b> (${TIER_NAMES[f.level] ?? 'Camp'}, ${ETHOS_NAMES[f.ethos] ?? 'Coop'}, Pop ${f.pop})</div>`,
+          `<div>Claim: <b style="color:${f.colorCss}">${f.name}</b> (${TIER_NAMES[f.level] ?? 'Camp'}, ${ETHOS_NAMES[f.ethos] ?? 'Coop'}, Pop ${f.pop})${rep ? ` · <b>${rep.name}</b>` : ''}</div>`,
         );
       }
     }
@@ -847,6 +875,12 @@ export class Hud {
         { label: 'Avg Water', color: '#539bf5', pick: (s) => s.avgWater },
         { label: 'Avg Gear', color: '#e0b852', pick: (s) => s.avgGear },
       ],
+      nations: [
+        { label: 'Territory Tiles', color: '#57ab5a', pick: (s) => s.territoryTiles },
+        { label: 'Road Tiles', color: '#c9d1d9', pick: (s) => s.roadTiles },
+        { label: 'Roads Built', color: '#539bf5', pick: (s) => s.roadsBuilt * 20 },
+        { label: 'Republics', color: '#ffd33d', pick: (s) => s.republics * 500 },
+      ],
     };
 
     const list = seriesMap[this.activeGraphTab];
@@ -909,7 +943,7 @@ export class Hud {
     this.graphLegendEl.innerHTML = list
       .map((ser) => `<span><i style="background:${ser.color}"></i>${ser.label}: <b>${ser.pick(sample).toLocaleString()}</b></span>`)
       .join('');
-    this.graphReadoutEl.textContent = `Tick ${sample.tick} (Day ${sample.day}) · Societies: ${sample.settlements}`;
+    this.graphReadoutEl.textContent = `Tick ${sample.tick} (Day ${sample.day}) · Societies: ${sample.settlements} · Republics: ${sample.republics} · Roads: ${sample.roadsBuilt} · Farms: ${sample.farmsBuilt} · Terraforms: ${sample.terraforms} · Disasters: ${sample.disasters}`;
   }
 
   private injectStyles(): void {

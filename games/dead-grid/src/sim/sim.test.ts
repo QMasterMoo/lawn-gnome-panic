@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSim, DEFAULT_PARAMS, MAX_AGENTS, type SimParams } from './bridge';
+import { createSim, DEFAULT_PARAMS, MAX_AGENTS, PRESETS, type SimParams } from './bridge';
 import {
   deleteScenario,
   exportScenarioJson,
@@ -32,6 +32,8 @@ describe('Dead Grid 256K WASM simulation', () => {
       initialHumans: 3000,
       initialZombies: 6000,
       initialAnimals: 1500,
+      waterFlowRate: 0,
+      disasterRate: 0,
     });
 
     const initialWaterCount = (() => {
@@ -124,9 +126,90 @@ describe('Dead Grid 256K WASM simulation', () => {
     const tile = sim.inspectTile(ax, ay);
     expect(tile.food + tile.water + tile.gear).toBeGreaterThan(0);
 
-    for (const overlay of [0, 1, 2, 3, 4] as const) {
+    for (const overlay of [0, 1, 2, 3, 4, 5] as const) {
       sim.renderFrame(overlay, overlay === 0);
       expect(sim.frameRgba[0]).not.toBe(0);
+    }
+  });
+
+  it('decays unmaintained roads, expands territory, and federates societies into Republics', async () => {
+    const decaySim = await createSim(555, {
+      ...DEFAULT_PARAMS,
+      initialHumans: 100,
+      initialZombies: 100,
+      initialAnimals: 100,
+      roadDecayRate: 2.0,
+    });
+    const initialRoads = decaySim.readStats().roadTiles;
+    decaySim.step(400);
+    expect(decaySim.readStats().roadTiles).toBeLessThan(initialRoads);
+
+    const repSim = await createSim(1337, {
+      ...DEFAULT_PARAMS,
+      initialHumans: 6500,
+      initialZombies: 1200,
+      initialAnimals: 1500,
+      cooperationBias: 0.9,
+      banditry: 0.05,
+      settlementGrowth: 1.6,
+      roadBuildCost: 0.4,
+      roadDecayRate: 0.1,
+    });
+    repSim.step(500);
+    const stats = repSim.readStats();
+    expect(stats.territoryTiles).toBeGreaterThan(500);
+    expect(stats.republics).toBeGreaterThan(0);
+    expect(repSim.readRepublics().length).toBeGreaterThan(0);
+
+    repSim.renderFrame(5, true);
+    expect(repSim.frameRgba[0]).not.toBe(0);
+  });
+
+  it('simulates 2D shallow water flow, natural disasters, and farmland/terraforming', async () => {
+    const sim = await createSim(1337, {
+      ...DEFAULT_PARAMS,
+      initialHumans: 4000,
+      initialZombies: 1000,
+      initialAnimals: 1000,
+      waterFlowRate: 1.2,
+      disasterRate: 0.0,
+    });
+
+    // Find a passable tile
+    let cx = 220;
+    let cy = 220;
+    for (let y = 120; y < 380; y += 5) {
+      const t = sim.inspectTile(220, y).tileType;
+      if (t !== 0 && t !== 6 && t !== 13) { cx = 220; cy = y; break; }
+    }
+
+    sim.disasterFlood(cx, cy, 8);
+    expect(sim.inspectTile(cx, cy).waterDepth).toBeGreaterThan(0);
+
+    sim.disasterWildfire(cx + 30, cy, 6);
+    expect(sim.inspectTile(cx + 30, cy).fireHeat).toBeGreaterThan(0);
+
+    sim.disasterQuake(cx, cy + 30, 8);
+    sim.disasterPlague(cx, cy, 12);
+    sim.disasterDrought(cx, cy, 4);
+    expect(sim.readStats().disasters).toBe(5);
+
+    sim.step(200);
+    expect(sim.readStats().farmsBuilt).toBeGreaterThan(0);
+
+    sim.renderFrame(6, true);
+    expect(sim.frameRgba[0]).not.toBe(0);
+  });
+
+  it('keeps populations alive across new scenarios', async () => {
+    for (const id of ['floodplain-empire', 'ring-of-fire', 'canal-frontier']) {
+      const preset = PRESETS.find((p) => p.id === id);
+      expect(preset).toBeDefined();
+      const sim = await createSim(4242, preset!.params);
+      sim.step(100);
+      const stats = sim.readStats();
+      expect(stats.humans).toBeGreaterThan(0);
+      expect(stats.zombies).toBeGreaterThan(0);
     }
   });
 
