@@ -2,6 +2,7 @@
 import type { PlayerInfo } from '@lawn/mp';
 import type { AbilitySlot, HeroId, Team } from '../sim/config';
 import type { HeroActionInput, SlotSetup } from '../sim/world';
+import type { LobbyState } from './lobby';
 
 export type TeamMode = 'versus' | 'coop' | 'custom';
 export type BotDifficulty = 'easy' | 'normal' | 'hard' | 'pro';
@@ -37,6 +38,15 @@ export interface ClientSlotMsg {
   heroId: HeroId;
 }
 
+export interface HeartbeatMsg {
+  t: 'hb';
+}
+
+export interface ClientClaimSlotMsg {
+  t: 'claim';
+  slot: number;
+}
+
 export interface ClientBuyMsg {
   t: 'buy';
   itemId: string;
@@ -44,16 +54,14 @@ export interface ClientBuyMsg {
 
 export interface HostLobbyStateMsg {
   t: 'lobby';
-  mode: TeamMode;
-  slots: {
-    slot: number;
-    playerId: number | null;
-    name: string;
-    heroId: HeroId;
-    isBot: boolean;
-    botSkill: number;
-  }[];
-  started: boolean;
+  state: LobbyState;
+}
+
+export interface HostStartMatchMsg {
+  t: 'start';
+  slots: SlotSetup[];
+  botSkills: [number, number, number, number];
+  slotForPlayerId: [number, number][];
 }
 
 export interface NetHeroSnap {
@@ -148,11 +156,14 @@ export interface WorldSnapshotMsg {
 }
 
 export type GameNetMsg =
+  | HeartbeatMsg
   | ClientInputMsg
   | ClientHeroPickMsg
   | ClientSlotMsg
+  | ClientClaimSlotMsg
   | ClientBuyMsg
   | HostLobbyStateMsg
+  | HostStartMatchMsg
   | WorldSnapshotMsg;
 
 export const DEFAULT_BOT_HEROES: readonly [HeroId, HeroId, HeroId, HeroId] = [

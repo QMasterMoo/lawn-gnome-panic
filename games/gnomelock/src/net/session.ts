@@ -1,59 +1,57 @@
-// @lawn/mp network session wrapper for Gnomelock with customizable 2v2 teams & slots.
+// @lawn/mp network session wrapper for Gnomelock with instant Lobby Creator & live match sync.
 import { createNetClient, serverUrl, type NetClient, type PlayerInfo } from '@lawn/mp';
+import { steadyInterval } from '@lawn/mp/background';
 import { getMyGnome } from '@lawn/gnome';
 import type { HeroId } from '../sim/config';
-import type { HeroActionInput, MatchState } from '../sim/world';
-import {
-  buildRosterSlots,
-  type GameNetMsg,
-  type HostLobbyStateMsg,
-  type MatchCustomConfig,
-  type WorldSnapshotMsg,
-} from './protocol';
+import type { HeroActionInput, MatchState, SlotSetup } from '../sim/world';
+import type { LobbyState } from './lobby';
+import type { GameNetMsg, HostStartMatchMsg, WorldSnapshotMsg } from './protocol';
 
 export interface OnlineSession {
   client: NetClient<GameNetMsg>;
   isHost: () => boolean;
   myId: () => number;
   roster: () => PlayerInfo[];
-  picks: Map<number, HeroId>;
-  slotPrefs: Map<number, number>;
-  slotForPlayerId: () => Map<number, number>;
   sendInput: (inp: HeroActionInput) => void;
   sendBuy: (itemId: string) => void;
   sendPick: (heroId: HeroId) => void;
-  sendSlotPref: (slot: number, heroId: HeroId) => void;
-  sendLobbyState: (msg: HostLobbyStateMsg) => void;
+  sendClaimSlot: (slot: number) => void;
+  sendLobbyState: (state: LobbyState) => void;
+  sendStartMatch: (
+    slots: SlotSetup[],
+    botSkills: [number, number, number, number],
+    slotForPlayerId: [number, number][],
+  ) => void;
   broadcastSnapshot: (state: MatchState) => void;
   close: () => void;
 }
 
 export function startOnlineSession(
   roomCode: string | null,
-  localHeroId: HeroId,
-  customConfig: MatchCustomConfig,
   mpOverride: string | undefined,
   callbacks: {
     onStatus: (msg: string) => void;
     onMatchReady: (isHost: boolean, players: PlayerInfo[]) => void;
-    onRosterChanged: (players: PlayerInfo[]) => void;
-    onHostTakeover: () => void;
+    onPlayerJoined?: (player: PlayerInfo) => void;
+    onPlayerLeft?: (playerId: number) => void;
+    onHostTakeover?: (newHostId: number) => void;
+    onHeroPick?: (playerId: number, heroId: HeroId) => void;
+    onClaimSlot?: (playerId: number, slot: number) => void;
+    onLobbyState?: (state: LobbyState) => void;
+    onStartMatch?: (msg: HostStartMatchMsg) => void;
     onGuestInput: (playerId: number, inp: HeroActionInput) => void;
     onGuestBuy: (playerId: number, itemId: string) => void;
-    onSlotPref?: (playerId: number, slot: number, heroId: HeroId) => void;
-    onLobbyState?: (msg: HostLobbyStateMsg) => void;
     onSnapshot: (snap: WorldSnapshotMsg) => void;
     onError: (msg: string) => void;
   },
 ): OnlineSession {
   const mine = getMyGnome();
   const url = mpOverride || serverUrl();
-  const picks = new Map<number, HeroId>();
-  const slotPrefs = new Map<number, number>();
   let roster: PlayerInfo[] = [];
-  let slotMap = new Map<number, number>();
   let hostFlag = false;
   let myId = -1;
+  let inMatch = false;
+  let closed = false;
   const charCode = mine?.code ?? 'gnorman';
   const myName = mine?.name ?? 'Gnome';
 
@@ -63,52 +61,46 @@ export function startOnlineSession(
     resumable: true,
   });
 
-  function recomputeMap(): void {
-    const built = buildRosterSlots(roster, {
-      mode: customConfig.mode,
-      picks,
-      slotPrefs,
-      botHeroes: customConfig.botHeroes,
-      botSkills: customConfig.botSkills,
-      localHeroId,
-      localId: myId,
-    });
-    slotMap = built.slotForPlayerId;
-  }
+  // Keep match alive in the lobby (server drops members silent for MATCH_SILENT_S = 8s).
+  const stopHb = steadyInterval(() => {
+    if (inMatch && !closed) {
+      client.send(null, { t: 'hb' });
+    }
+  }, 3000);
 
   client.onMessage((m) => {
+    if (closed) return;
     if (m.t === 'queued') {
-      callbacks.onStatus(`Queued (${m.players} in queue)...`);
+      callbacks.onStatus(`Joining lobby (${m.players} in queue)...`);
     } else if (m.t === 'match') {
+      inMatch = true;
       myId = m.you;
       hostFlag = m.hostId === myId;
       roster = [...m.players];
-      slotPrefs.set(myId, customConfig.localSlotPref);
-      recomputeMap();
-      client.send(null, { t: 'slot', slot: customConfig.localSlotPref, heroId: localHeroId });
       callbacks.onMatchReady(hostFlag, roster);
     } else if (m.t === 'joined') {
-      roster.push(m.player);
-      recomputeMap();
-      callbacks.onRosterChanged(roster);
+      if (!roster.some((p) => p.id === m.player.id)) {
+        roster.push(m.player);
+      }
+      callbacks.onPlayerJoined?.(m.player);
     } else if (m.t === 'left') {
       roster = roster.filter((p) => p.id !== m.id);
-      recomputeMap();
-      callbacks.onRosterChanged(roster);
+      callbacks.onPlayerLeft?.(m.id);
     } else if (m.t === 'host') {
       hostFlag = m.hostId === myId;
-      if (hostFlag) callbacks.onHostTakeover();
+      callbacks.onHostTakeover?.(m.hostId);
     } else if (m.t === 'relay') {
       const msg = m.d;
-      if (msg.t === 'pick') {
-        picks.set(m.from, msg.heroId);
-      } else if (msg.t === 'slot') {
-        picks.set(m.from, msg.heroId);
-        slotPrefs.set(m.from, msg.slot);
-        recomputeMap();
-        callbacks.onSlotPref?.(m.from, msg.slot, msg.heroId);
+      if (msg.t === 'hb') {
+        return;
+      } else if (msg.t === 'pick') {
+        callbacks.onHeroPick?.(m.from, msg.heroId);
+      } else if (msg.t === 'claim') {
+        callbacks.onClaimSlot?.(m.from, msg.slot);
       } else if (msg.t === 'lobby') {
-        callbacks.onLobbyState?.(msg);
+        callbacks.onLobbyState?.(msg.state);
+      } else if (msg.t === 'start') {
+        callbacks.onStartMatch?.(msg);
       } else if (msg.t === 'input') {
         callbacks.onGuestInput(m.from, msg.inp);
       } else if (msg.t === 'buy') {
@@ -118,28 +110,34 @@ export function startOnlineSession(
       }
     } else if (m.t === 'error') {
       callbacks.onError(m.message || 'Connection error');
+    } else if (m.t === 'ended') {
+      inMatch = false;
+      callbacks.onError(m.reason || 'Lobby ended');
     }
   });
 
   client.onClose(() => {
-    callbacks.onStatus('Disconnected from relay');
+    inMatch = false;
+    if (!closed) {
+      callbacks.onStatus('Disconnected from relay');
+    }
   });
 
-  callbacks.onStatus('Connecting to Bramble relay...');
-  void client.connect().then(() => {
-    client.queue(roomCode, charCode, myName);
-  }).catch(() => {
-    callbacks.onError('Could not connect to relay');
-  });
+  callbacks.onStatus(roomCode ? `Connecting to room ${roomCode}...` : 'Connecting to Bramble relay...');
+  void client
+    .connect()
+    .then(() => {
+      if (!closed) client.queue(roomCode, charCode, myName);
+    })
+    .catch(() => {
+      if (!closed) callbacks.onError('Could not connect to relay');
+    });
 
   return {
     client,
     isHost: () => hostFlag,
     myId: () => myId,
     roster: () => roster,
-    picks,
-    slotPrefs,
-    slotForPlayerId: () => slotMap,
     sendInput(inp) {
       client.send(null, { t: 'input', inp });
     },
@@ -149,11 +147,14 @@ export function startOnlineSession(
     sendPick(heroId) {
       client.send(null, { t: 'pick', heroId });
     },
-    sendSlotPref(slot, heroId) {
-      client.send(null, { t: 'slot', slot, heroId });
+    sendClaimSlot(slot) {
+      client.send(null, { t: 'claim', slot });
     },
-    sendLobbyState(msg) {
-      client.send(null, msg);
+    sendLobbyState(state) {
+      client.send(null, { t: 'lobby', state });
+    },
+    sendStartMatch(slots, botSkills, slotForPlayerId) {
+      client.send(null, { t: 'start', slots, botSkills, slotForPlayerId });
     },
     broadcastSnapshot(state) {
       const snap: WorldSnapshotMsg = {
@@ -239,6 +240,9 @@ export function startOnlineSession(
       client.send(null, snap);
     },
     close() {
+      closed = true;
+      inMatch = false;
+      stopHb();
       client.drop();
     },
   };

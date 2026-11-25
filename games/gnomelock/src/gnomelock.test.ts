@@ -1,8 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { getPrefab } from '@lawn/prefabs';
-import type { PlayerInfo } from '@lawn/mp';
+import { ROOM_CODE_RE, type PlayerInfo } from '@lawn/mp';
+import {
+  addHumanToLobby,
+  clearAllBots,
+  clearSlotBot,
+  createLobbyState,
+  fillEmptyWithBots,
+  generateRoomCode,
+  lobbyToMatchSlots,
+  moveHumanToSlot,
+  removeHumanFromLobby,
+  setLobbyDifficulty,
+  setSlotBot,
+  swapHumanTeam,
+} from './net/lobby';
 import { BOT_DIFFICULTY_SKILL, buildRosterSlots } from './net/protocol';
-import { botReactionDelayS, computeBotInput } from './sim/bot';
+import { botAimSpreadRad, botReactionDelayS, computeBotInput } from './sim/bot';
 import { ECONOMY, MOVEMENT } from './sim/config';
 import { HERO_LIST, HEROES } from './sim/heroes';
 import { computeHeroStats, ITEMS } from './sim/items';
@@ -418,5 +432,230 @@ describe('Gnomelock AOE last-hits, solo-lane 100% XP, bot reaction delay, and ai
     const hSpeed = Math.hypot(m.vel.x, m.vel.z);
     expect(m.vel.x).toBeGreaterThan(2.5); // curved significantly to the right (+X)
     expect(hSpeed).toBeGreaterThanOrEqual(10.8); // momentum preserved / gained
+  });
+});
+
+describe('Gnomelock multiplayer lobby creator', () => {
+  const p1: PlayerInfo = { id: 1, name: 'Fern', character: 'g1.aaa', color: 0xff5a5a, userId: 'u_fern123' };
+  const p2: PlayerInfo = { id: 2, name: 'Moss', character: 'g1.bbb', color: 0x4fd8ff, userId: 'u_moss456' };
+  const p3: PlayerInfo = { id: 3, name: 'Clover', character: 'g1.ccc', color: 0x5cff7a, userId: 'u_clover789' };
+
+  it('creates online lobby with open slots vs offline lobby pre-filled with bots', () => {
+    const online = createLobbyState({
+      isOnline: true,
+      roomCode: 'BRAM42',
+      hostPlayer: p1,
+      hostHero: 'bramble',
+      fillBots: false,
+    });
+    expect(online.slots[0].kind).toBe('human');
+    expect(online.slots[0].playerId).toBe(1);
+    expect(online.slots[1].kind).toBe('empty');
+    expect(online.slots[2].kind).toBe('empty');
+    expect(online.slots[3].kind).toBe('empty');
+
+    const offline = createLobbyState({
+      isOnline: false,
+      roomCode: null,
+      hostPlayer: p1,
+      hostHero: 'tansy',
+      difficulty: 'hard',
+      fillBots: true,
+    });
+    expect(offline.slots[0].kind).toBe('human');
+    expect(offline.slots[1].kind).toBe('bot');
+    expect(offline.slots[2].kind).toBe('bot');
+    expect(offline.slots[3].kind).toBe('bot');
+    expect(offline.slots[2].botSkill).toBe(BOT_DIFFICULTY_SKILL.hard);
+  });
+
+  it('balances joining humans across Amber and Sapphire and replaces bots when full of bots', () => {
+    const lobby = createLobbyState({
+      isOnline: true,
+      roomCode: 'TEST01',
+      hostPlayer: p1,
+      hostHero: 'bramble',
+      fillBots: false,
+    });
+    expect(addHumanToLobby(lobby, p2)).toBe(2); // Sapphire 1
+    expect(addHumanToLobby(lobby, p3)).toBe(1); // Amber 2
+    expect(lobby.slots[2].userId).toBe('u_moss456');
+    expect(lobby.slots[1].userId).toBe('u_clover789');
+
+    // Fill remaining slot 3 with bot, then add a 4th human -> replaces bot in slot 3
+    setSlotBot(lobby, 3, 'loam');
+    const p4: PlayerInfo = { id: 4, name: 'Twig', character: 'g1.ddd', color: 0xffd54f };
+    expect(addHumanToLobby(lobby, p4)).toBe(3);
+    expect(lobby.slots[3].kind).toBe('human');
+    expect(lobby.slots[3].name).toBe('Twig');
+  });
+
+  it('supports moveHumanToSlot and swapHumanTeam while preventing overwriting another human', () => {
+    const lobby = createLobbyState({
+      isOnline: true,
+      roomCode: 'SWAP99',
+      hostPlayer: p1,
+      hostHero: 'hookwort',
+      fillBots: false,
+    });
+    addHumanToLobby(lobby, p2); // slot 2 (Sapphire)
+
+    // Cannot move p1 onto p2's human slot 2
+    expect(moveHumanToSlot(lobby, 1, 2)).toBe(false);
+    // Can move p1 to open Sapphire slot 3
+    expect(moveHumanToSlot(lobby, 1, 3)).toBe(true);
+    expect(lobby.slots[0].kind).toBe('empty');
+    expect(lobby.slots[3].kind).toBe('human');
+    expect(lobby.slots[3].heroId).toBe('hookwort');
+
+    // Swap team moves p1 back to Amber (slot 0)
+    expect(swapHumanTeam(lobby, 1)).toBe(true);
+    expect(lobby.slots[0].playerId).toBe(1);
+    expect(lobby.slots[3].kind).toBe('empty');
+  });
+
+  it('supports adding, clearing, filling bots and updating lobby difficulty', () => {
+    const lobby = createLobbyState({
+      isOnline: true,
+      roomCode: 'BOTS22',
+      hostPlayer: p1,
+      hostHero: 'bramble',
+      fillBots: false,
+    });
+    setSlotBot(lobby, 2, 'potsworth');
+    expect(lobby.slots[2].kind).toBe('bot');
+    expect(lobby.slots[2].heroId).toBe('potsworth');
+
+    clearSlotBot(lobby, 2);
+    expect(lobby.slots[2].kind).toBe('empty');
+
+    setLobbyDifficulty(lobby, 'pro');
+    fillEmptyWithBots(lobby);
+    expect(lobby.slots[1].kind).toBe('bot');
+    expect(lobby.slots[2].kind).toBe('bot');
+    expect(lobby.slots[3].kind).toBe('bot');
+    expect(lobby.slots[1].botSkill).toBe(BOT_DIFFICULTY_SKILL.pro);
+
+    clearAllBots(lobby);
+    expect(lobby.slots[1].kind).toBe('empty');
+    expect(lobby.slots[2].kind).toBe('empty');
+    expect(lobby.slots[3].kind).toBe('empty');
+  });
+
+  it('auto-fills empty slots in lobbyToMatchSlots and preserves userId/characterCode', () => {
+    const lobby = createLobbyState({
+      isOnline: true,
+      roomCode: 'PLAY88',
+      hostPlayer: p1,
+      hostHero: 'buckshot',
+      difficulty: 'hard',
+      fillBots: false,
+    });
+    addHumanToLobby(lobby, p2, 'thistle');
+    const built = lobbyToMatchSlots(lobby);
+
+    expect(built.slots.length).toBe(4);
+    expect(built.slots[0].isBot).toBe(false);
+    expect(built.slots[0].userId).toBe('u_fern123');
+    expect(built.slots[0].characterCode).toBe('g1.aaa');
+    expect(built.slots[2].isBot).toBe(false);
+    expect(built.slots[2].heroId).toBe('thistle');
+    expect(built.slots[1].isBot).toBe(true);
+    expect(built.slots[3].isBot).toBe(true);
+    expect(built.botSkills[1]).toBe(BOT_DIFFICULTY_SKILL.hard);
+    expect(built.slotForPlayerId.get(1)).toBe(0);
+    expect(built.slotForPlayerId.get(2)).toBe(2);
+  });
+
+  it('frees slot on leave in lobby and converts to bot if match already started', () => {
+    const lobby = createLobbyState({
+      isOnline: true,
+      roomCode: 'LIVE77',
+      hostPlayer: p1,
+      hostHero: 'bramble',
+      fillBots: false,
+    });
+    addHumanToLobby(lobby, p2, 'tansy');
+    removeHumanFromLobby(lobby, 2);
+    expect(lobby.slots[2].kind).toBe('empty');
+
+    addHumanToLobby(lobby, p2, 'tansy');
+    lobby.started = true;
+    removeHumanFromLobby(lobby, 2);
+    expect(lobby.slots[2].kind).toBe('bot');
+    expect(lobby.slots[2].heroId).toBe('tansy');
+  });
+
+  it('generates room codes matching ROOM_CODE_RE', () => {
+    for (let i = 0; i < 20; i++) {
+      expect(generateRoomCode()).toMatch(ROOM_CODE_RE);
+    }
+  });
+});
+
+describe('Gnomelock bot aim spread and lethality', () => {
+  it('scales botAimSpreadRad from Easy down to Pro and produces yaw/pitch variance on Normal', () => {
+    expect(botAimSpreadRad(BOT_DIFFICULTY_SKILL.easy)).toBeGreaterThan(botAimSpreadRad(BOT_DIFFICULTY_SKILL.normal));
+    expect(botAimSpreadRad(BOT_DIFFICULTY_SKILL.normal)).toBeGreaterThan(botAimSpreadRad(BOT_DIFFICULTY_SKILL.pro));
+    expect(botAimSpreadRad(BOT_DIFFICULTY_SKILL.pro)).toBeGreaterThan(0);
+
+    const state = createMatchState([
+      { heroId: 'potsworth', name: 'P0', isBot: false },
+      { heroId: 'bramble', name: 'B1', isBot: true },
+      { heroId: 'tansy', name: 'Bot2', isBot: true },
+      { heroId: 'fernwick', name: 'B3', isBot: true },
+    ]);
+    state.heroes[0].move.pos = { x: 0, y: 0, z: -12 };
+    state.heroes[2].move.pos = { x: 0, y: 0, z: 0 };
+
+    const yaws: number[] = [];
+    const pitches: number[] = [];
+    let roll = 0;
+    const seq = [0.1, 0.9, 0.25, 0.75, 0.4, 0.85];
+    state.rng = () => seq[roll++ % seq.length];
+
+    for (let i = 0; i < 4; i++) {
+      const inp = computeBotInput(state, 2, { skill: BOT_DIFFICULTY_SKILL.normal });
+      yaws.push(inp.move.yaw);
+      pitches.push(inp.pitch);
+    }
+    expect(Math.max(...yaws) - Math.min(...yaws)).toBeGreaterThan(0.01);
+    expect(Math.max(...pitches) - Math.min(...pitches)).toBeGreaterThan(0.01);
+  });
+
+  it('kills enemy bot hero at 0 HP and stops them from shooting while dead', () => {
+    const state = createMatchState([
+      { heroId: 'potsworth', name: 'P0', isBot: false },
+      { heroId: 'bramble', name: 'B1', isBot: true },
+      { heroId: 'tansy', name: 'Bot2', isBot: true },
+      { heroId: 'fernwick', name: 'B3', isBot: true },
+    ]);
+    state.heroes[0].move.pos = { x: 0, y: 0, z: -10 };
+    state.heroes[2].move.pos = { x: 0, y: 0, z: 0 };
+    state.heroes[2].hp = 10;
+
+    const fireAtEnemy: HeroActionInput = {
+      move: { forward: 0, right: 0, yaw: Math.PI, jumpPressed: false, dashPressed: false, slideHeld: false },
+      pitch: 0,
+      fireHeld: true,
+      reloadPressed: false,
+      abilityPressed: null,
+    };
+    const idle: HeroActionInput = {
+      move: { forward: 0, right: 0, yaw: 0, jumpPressed: false, dashPressed: false, slideHeld: false },
+      pitch: 0,
+      fireHeld: false,
+      reloadPressed: false,
+      abilityPressed: null,
+    };
+
+    stepWorld(state, [fireAtEnemy, idle, idle, idle], 1 / 30);
+
+    expect(state.heroes[2].alive).toBe(false);
+    expect(state.heroes[2].hp).toBe(0);
+    expect(state.heroes[2].respawnTimer).toBeGreaterThan(0);
+
+    const deadBotInput = computeBotInput(state, 2, { skill: BOT_DIFFICULTY_SKILL.normal });
+    expect(deadBotInput.fireHeld).toBe(false);
   });
 });

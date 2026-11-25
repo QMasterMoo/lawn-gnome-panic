@@ -1,13 +1,11 @@
-// Gnomelock Lobby, HUD, Shop, Minimap, Scoreboard, and End Screen.
+// Gnomelock Title Screen, Interactive Lobby Creator, HUD, Shop, Minimap, Scoreboard, and End Screen.
 import { createVolumeButton } from '@arcade/volume';
 import { prefabIconElement } from '@lawn/prefabs';
 import { volumeStore } from './audio';
+import type { LobbySlot, LobbyState } from './net/lobby';
 import {
   BOT_DIFFICULTY_SKILL,
-  DEFAULT_BOT_HEROES,
   type BotDifficulty,
-  type MatchCustomConfig,
-  type TeamMode,
 } from './net/protocol';
 import { MATCH_CONFIG, TEAM_NAMES, type AbilitySlot, type HeroId, type Team } from './sim/config';
 import { HERO_LIST, HEROES } from './sim/heroes';
@@ -15,6 +13,29 @@ import { ITEMS, type ItemCategory } from './sim/items';
 import { isNearShop, MAP_BOUNDS, RELIC_ALTAR, SHOPS } from './sim/map';
 import { teamTotalAcorns, type MatchState } from './sim/world';
 import { spellIconSvg } from './spellIcons';
+
+export interface GnomelockUICallbacks {
+  onCreatePrivateLobby: () => void;
+  onQuickPlayOnline: () => void;
+  onJoinCode: (roomCode: string) => void;
+  onOpenSoloLobby: () => void;
+  onLeaveLobby: () => void;
+  onPickHero: (heroId: HeroId) => void;
+  onClaimSlot: (slot: number) => void;
+  onSwapTeam: () => void;
+  onAddBot: (slot: number) => void;
+  onRemoveBot: (slot: number) => void;
+  onSetBotHero: (slot: number, heroId: HeroId) => void;
+  onSetBotSkill: (slot: number, skill: number) => void;
+  onFillBots: () => void;
+  onClearBots: () => void;
+  onSetDifficulty: (difficulty: BotDifficulty) => void;
+  onStartMatch: () => void;
+  onBuyItem: (itemId: string) => void;
+  onShopToggle: (open: boolean) => void;
+  onReturnToLobby: () => void;
+  onPlayAgain: () => void;
+}
 
 interface FloatingText {
   el: HTMLDivElement;
@@ -28,23 +49,29 @@ interface FloatingText {
 
 export class GnomelockUI {
   readonly root: HTMLDivElement;
+  private titleEl: HTMLDivElement;
   private lobbyEl: HTMLDivElement;
   private hudEl: HTMLDivElement;
   private shopEl: HTMLDivElement;
   private scoreEl: HTMLDivElement;
   private endEl: HTMLDivElement;
 
-  private selectedHero: HeroId = 'bramble';
-  private customConfig: MatchCustomConfig = {
-    mode: 'versus',
-    difficulty: 'normal',
-    localSlotPref: 0,
-    botHeroes: [...DEFAULT_BOT_HEROES],
-    botSkills: [1, 1, 1, 1],
-  };
   private shopOpen = false;
   private shopTab: ItemCategory = 'weapon';
   private floating: FloatingText[] = [];
+
+  // Title & Lobby dynamic refs
+  private statusEl!: HTMLDivElement;
+  private lobbyStatusEl!: HTMLDivElement;
+  private lobbyRoomBadgeEl!: HTMLDivElement;
+  private lobbyRolePillEl!: HTMLDivElement;
+  private lobbyCopyBtn!: HTMLButtonElement;
+  private lobbyTeamsEl!: HTMLDivElement;
+  private lobbyToolbarEl!: HTMLDivElement;
+  private lobbyHeroGridEl!: HTMLDivElement;
+  private lobbyHeroInfoEl!: HTMLDivElement;
+  private lobbyFooterEl!: HTMLDivElement;
+  private currentRoomCode: string | null = null;
 
   // HUD refs
   private clockEl!: HTMLDivElement;
@@ -75,301 +102,582 @@ export class GnomelockUI {
   private minimapCanvas!: HTMLCanvasElement;
   private minimapCtx!: CanvasRenderingContext2D;
   private feedEl!: HTMLDivElement;
-  private statusEl!: HTMLDivElement;
 
-  private callbacks: {
-    onPlaySolo: (hero: HeroId, config: MatchCustomConfig) => void;
-    onPlayOnline: (hero: HeroId, roomCode: string | null, config: MatchCustomConfig) => void;
-    onBuyItem: (itemId: string) => void;
-    onShopToggle: (open: boolean) => void;
-    onPlayAgain: () => void;
-  };
+  private callbacks: GnomelockUICallbacks;
 
-  constructor(
-    uiParent: HTMLElement,
-    callbacks: {
-      onPlaySolo: (hero: HeroId, config: MatchCustomConfig) => void;
-      onPlayOnline: (hero: HeroId, roomCode: string | null, config: MatchCustomConfig) => void;
-      onBuyItem: (itemId: string) => void;
-      onShopToggle: (open: boolean) => void;
-      onPlayAgain: () => void;
-    },
-  ) {
+  constructor(uiParent: HTMLElement, callbacks: GnomelockUICallbacks) {
     this.callbacks = callbacks;
     this.root = document.createElement('div');
     this.root.id = 'gnomelock-root';
     this.root.style.cssText = 'position:fixed;inset:0;pointer-events:none;font-family:system-ui,-apple-system,sans-serif;';
     uiParent.appendChild(this.root);
 
-    this.lobbyEl = this.buildLobby();
+    this.titleEl = this.buildTitleScreen();
+    this.lobbyEl = this.buildLobbyScreen();
     this.hudEl = this.buildHud();
     this.shopEl = this.buildShop();
     this.scoreEl = this.buildScoreboard();
     this.endEl = this.buildEndScreen();
 
-    this.root.append(this.lobbyEl, this.hudEl, this.shopEl, this.scoreEl, this.endEl);
+    this.root.append(this.titleEl, this.lobbyEl, this.hudEl, this.shopEl, this.scoreEl, this.endEl);
   }
 
-  private buildLobby(): HTMLDivElement {
+  private buildTitleScreen(): HTMLDivElement {
     const el = document.createElement('div');
+    el.id = 'gnomelock-title';
     el.style.cssText = `
       position:fixed;inset:0;pointer-events:auto;overflow-y:auto;
       background:radial-gradient(circle at 50% 25%, rgba(44,58,92,0.92), rgba(16,20,32,0.97));
-      display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;gap:14px;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      padding:max(20px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left));
+      gap:16px;
     `;
 
     const volBtn = createVolumeButton(el, volumeStore);
-    volBtn.element.style.cssText = 'position:fixed;top:14px;right:14px;z-index:5;';
+    volBtn.element.style.cssText = 'position:fixed;top:max(14px,env(safe-area-inset-top));right:max(14px,env(safe-area-inset-right));z-index:5;';
 
     const title = document.createElement('h1');
     title.textContent = 'GNOMELOCK';
-    title.style.cssText = 'margin:0;font-size:clamp(28px,5vw,46px);letter-spacing:3px;color:#ffd54f;text-shadow:0 3px 12px rgba(0,0,0,0.6);';
+    title.style.cssText = 'margin:0;font-size:clamp(32px,6vw,52px);letter-spacing:4px;color:#ffd54f;text-shadow:0 3px 14px rgba(0,0,0,0.65);text-align:center;';
 
     const sub = document.createElement('div');
     sub.textContent = '2v2 Bramble District MOBA • Last-Hit Soul Acorns • Dash-Jump & Slide';
-    sub.style.cssText = 'font-size:13px;color:#cbd5e1;text-align:center;';
+    sub.style.cssText = 'font-size:13px;color:#cbd5e1;text-align:center;max-width:480px;';
 
-    const cards = document.createElement('div');
-    cards.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;width:min(820px,100%);';
+    const card = document.createElement('div');
+    card.style.cssText = `
+      width:min(460px,100%);padding:18px;border-radius:14px;
+      background:rgba(12,16,28,0.72);border:1px solid rgba(255,255,255,0.16);
+      box-shadow:0 12px 32px rgba(0,0,0,0.45);
+      display:flex;flex-direction:column;gap:12px;
+    `;
 
-    const cardEls: HTMLButtonElement[] = [];
+    const createBtn = document.createElement('button');
+    createBtn.type = 'button';
+    createBtn.textContent = 'Create Private Lobby';
+    createBtn.style.cssText = `
+      min-height:48px;padding:12px 18px;border-radius:10px;border:none;
+      background:linear-gradient(135deg,#f59f00,#e67e22);color:#fff;
+      font-weight:800;font-size:15px;cursor:pointer;box-shadow:0 4px 12px rgba(230,126,34,0.35);
+    `;
+    createBtn.onclick = () => this.callbacks.onCreatePrivateLobby();
+
+    const quickBtn = document.createElement('button');
+    quickBtn.type = 'button';
+    quickBtn.textContent = 'Quick Play (Public Lobby)';
+    quickBtn.style.cssText = `
+      min-height:46px;padding:12px 18px;border-radius:10px;border:1px solid rgba(116,185,255,0.4);
+      background:#2f64c9;color:#fff;font-weight:800;font-size:15px;cursor:pointer;
+    `;
+    quickBtn.onclick = () => this.callbacks.onQuickPlayOnline();
+
+    const joinRow = document.createElement('div');
+    joinRow.style.cssText = 'display:flex;gap:8px;align-items:stretch;';
+    const codeInput = document.createElement('input');
+    codeInput.placeholder = 'ROOM CODE';
+    codeInput.maxLength = 8;
+    codeInput.style.cssText = `
+      flex:1;min-width:0;min-height:44px;padding:10px 12px;border-radius:10px;
+      border:1px solid rgba(255,255,255,0.24);background:rgba(0,0,0,0.42);
+      color:#fff;text-transform:uppercase;font-weight:800;font-size:14px;letter-spacing:1.5px;
+    `;
+    const joinBtn = document.createElement('button');
+    joinBtn.type = 'button';
+    joinBtn.textContent = 'Join';
+    joinBtn.style.cssText = `
+      min-height:44px;min-width:86px;padding:10px 16px;border-radius:10px;
+      border:1px solid rgba(255,255,255,0.26);background:rgba(255,255,255,0.14);
+      color:#fff;font-weight:800;font-size:14px;cursor:pointer;
+    `;
+    const submitJoin = () => {
+      const c = codeInput.value.trim().toUpperCase();
+      this.callbacks.onJoinCode(c || 'BRAMBLE');
+    };
+    joinBtn.onclick = submitJoin;
+    codeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitJoin();
+    });
+    joinRow.append(codeInput, joinBtn);
+
+    const divider = document.createElement('div');
+    divider.style.cssText = 'height:1px;background:rgba(255,255,255,0.12);margin:2px 0;';
+
+    const soloBtn = document.createElement('button');
+    soloBtn.type = 'button';
+    soloBtn.textContent = 'Solo Skirmish (vs Bots)';
+    soloBtn.style.cssText = `
+      min-height:44px;padding:10px 16px;border-radius:10px;
+      border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);
+      color:#e2e8f0;font-weight:700;font-size:14px;cursor:pointer;
+    `;
+    soloBtn.onclick = () => this.callbacks.onOpenSoloLobby();
+
+    this.statusEl = document.createElement('div');
+    this.statusEl.id = 'gnomelock-status';
+    this.statusEl.style.cssText = 'font-size:13px;color:#ffd54f;min-height:18px;text-align:center;font-weight:600;';
+
+    card.append(createBtn, quickBtn, joinRow, divider, soloBtn);
+    el.append(title, sub, card, this.statusEl);
+    return el;
+  }
+
+  private buildLobbyScreen(): HTMLDivElement {
+    const el = document.createElement('div');
+    el.id = 'gnomelock-lobby';
+    el.style.cssText = `
+      position:fixed;inset:0;pointer-events:auto;overflow-y:auto;
+      background:radial-gradient(circle at 50% 20%, rgba(44,58,92,0.94), rgba(14,18,28,0.98));
+      display:none;flex-direction:column;align-items:center;
+      padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));
+      gap:12px;
+    `;
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'width:min(900px,100%);display:flex;flex-direction:column;gap:12px;margin:auto 0;';
+
+    // Header bar
+    const header = document.createElement('div');
+    header.style.cssText = `
+      display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;
+      padding:10px 12px;border-radius:12px;background:rgba(12,16,28,0.78);
+      border:1px solid rgba(255,255,255,0.14);
+    `;
+
+    const leaveBtn = document.createElement('button');
+    leaveBtn.type = 'button';
+    leaveBtn.textContent = '← Leave';
+    leaveBtn.style.cssText = `
+      min-height:44px;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.22);
+      background:rgba(255,255,255,0.1);color:#fff;font-weight:700;font-size:13px;cursor:pointer;
+    `;
+    leaveBtn.onclick = () => this.callbacks.onLeaveLobby();
+
+    const roomGroup = document.createElement('div');
+    roomGroup.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;gap:8px;';
+
+    this.lobbyRoomBadgeEl = document.createElement('div');
+    this.lobbyRoomBadgeEl.style.cssText = 'font-size:14px;font-weight:800;letter-spacing:1px;color:#ffd54f;';
+
+    this.lobbyCopyBtn = document.createElement('button');
+    this.lobbyCopyBtn.type = 'button';
+    this.lobbyCopyBtn.textContent = 'Copy Link';
+    this.lobbyCopyBtn.style.cssText = `
+      min-height:44px;padding:6px 12px;border-radius:8px;border:1px solid rgba(255,213,79,0.45);
+      background:rgba(255,213,79,0.14);color:#ffd54f;font-weight:700;font-size:12px;cursor:pointer;
+    `;
+    this.lobbyCopyBtn.onclick = () => {
+      if (!this.currentRoomCode) return;
+      const url = `${location.origin}${location.pathname}?room=${this.currentRoomCode}`;
+      void navigator.clipboard?.writeText(url).then(() => {
+        this.lobbyCopyBtn.textContent = 'Copied!';
+        window.setTimeout(() => {
+          this.lobbyCopyBtn.textContent = 'Copy Link';
+        }, 1500);
+      });
+    };
+
+    this.lobbyRolePillEl = document.createElement('div');
+    this.lobbyRolePillEl.style.cssText = 'padding:4px 10px;border-radius:99px;font-size:11px;font-weight:800;';
+
+    roomGroup.append(this.lobbyRoomBadgeEl, this.lobbyCopyBtn, this.lobbyRolePillEl);
+    const headerVol = createVolumeButton(header, volumeStore);
+    headerVol.element.style.cssText = 'position:relative;';
+
+    header.append(leaveBtn, roomGroup, headerVol.element);
+
+    this.lobbyStatusEl = document.createElement('div');
+    this.lobbyStatusEl.style.cssText = 'font-size:12px;color:#93c5fd;text-align:center;min-height:16px;';
+
+    // Team Arena (Amber vs Sapphire)
+    this.lobbyTeamsEl = document.createElement('div');
+    this.lobbyTeamsEl.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;';
+
+    // Controls Toolbar
+    this.lobbyToolbarEl = document.createElement('div');
+    this.lobbyToolbarEl.style.cssText = `
+      display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;
+      padding:10px 12px;border-radius:10px;background:rgba(12,16,28,0.65);
+      border:1px solid rgba(255,255,255,0.12);
+    `;
+
+    // Compact Hero Picker
+    const heroBox = document.createElement('div');
+    heroBox.style.cssText = `
+      padding:10px 12px;border-radius:10px;background:rgba(12,16,28,0.65);
+      border:1px solid rgba(255,255,255,0.12);display:flex;flex-direction:column;gap:8px;
+    `;
+    const heroHeading = document.createElement('div');
+    heroHeading.textContent = 'Choose Your Hero';
+    heroHeading.style.cssText = 'font-size:12px;font-weight:800;color:#cbd5e1;text-transform:uppercase;letter-spacing:0.8px;';
+
+    this.lobbyHeroGridEl = document.createElement('div');
+    this.lobbyHeroGridEl.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:6px;';
+
+    this.lobbyHeroInfoEl = document.createElement('div');
+    this.lobbyHeroInfoEl.style.cssText = 'font-size:12px;color:#94a3b8;line-height:1.35;';
+
+    heroBox.append(heroHeading, this.lobbyHeroGridEl, this.lobbyHeroInfoEl);
+
+    // Footer CTA
+    this.lobbyFooterEl = document.createElement('div');
+    this.lobbyFooterEl.style.cssText = 'display:flex;justify-content:center;align-items:center;';
+
+    wrap.append(
+      header,
+      this.lobbyStatusEl,
+      this.lobbyTeamsEl,
+      this.lobbyToolbarEl,
+      heroBox,
+      this.lobbyFooterEl,
+    );
+    el.appendChild(wrap);
+    return el;
+  }
+
+  private renderLobbySlotCard(
+    slot: LobbySlot,
+    myId: number,
+    hostId: number,
+    canEdit: boolean,
+  ): HTMLDivElement {
+    const isAmber = slot.team === 0;
+    const isMe = slot.kind === 'human' && slot.playerId === myId;
+    const isHost = slot.kind === 'human' && slot.playerId === hostId;
+
+    const card = document.createElement('div');
+    card.style.cssText = `
+      padding:10px;border-radius:10px;display:flex;flex-direction:column;gap:8px;
+      background:${isAmber ? 'rgba(217,54,54,0.12)' : 'rgba(47,100,201,0.12)'};
+      border:1.5px solid ${isMe ? '#ffd54f' : isAmber ? 'rgba(255,118,117,0.35)' : 'rgba(116,185,255,0.35)'};
+    `;
+
+    if (slot.kind === 'human') {
+      const top = document.createElement('div');
+      top.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:6px;';
+      const nameEl = document.createElement('div');
+      nameEl.style.cssText = 'font-weight:800;font-size:14px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      nameEl.textContent = slot.name;
+
+      const badges = document.createElement('div');
+      badges.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
+      if (isMe) {
+        const b = document.createElement('span');
+        b.textContent = 'YOU';
+        b.style.cssText = 'padding:2px 6px;border-radius:4px;background:#ffd54f;color:#111827;font-size:10px;font-weight:900;';
+        badges.appendChild(b);
+      }
+      if (isHost) {
+        const b = document.createElement('span');
+        b.textContent = 'HOST';
+        b.style.cssText = 'padding:2px 6px;border-radius:4px;background:rgba(230,126,34,0.35);border:1px solid #f59f00;color:#ffd54f;font-size:10px;font-weight:800;';
+        badges.appendChild(b);
+      }
+      top.append(nameEl, badges);
+
+      const hero = HEROES[slot.heroId];
+      const sub = document.createElement('div');
+      sub.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;';
+      const heroTxt = document.createElement('div');
+      heroTxt.style.cssText = 'font-size:12px;color:#cbd5e1;font-weight:700;';
+      heroTxt.textContent = `${hero.name} • ${hero.role}`;
+      const icons = document.createElement('div');
+      icons.style.cssText = 'display:flex;gap:4px;';
+      for (const ab of ['Q', 'E', 'F', 'X'] as const) {
+        const ic = spellIconSvg(slot.heroId, ab);
+        const sp = document.createElement('span');
+        sp.style.cssText = `display:inline-flex;width:15px;height:15px;color:${ic.color};`;
+        sp.innerHTML = ic.svg;
+        icons.appendChild(sp);
+      }
+      sub.append(heroTxt, icons);
+      card.append(top, sub);
+      return card;
+    }
+
+    if (slot.kind === 'bot') {
+      const top = document.createElement('div');
+      top.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:6px;';
+      const title = document.createElement('div');
+      title.style.cssText = 'font-weight:800;font-size:13px;color:#e2e8f0;';
+      title.textContent = `🤖 ${HEROES[slot.heroId].name} Bot`;
+
+      top.appendChild(title);
+      if (canEdit) {
+        const rmBtn = document.createElement('button');
+        rmBtn.type = 'button';
+        rmBtn.textContent = '×';
+        rmBtn.title = 'Remove Bot';
+        rmBtn.style.cssText = `
+          min-width:44px;min-height:44px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);
+          background:rgba(255,255,255,0.08);color:#ff7675;font-size:18px;font-weight:800;cursor:pointer;
+        `;
+        rmBtn.onclick = () => this.callbacks.onRemoveBot(slot.slot);
+        top.appendChild(rmBtn);
+      }
+      card.appendChild(top);
+
+      if (canEdit) {
+        const selects = document.createElement('div');
+        selects.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;';
+
+        const heroSel = document.createElement('select');
+        heroSel.style.cssText = 'flex:1;min-width:110px;min-height:44px;padding:6px 8px;border-radius:8px;background:#131826;color:#fff;border:1px solid rgba(255,255,255,0.2);font-size:12px;';
+        for (const h of HERO_LIST) {
+          const opt = document.createElement('option');
+          opt.value = h.id;
+          opt.textContent = h.name;
+          if (slot.heroId === h.id) opt.selected = true;
+          heroSel.appendChild(opt);
+        }
+        heroSel.onchange = () => this.callbacks.onSetBotHero(slot.slot, heroSel.value as HeroId);
+
+        const skillSel = document.createElement('select');
+        skillSel.style.cssText = 'flex:1;min-width:100px;min-height:44px;padding:6px 8px;border-radius:8px;background:#131826;color:#cbd5e1;border:1px solid rgba(255,255,255,0.18);font-size:12px;';
+        for (const [val, lbl] of [
+          [0.72, 'Easy (0.72x)'],
+          [1.0, 'Normal (1.0x)'],
+          [1.18, 'Hard (1.18x)'],
+          [1.32, 'Pro (1.32x)'],
+        ] as const) {
+          const opt = document.createElement('option');
+          opt.value = String(val);
+          opt.textContent = lbl;
+          if (Math.abs(slot.botSkill - val) < 0.02) opt.selected = true;
+          skillSel.appendChild(opt);
+        }
+        skillSel.onchange = () => this.callbacks.onSetBotSkill(slot.slot, Number(skillSel.value));
+
+        selects.append(heroSel, skillSel);
+        card.appendChild(selects);
+      }
+
+      if (myId >= 0) {
+        const takeBtn = document.createElement('button');
+        takeBtn.type = 'button';
+        takeBtn.textContent = isAmber ? 'Take Amber Slot' : 'Take Sapphire Slot';
+        takeBtn.style.cssText = `
+          min-height:44px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.22);
+          background:rgba(255,255,255,0.08);color:#fff;font-size:12px;font-weight:700;cursor:pointer;
+        `;
+        takeBtn.onclick = () => this.callbacks.onClaimSlot(slot.slot);
+        card.appendChild(takeBtn);
+      }
+      return card;
+    }
+
+    // Empty slot
+    const openLabel = document.createElement('div');
+    openLabel.textContent = 'Open Slot';
+    openLabel.style.cssText = 'font-size:12px;font-weight:700;color:#94a3b8;';
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+
+    const joinSlotBtn = document.createElement('button');
+    joinSlotBtn.type = 'button';
+    joinSlotBtn.textContent = isAmber ? 'Join Amber' : 'Join Sapphire';
+    joinSlotBtn.style.cssText = `
+      flex:1;min-height:44px;padding:8px 10px;border-radius:8px;border:none;
+      background:${isAmber ? 'rgba(217,54,54,0.65)' : 'rgba(47,100,201,0.75)'};
+      color:#fff;font-size:12px;font-weight:800;cursor:pointer;
+    `;
+    joinSlotBtn.onclick = () => this.callbacks.onClaimSlot(slot.slot);
+    btnRow.appendChild(joinSlotBtn);
+
+    if (canEdit) {
+      const addBotBtn = document.createElement('button');
+      addBotBtn.type = 'button';
+      addBotBtn.textContent = '+ Add Bot';
+      addBotBtn.style.cssText = `
+        min-height:44px;padding:8px 12px;border-radius:8px;
+        border:1px solid rgba(255,255,255,0.24);background:rgba(255,255,255,0.1);
+        color:#e2e8f0;font-size:12px;font-weight:700;cursor:pointer;
+      `;
+      addBotBtn.onclick = () => this.callbacks.onAddBot(slot.slot);
+      btnRow.appendChild(addBotBtn);
+    }
+
+    card.append(openLabel, btnRow);
+    return card;
+  }
+
+  renderLobby(lobby: LobbyState | null, myId: number, selectedHero: HeroId, statusMsg?: string): void {
+    if (statusMsg !== undefined) {
+      this.lobbyStatusEl.textContent = statusMsg;
+    }
+
+    this.currentRoomCode = lobby?.roomCode ?? null;
+    if (!lobby) {
+      this.lobbyRoomBadgeEl.textContent = 'JOINING LOBBY...';
+      this.lobbyCopyBtn.style.display = 'none';
+      this.lobbyRolePillEl.textContent = 'GUEST';
+      this.lobbyRolePillEl.style.cssText = 'padding:4px 10px;border-radius:99px;font-size:11px;font-weight:800;background:rgba(47,100,201,0.35);color:#74b9ff;';
+      this.lobbyTeamsEl.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px;">Syncing lobby from host...</div>';
+      this.lobbyToolbarEl.innerHTML = '';
+      this.lobbyFooterEl.innerHTML = '';
+    } else {
+      const isHost = !lobby.isOnline || lobby.hostId === myId;
+      if (!lobby.isOnline) {
+        this.lobbyRoomBadgeEl.textContent = 'SOLO SKIRMISH';
+        this.lobbyCopyBtn.style.display = 'none';
+      } else if (lobby.roomCode) {
+        this.lobbyRoomBadgeEl.textContent = `ROOM: ${lobby.roomCode}`;
+        this.lobbyCopyBtn.style.display = 'inline-flex';
+        this.lobbyCopyBtn.style.alignItems = 'center';
+      } else {
+        this.lobbyRoomBadgeEl.textContent = 'PUBLIC LOBBY';
+        this.lobbyCopyBtn.style.display = 'none';
+      }
+
+      this.lobbyRolePillEl.textContent = isHost ? 'HOST' : 'GUEST';
+      this.lobbyRolePillEl.style.cssText = isHost
+        ? 'padding:4px 10px;border-radius:99px;font-size:11px;font-weight:800;background:rgba(245,159,0,0.22);border:1px solid #f59f00;color:#ffd54f;'
+        : 'padding:4px 10px;border-radius:99px;font-size:11px;font-weight:800;background:rgba(47,100,201,0.25);border:1px solid #74b9ff;color:#74b9ff;';
+
+      // Render Amber (0, 1) and Sapphire (2, 3) columns
+      this.lobbyTeamsEl.innerHTML = '';
+      const teams: { team: Team; title: string; color: string; indices: [number, number] }[] = [
+        { team: 0, title: 'AMBER TEAM', color: '#ff7675', indices: [0, 1] },
+        { team: 1, title: 'SAPPHIRE TEAM', color: '#74b9ff', indices: [2, 3] },
+      ];
+      for (const t of teams) {
+        const col = document.createElement('div');
+        col.style.cssText = `
+          padding:12px;border-radius:12px;background:rgba(12,16,28,0.72);
+          border:1px solid rgba(255,255,255,0.12);display:flex;flex-direction:column;gap:8px;
+        `;
+        const colHead = document.createElement('div');
+        colHead.textContent = t.title;
+        colHead.style.cssText = `font-size:13px;font-weight:900;letter-spacing:1px;color:${t.color};`;
+        col.appendChild(colHead);
+        for (const idx of t.indices) {
+          col.appendChild(this.renderLobbySlotCard(lobby.slots[idx], myId, lobby.hostId, isHost));
+        }
+        this.lobbyTeamsEl.appendChild(col);
+      }
+
+      // Render Toolbar
+      this.lobbyToolbarEl.innerHTML = '';
+      const leftTools = document.createElement('div');
+      leftTools.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;';
+
+      const swapBtn = document.createElement('button');
+      swapBtn.type = 'button';
+      swapBtn.textContent = '⇄ Swap Team';
+      swapBtn.style.cssText = `
+        min-height:44px;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.24);
+        background:rgba(255,255,255,0.1);color:#fff;font-size:12px;font-weight:800;cursor:pointer;
+      `;
+      swapBtn.onclick = () => this.callbacks.onSwapTeam();
+      leftTools.appendChild(swapBtn);
+
+      if (isHost) {
+        const fillBtn = document.createElement('button');
+        fillBtn.type = 'button';
+        fillBtn.textContent = 'Fill with Bots';
+        fillBtn.style.cssText = `
+          min-height:44px;padding:8px 14px;border-radius:8px;border:none;
+          background:#2f64c9;color:#fff;font-size:12px;font-weight:800;cursor:pointer;
+        `;
+        fillBtn.onclick = () => this.callbacks.onFillBots();
+
+        const clearBtn = document.createElement('button');
+        clearBtn.type = 'button';
+        clearBtn.textContent = 'Clear Bots';
+        clearBtn.style.cssText = `
+          min-height:44px;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.22);
+          background:rgba(255,255,255,0.08);color:#cbd5e1;font-size:12px;font-weight:700;cursor:pointer;
+        `;
+        clearBtn.onclick = () => this.callbacks.onClearBots();
+        leftTools.append(fillBtn, clearBtn);
+      }
+      this.lobbyToolbarEl.appendChild(leftTools);
+
+      if (isHost) {
+        const diffGroup = document.createElement('div');
+        diffGroup.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;';
+        const diffLbl = document.createElement('span');
+        diffLbl.textContent = 'Bots:';
+        diffLbl.style.cssText = 'font-size:12px;font-weight:700;color:#94a3b8;';
+        diffGroup.appendChild(diffLbl);
+        for (const [diff, lbl] of [
+          ['easy', 'Easy'],
+          ['normal', 'Normal'],
+          ['hard', 'Hard'],
+          ['pro', 'Pro'],
+        ] as const) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = lbl;
+          const active = lobby.difficulty === diff;
+          b.style.cssText = `
+            min-height:44px;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;
+            border:1px solid ${active ? '#74b9ff' : 'rgba(255,255,255,0.2)'};
+            background:${active ? '#2f64c9' : 'rgba(255,255,255,0.08)'};color:#fff;
+          `;
+          b.onclick = () => this.callbacks.onSetDifficulty(diff);
+          diffGroup.appendChild(b);
+        }
+        this.lobbyToolbarEl.appendChild(diffGroup);
+      }
+
+      // Footer CTA
+      this.lobbyFooterEl.innerHTML = '';
+      if (isHost) {
+        const emptyCount = lobby.slots.filter((s) => s.kind === 'empty').length;
+        const startBtn = document.createElement('button');
+        startBtn.type = 'button';
+        startBtn.textContent =
+          emptyCount === 0
+            ? 'Start Match (2v2 Ready)'
+            : `Start Match (Auto-fill ${emptyCount} Bot${emptyCount > 1 ? 's' : ''})`;
+        startBtn.style.cssText = `
+          width:min(360px,100%);min-height:48px;padding:12px 24px;border-radius:10px;border:none;
+          background:linear-gradient(135deg,#f59f00,#e67e22);color:#fff;
+          font-weight:900;font-size:16px;cursor:pointer;box-shadow:0 4px 16px rgba(230,126,34,0.4);
+        `;
+        startBtn.onclick = () => this.callbacks.onStartMatch();
+        this.lobbyFooterEl.appendChild(startBtn);
+      } else {
+        const waitBanner = document.createElement('div');
+        waitBanner.textContent = 'Waiting for Host to start the match...';
+        waitBanner.style.cssText = `
+          padding:12px 20px;border-radius:10px;background:rgba(255,255,255,0.08);
+          border:1px solid rgba(255,255,255,0.16);color:#cbd5e1;font-size:14px;font-weight:700;
+        `;
+        this.lobbyFooterEl.appendChild(waitBanner);
+      }
+    }
+
+    // Compact Hero Picker
+    this.lobbyHeroGridEl.innerHTML = '';
     for (const h of HERO_LIST) {
-      const card = document.createElement('button');
-      card.type = 'button';
-      card.style.cssText = `
-        text-align:left;padding:12px;border-radius:10px;cursor:pointer;color:#fff;
-        background:rgba(255,255,255,0.07);border:2px solid rgba(255,255,255,0.16);
-        transition:transform 0.12s,border-color 0.12s;
+      const active = h.id === selectedHero;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.style.cssText = `
+        min-height:44px;padding:8px;border-radius:8px;text-align:left;cursor:pointer;color:#fff;
+        background:${active ? 'rgba(255,213,79,0.16)' : 'rgba(255,255,255,0.06)'};
+        border:1.5px solid ${active ? '#ffd54f' : 'rgba(255,255,255,0.16)'};
+        display:flex;flex-direction:column;gap:4px;
       `;
       const miniIcons = (['Q', 'E', 'F', 'X'] as const)
         .map((s) => {
           const ic = spellIconSvg(h.id, s);
-          return `<span title="${h.abilities[s].name}" style="display:inline-flex;width:16px;height:16px;color:${ic.color}">${ic.svg}</span>`;
+          return `<span style="display:inline-flex;width:13px;height:13px;color:${ic.color}">${ic.svg}</span>`;
         })
         .join('');
-      card.innerHTML = `
-        <div style="font-weight:800;font-size:16px;color:#ffd54f">${h.name}</div>
-        <div style="font-size:11px;color:#93c5fd;margin-bottom:4px">${h.title} • ${h.role}</div>
-        <div style="font-size:11px;color:#cbd5e1;line-height:1.3;margin-bottom:6px">${h.weapon.name} • HP ${h.baseHp}</div>
-        <div style="display:flex;gap:5px;align-items:center">${miniIcons}</div>
+      btn.innerHTML = `
+        <div style="font-weight:800;font-size:13px;color:${active ? '#ffd54f' : '#fff'}">${h.name}</div>
+        <div style="font-size:10px;color:#93c5fd">${h.role.split(' ')[0]} • ${h.baseHp}HP</div>
+        <div style="display:flex;gap:3px">${miniIcons}</div>
       `;
-      card.onclick = () => {
-        this.selectedHero = h.id;
-        for (const c of cardEls) c.style.borderColor = 'rgba(255,255,255,0.16)';
-        card.style.borderColor = '#ffd54f';
-      };
-      if (h.id === this.selectedHero) card.style.borderColor = '#ffd54f';
-      cardEls.push(card);
-      cards.appendChild(card);
+      btn.onclick = () => this.callbacks.onPickHero(h.id);
+      this.lobbyHeroGridEl.appendChild(btn);
     }
 
-    // ---- 2v2 Player & Team Setup Panel ----
-    const setupBox = document.createElement('div');
-    setupBox.id = 'custom-players-panel';
-    setupBox.style.cssText = `
-      width:min(820px,100%);padding:12px;border-radius:10px;
-      background:rgba(0,0,0,0.34);border:1px solid rgba(255,255,255,0.16);
-      display:flex;flex-direction:column;gap:10px;
-    `;
-
-    const presetRow = document.createElement('div');
-    presetRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;';
-    const presetLabel = document.createElement('div');
-    presetLabel.textContent = '2v2 Team Setup:';
-    presetLabel.style.cssText = 'font-size:12px;font-weight:800;color:#ffd54f;';
-
-    const presetBtns = document.createElement('div');
-    presetBtns.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
-    const modeDefs: { mode: TeamMode; label: string }[] = [
-      { mode: 'versus', label: '1H+1B vs 1H+1B (Versus)' },
-      { mode: 'coop', label: '2H vs 2B (Co-op)' },
-      { mode: 'custom', label: 'Custom Slots' },
-    ];
-    const modeBtnEls = new Map<TeamMode, HTMLButtonElement>();
-
-    const diffRow = document.createElement('div');
-    diffRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;';
-    const diffLabel = document.createElement('div');
-    diffLabel.textContent = 'Bot Difficulty:';
-    diffLabel.style.cssText = 'font-size:12px;font-weight:800;color:#93c5fd;';
-    const diffBtns = document.createElement('div');
-    diffBtns.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
-    const diffDefs: { diff: BotDifficulty; label: string }[] = [
-      { diff: 'easy', label: 'Easy' },
-      { diff: 'normal', label: 'Normal' },
-      { diff: 'hard', label: 'Hard' },
-      { diff: 'pro', label: 'Pro' },
-    ];
-    const diffBtnEls = new Map<BotDifficulty, HTMLButtonElement>();
-
-    const slotsGrid = document.createElement('div');
-    slotsGrid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:8px;';
-
-    const renderSetup = () => {
-      for (const [m, b] of modeBtnEls) {
-        const active = this.customConfig.mode === m;
-        b.style.background = active ? '#e67e22' : 'rgba(255,255,255,0.1)';
-        b.style.borderColor = active ? '#ffd54f' : 'rgba(255,255,255,0.2)';
-      }
-      for (const [d, b] of diffBtnEls) {
-        const active = this.customConfig.difficulty === d;
-        b.style.background = active ? '#2f64c9' : 'rgba(255,255,255,0.1)';
-        b.style.borderColor = active ? '#74b9ff' : 'rgba(255,255,255,0.2)';
-      }
-
-      // In versus/coop presets, slot 0 is always P1 unless user switches to custom
-      if (this.customConfig.mode !== 'custom') {
-        this.customConfig.localSlotPref = 0;
-      }
-
-      slotsGrid.innerHTML = '';
-      const p2Slot = this.customConfig.mode === 'versus' ? 2 : this.customConfig.mode === 'coop' ? 1 : -1;
-
-      for (let slot = 0; slot < 4; slot++) {
-        const isAmber = slot < 2;
-        const isLocal = this.customConfig.localSlotPref === slot;
-        const isP2Online = slot === p2Slot;
-
-        const cell = document.createElement('div');
-        cell.style.cssText = `
-          padding:8px;border-radius:8px;display:flex;flex-direction:column;gap:5px;
-          background:${isAmber ? 'rgba(217,54,54,0.14)' : 'rgba(47,100,201,0.14)'};
-          border:1px solid ${isLocal ? '#ffd54f' : isAmber ? 'rgba(255,118,117,0.35)' : 'rgba(116,185,255,0.35)'};
-        `;
-
-        const head = document.createElement('div');
-        head.style.cssText = 'display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:800;';
-        const teamTag = isAmber ? `Amber ${slot + 1}` : `Sapphire ${slot - 1}`;
-        const roleTag = isLocal
-          ? '<span style="color:#ffd54f">YOU</span>'
-          : isP2Online
-            ? '<span style="color:#8ce99a">P2 (or Bot)</span>'
-            : '<span style="color:#94a3b8">BOT</span>';
-        head.innerHTML = `<span style="color:${isAmber ? '#ff7675' : '#74b9ff'}">${teamTag}</span>${roleTag}`;
-        cell.appendChild(head);
-
-        if (isLocal) {
-          const youInfo = document.createElement('div');
-          youInfo.style.cssText = 'font-size:12px;font-weight:700;color:#fff;';
-          youInfo.textContent = `${HEROES[this.selectedHero].name} (Player)`;
-          cell.appendChild(youInfo);
-        } else {
-          const heroSel = document.createElement('select');
-          heroSel.style.cssText = 'padding:4px 6px;border-radius:5px;background:#131826;color:#fff;border:1px solid rgba(255,255,255,0.2);font-size:11px;';
-          for (const h of HERO_LIST) {
-            const opt = document.createElement('option');
-            opt.value = h.id;
-            opt.textContent = `${h.name} (${h.role.split(' ')[0]})`;
-            if (this.customConfig.botHeroes[slot] === h.id) opt.selected = true;
-            heroSel.appendChild(opt);
-          }
-          heroSel.onchange = () => {
-            this.customConfig.botHeroes[slot] = heroSel.value as HeroId;
-          };
-
-          const skillSel = document.createElement('select');
-          skillSel.style.cssText = 'padding:4px 6px;border-radius:5px;background:#131826;color:#cbd5e1;border:1px solid rgba(255,255,255,0.16);font-size:11px;';
-          for (const [val, lbl] of [
-            [0.72, 'Bot: Easy (0.72x)'],
-            [1.0, 'Bot: Normal (1.0x)'],
-            [1.18, 'Bot: Hard (1.18x)'],
-            [1.32, 'Bot: Pro (1.32x)'],
-          ] as const) {
-            const opt = document.createElement('option');
-            opt.value = String(val);
-            opt.textContent = lbl;
-            if (Math.abs(this.customConfig.botSkills[slot] - val) < 0.02) opt.selected = true;
-            skillSel.appendChild(opt);
-          }
-          skillSel.onchange = () => {
-            this.customConfig.botSkills[slot] = Number(skillSel.value);
-          };
-
-          const playHereBtn = document.createElement('button');
-          playHereBtn.type = 'button';
-          playHereBtn.textContent = 'Play Here';
-          playHereBtn.style.cssText = 'padding:4px 6px;border-radius:5px;border:1px solid rgba(255,255,255,0.22);background:rgba(255,255,255,0.08);color:#fff;font-size:10px;font-weight:700;cursor:pointer;';
-          playHereBtn.onclick = () => {
-            this.customConfig.mode = 'custom';
-            this.customConfig.localSlotPref = slot;
-            renderSetup();
-          };
-
-          cell.append(heroSel, skillSel, playHereBtn);
-        }
-
-        slotsGrid.appendChild(cell);
-      }
-    };
-
-    for (const def of modeDefs) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = def.label;
-      b.style.cssText = 'padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:11px;font-weight:700;cursor:pointer;';
-      b.onclick = () => {
-        this.customConfig.mode = def.mode;
-        renderSetup();
-      };
-      modeBtnEls.set(def.mode, b);
-      presetBtns.appendChild(b);
-    }
-
-    for (const def of diffDefs) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = def.label;
-      b.style.cssText = 'padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:11px;font-weight:700;cursor:pointer;';
-      b.onclick = () => {
-        this.customConfig.difficulty = def.diff;
-        const sk = BOT_DIFFICULTY_SKILL[def.diff];
-        this.customConfig.botSkills = [sk, sk, sk, sk];
-        renderSetup();
-      };
-      diffBtnEls.set(def.diff, b);
-      diffBtns.appendChild(b);
-    }
-
-    presetRow.append(presetLabel, presetBtns);
-    diffRow.append(diffLabel, diffBtns);
-    setupBox.append(presetRow, diffRow, slotsGrid);
-    renderSetup();
-
-    const actions = document.createElement('div');
-    actions.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:center;';
-
-    const soloBtn = document.createElement('button');
-    soloBtn.type = 'button';
-    soloBtn.textContent = 'Play Solo (2v2 Bots)';
-    soloBtn.style.cssText = 'padding:12px 22px;border-radius:8px;border:none;background:#e67e22;color:#fff;font-weight:800;font-size:15px;cursor:pointer;';
-    soloBtn.onclick = () => this.callbacks.onPlaySolo(this.selectedHero, this.customConfig);
-
-    const onlineBtn = document.createElement('button');
-    onlineBtn.type = 'button';
-    onlineBtn.textContent = 'Play Online (2v2)';
-    onlineBtn.style.cssText = 'padding:12px 20px;border-radius:8px;border:none;background:#2f64c9;color:#fff;font-weight:800;font-size:15px;cursor:pointer;';
-    onlineBtn.onclick = () => this.callbacks.onPlayOnline(this.selectedHero, null, this.customConfig);
-
-    const codeInput = document.createElement('input');
-    codeInput.placeholder = 'ROOM CODE';
-    codeInput.maxLength = 8;
-    codeInput.style.cssText = 'padding:11px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.25);background:rgba(0,0,0,0.35);color:#fff;width:110px;text-transform:uppercase;font-weight:700;';
-
-    const joinBtn = document.createElement('button');
-    joinBtn.type = 'button';
-    joinBtn.textContent = 'Join Code';
-    joinBtn.style.cssText = 'padding:12px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.12);color:#fff;font-weight:700;cursor:pointer;';
-    joinBtn.onclick = () => {
-      const c = codeInput.value.trim().toUpperCase();
-      this.callbacks.onPlayOnline(this.selectedHero, c || 'BRAMBLE', this.customConfig);
-    };
-
-    this.statusEl = document.createElement('div');
-    this.statusEl.style.cssText = 'font-size:13px;color:#ffd54f;min-height:18px;';
-
-    actions.append(soloBtn, onlineBtn, codeInput, joinBtn);
-    el.append(title, sub, cards, setupBox, actions, this.statusEl);
-    return el;
+    const cur = HEROES[selectedHero];
+    this.lobbyHeroInfoEl.textContent = `${cur.name} (${cur.title}) — ${cur.weapon.name} • Q: ${cur.abilities.Q.name} • E: ${cur.abilities.E.name} • F: ${cur.abilities.F.name} • X: ${cur.abilities.X.name}`;
   }
 
   private buildHud(): HTMLDivElement {
@@ -650,12 +958,24 @@ export class GnomelockUI {
 
   setStatus(msg: string): void {
     this.statusEl.textContent = msg;
+    if (this.lobbyStatusEl) {
+      this.lobbyStatusEl.textContent = msg;
+    }
+  }
+
+  showScreen(screen: 'title' | 'lobby' | 'hud'): void {
+    this.titleEl.style.display = screen === 'title' ? 'flex' : 'none';
+    this.lobbyEl.style.display = screen === 'lobby' ? 'flex' : 'none';
+    this.hudEl.style.display = screen === 'hud' ? 'block' : 'none';
+    if (screen !== 'hud') {
+      this.endEl.style.display = 'none';
+      this.shopEl.style.display = 'none';
+      this.shopOpen = false;
+    }
   }
 
   showLobby(show: boolean): void {
-    this.lobbyEl.style.display = show ? 'flex' : 'none';
-    this.hudEl.style.display = show ? 'none' : 'block';
-    if (show) this.endEl.style.display = 'none';
+    this.showScreen(show ? 'title' : 'hud');
   }
 
   toggleShop(force?: boolean): boolean {
@@ -707,11 +1027,19 @@ export class GnomelockUI {
           .join('')}
       </div>
     `;
-    const btn = document.createElement('button');
-    btn.textContent = 'Play Again';
-    btn.style.cssText = 'padding:12px 24px;border-radius:8px;border:none;background:#e67e22;color:#fff;font-weight:800;font-size:15px;cursor:pointer;';
-    btn.onclick = () => this.callbacks.onPlayAgain();
-    this.endEl.appendChild(btn);
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;justify-content:center;';
+    const lobbyBtn = document.createElement('button');
+    lobbyBtn.textContent = 'Return to Lobby';
+    lobbyBtn.style.cssText = 'min-height:44px;padding:12px 22px;border-radius:8px;border:none;background:#e67e22;color:#fff;font-weight:800;font-size:15px;cursor:pointer;';
+    lobbyBtn.onclick = () => this.callbacks.onReturnToLobby();
+
+    const titleBtn = document.createElement('button');
+    titleBtn.textContent = 'Back to Title';
+    titleBtn.style.cssText = 'min-height:44px;padding:12px 22px;border-radius:8px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.1);color:#fff;font-weight:700;font-size:15px;cursor:pointer;';
+    titleBtn.onclick = () => this.callbacks.onPlayAgain();
+    btnRow.append(lobbyBtn, titleBtn);
+    this.endEl.appendChild(btnRow);
   }
 
   setAds(ads: boolean): void {
