@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BALL_R, CUE_BALL, TABLE_W } from './config';
-import { backRoom } from './aim';
+import { backRoom, deltaAngle, rotateDir } from './aim';
 import type { Ball } from './physics';
 
 const cue = (x: number, y: number): Ball => ({ id: CUE_BALL, x, y, vx: 0, vy: 0, pocketed: false });
@@ -26,5 +26,27 @@ describe('cue stick room', () => {
 
   it('room never goes past the far rail for a diagonal butt', () => {
     expect(backRoom([cue(TABLE_W - 0.05, 0.05)], TABLE_W - 0.05, 0.05, 0.7, 0.7)).toBeLessThanOrEqual(BALL_R * 2);
+  });
+});
+
+describe('fine aim math', () => {
+  it('rotateDir rotates by exact angle and preserves unit length', () => {
+    const r = rotateDir(1, 0, Math.PI / 2);
+    expect(r.dx).toBeCloseTo(0, 8);
+    expect(r.dy).toBeCloseTo(1, 8);
+    expect(Math.hypot(r.dx, r.dy)).toBeCloseTo(1, 8);
+
+    const fine = rotateDir(Math.SQRT1_2, Math.SQRT1_2, 0.01);
+    expect(Math.hypot(fine.dx, fine.dy)).toBeCloseTo(1, 8);
+    expect(deltaAngle(Math.SQRT1_2, Math.SQRT1_2, fine.dx, fine.dy)).toBeCloseTo(0.01, 8);
+  });
+
+  it('deltaAngle handles positive, negative, and +-PI wrap-around', () => {
+    expect(deltaAngle(1, 0, 0, 1)).toBeCloseTo(Math.PI / 2, 8);
+    expect(deltaAngle(1, 0, 0, -1)).toBeCloseTo(-Math.PI / 2, 8);
+    const a1 = Math.PI - 0.1;
+    const a2 = -Math.PI + 0.1;
+    expect(deltaAngle(Math.cos(a1), Math.sin(a1), Math.cos(a2), Math.sin(a2))).toBeCloseTo(0.2, 8);
+    expect(deltaAngle(Math.cos(a2), Math.sin(a2), Math.cos(a1), Math.sin(a1))).toBeCloseTo(-0.2, 8);
   });
 });

@@ -1,55 +1,45 @@
-// Gnome Billiards: the game controller. It ties the table physics, the 8-ball rules, Big Lou, the online link, the
-// three.js scene and the screens together. Shots run in fixed physics steps, so every browser plays the same shot the same way.
-//
-// Controls:
-//   - Tap the floor (outside the table) to walk your gnome there. Gnomes keep clear of the rails.
-//   - A shot takes two strokes on the table: line up with a drag (let go to lock the line), then pull back along the
-//     line and swipe forward through the ball. A short or sideways swipe is a cancelled stroke; drift bends the shot.
-//   - Emote buttons play an emote on your gnome. The camera button switches between following your gnome in third
-//     person and locking onto the whole table. Spectating watches two CPU gnomes play, with an orbit camera.
+// Gnome Billiards: the game controller. Ties together table physics, 8-ball/9-ball/Straight/6-ball rules,
+// multi-tier CPUs with table talk, fine-grain aiming, chip wagering, challenge mode, online link, and 3D scene.
 import { getMyGnome, GNORMAN_LOOK, resolveLook, type GnomeLook } from '@lawn/gnome';
 import { DEFAULT_LOADOUT, getEmote, isEmoteId, loadMyEmotes } from '@lawn/emotes';
 import type { PlayerInfo } from '@lawn/mp/protocol';
-import { aimLine } from './aim';
+import { claimFreeChips, getChips, onOakcountChange, spendChips, winChips } from '@lawn/oakcount';
 import { createBilliardsAchievements } from './achievements';
-import { chooseCpuShot, cpuPlaceSpot } from './cpu';
-import { BALL_R, CPU_NAME, CPU_THINK_S, CUE_BALL, MAX_SHOT_SPEED, PULL_MAX, SETTLE_LIMIT_S, SUB_DT, TABLE_H, TABLE_W } from './config';
-import { createHud, type EmoteButton, type Hud, type SeatView } from './hud';
+import { deltaAngle, FINE_AIM_SCALE, NUDGE_STEP_RAD, rotateDir } from './aim';
+import { createBanterVoice, pickBanter, type BanterTopic } from './banter';
+import { CHALLENGES, challengeBalls, challengeTargets, checkChallenge, loadCompletedChallenges, markChallengeComplete, type ChallengeDef } from './challenges';
+import { CPU_THINK_S, CUE_BALL, MAX_SHOT_SPEED, PULL_MAX, SETTLE_LIMIT_S, SUB_DT, TABLE_H, TABLE_W } from './config';
+import { chooseCpuShot, CPU_PROFILES, cpuPlaceSpot, type CpuTier } from './cpu';
 import { isIdle, RAIL_HX, RAIL_HZ, separateWalkers, stepWalker, walkTo, type Walker } from './gnomes';
+import { createHud, type EmoteButton, type Hud, type SeatView } from './hud';
+import { initPoolMusic } from './music';
 import { openOnline, type BilMsg, type OnlineLink } from './net';
 import { beginShot, canPlaceCue, copyBalls, isMoving, setCue, stepOnce, type Ball, type Table } from './physics';
-import { applyVerdict, judge, newMatch, type Match, type Verdict } from './rules';
+import { applyVerdict, GAME_MODE_META, judge, lowestBallId, newMatch, STRAIGHT_TARGET, type GameMode, type Match, type Verdict } from './rules';
 import { BilliardsScene, SEAT_X, type CameraMode } from './scene';
 import { sfx } from './sfx';
-import { initPoolMusic } from './music';
+import { clampWager, wagerPayout } from './wager';
 
-type Mode = 'cpu' | 'local' | 'online' | 'spectate';
+type Mode = 'cpu' | 'local' | 'online' | 'spectate' | 'challenge';
 interface Seat {
   name: string;
   look: GnomeLook;
+  cpuTier?: CpuTier;
 }
 
-/** A pull of at least this much (table units) counts as a stroke; less is just a tap. */
 const MIN_PULL = 0.02;
-/** The forward swipe after the pull must carry the pointer at least this far through the ball. */
 const MIN_FORWARD = 0.04;
-/** How often my gnome's place is sent to the other player while it walks (ms). */
 const POSE_EVERY_MS = 120;
-/** How long a spectated CPU shot waits, once the gnome is in place (seconds). */
 const SPECTATE_THINK_S = 0.7;
+const NAG_AFTER_S = 18;
 
-const CPU_LOOK: GnomeLook = { ...GNORMAN_LOOK, hat: 0x3b6ea5, shirt: 0x6b3a2a, pants: 0x2a2a32, beard: 0x8a5a3a };
 const PASS_LOOK: GnomeLook = { ...GNORMAN_LOOK, hat: 0x2e8a5a, beard: null, freckles: true };
-const SPECTATE_LOOK: GnomeLook = { ...GNORMAN_LOOK, hat: 0x8a3ab0, shirt: 0x2a6a4a, beard: 0xd8d8d8 };
-
 const CAM_NAMES: Record<CameraMode, string> = { follow: 'Follow', table: 'Table', orbit: 'Orbit' };
 
-/** Whether a table point (table units) lies over the table with its rails. */
 function overTable(x: number, y: number): boolean {
   return Math.abs(x - TABLE_W / 2) <= RAIL_HX && Math.abs(y - TABLE_H / 2) <= RAIL_HZ;
 }
 
-/** Generous margin around the table so pulling back on the cue stick near a rail still counts as a stroke. */
 function nearTable(x: number, y: number): boolean {
   return Math.abs(x - TABLE_W / 2) <= RAIL_HX + 0.55 && Math.abs(y - TABLE_H / 2) <= RAIL_HZ + 0.55;
 }
@@ -61,10 +51,18 @@ export function startApp(): void {
   const music = initPoolMusic();
   music.setOn(!sfx.isMuted());
   const achievements = createBilliardsAchievements(ui);
+  const banter = createBanterVoice(() => sfx.isMuted());
 
   let mode: Mode = 'cpu';
+  let gameMode: GameMode = '8ball';
+  let cpuTier: CpuTier = 'regular';
+  let wager = 0;
+  let activeWager = 0;
+  let activeWagerMult = 1;
+  let challenge: ChallengeDef | null = null;
+  let completedChallenges = loadCompletedChallenges();
+
   let seats: Seat[] = [];
-  /** My slot: the human at this screen (online: my seat; vs CPU: slot 0). Pass and play has no single owner. */
   let me = 0;
   let m: Match = newMatch(1);
   let started = false;
@@ -84,34 +82,31 @@ export function startApp(): void {
   let last = performance.now();
   let clock = 0;
 
-  // The two-stroke shot. 'line' = lining up; 'strike' = the aim is locked, waiting for the pull.
   let stage: 'line' | 'strike' = 'line';
-  /** Unit shot direction in table units, locked or being lined up. */
   let dir = { dx: 1, dy: 0 };
   let lining = false;
-  /** A strike in progress: where the press began, the furthest pull so far, and where that pull point was. */
+  let fineAim = false;
+  let shiftDown = false;
+  let lastDragVec: { x: number; y: number } | null = null;
   let stroke: { sx: number; sy: number; maxPull: number; pullX: number; pullY: number; nowPull: number } | null = null;
 
-  // Camera: the modes you cycle through (spectating starts with the orbit).
   let camIdx = 0;
   let camModes: CameraMode[] = ['follow', 'table'];
-
-  // Emotes: my loadout (unlocked ones), with the free ones until it loads.
   let emoteIds: string[] = [...DEFAULT_LOADOUT];
-
-  /** The other player's gnome, as last reported over the network (online). */
   let remotePose: { x: number; z: number; yaw: number } | null = null;
   let poseSentAt = 0;
   let wasMoving = false;
-  /** Countdown to a CPU gnome's next wander, per seat. */
   const wanderT = [1, 1];
+  let turnIdleS = 0;
+  let naggedThisTurn = false;
+  let lastBanter = '';
 
   const myName = (): string => getMyGnome()?.name ?? 'You';
   const myLook = (): GnomeLook => getMyGnome()?.look ?? GNORMAN_LOOK;
   const seedNow = (): number => Math.floor(Math.random() * 2147483647) + 1;
-  const isHuman = (slot: number): boolean => (mode === 'cpu' ? slot === 0 : mode === 'local' ? true : mode === 'online' ? slot === me : false);
+  const isHuman = (slot: number): boolean =>
+    mode === 'cpu' ? slot === 0 : mode === 'challenge' ? slot === 0 : mode === 'local' ? true : mode === 'online' ? slot === me : false;
 
-  /** The seat whose gnome I walk and emote: the shooter in pass and play, my seat otherwise (none when spectating). */
   function walkSeat(): number {
     if (!started || mode === 'spectate') return -1;
     return mode === 'local' ? m.turn : me;
@@ -119,18 +114,27 @@ export function startApp(): void {
 
   function canAct(): boolean {
     if (!started || table !== null || m.winner !== null || mode === 'spectate') return false;
-    if (mode === 'local') return true;
+    if (mode === 'local' || mode === 'challenge') return true;
     if (mode === 'cpu') return m.turn === 0;
     return m.turn === me;
   }
 
-  /** Big Lou's (or the spectated) turn: the CPU takes the shot once its gnome is in place. */
   function isCpuTurn(): boolean {
     return started && table === null && m.winner === null && (mode === 'spectate' || (mode === 'cpu' && m.turn === 1));
   }
 
-  /** How many of this slot's seven balls are down (pocketed), and its group. */
+  function speakCpu(tier: CpuTier, topic: BanterTopic, seatIdx = 1): void {
+    const line = pickBanter(tier, topic, { player: myName(), wager: activeWager }, Math.random, lastBanter);
+    if (!line) return;
+    lastBanter = line;
+    const speaker = seats[seatIdx]?.name ?? CPU_PROFILES[tier].name;
+    const accent = tier === 'cracked' ? '#ffd54f' : tier === 'shark' ? '#ff6e91' : '#9ad8ff';
+    hud.showBubble(speaker, line, accent);
+    banter.say(line, tier);
+  }
+
   function scoreOf(slot: number): { group: 'solid' | 'stripe' | null; potted: number } {
+    if (m.gameMode !== '8ball') return { group: null, potted: 0 };
     const grp = m.groups[slot] ?? null;
     if (!grp) return { group: null, potted: 0 };
     const potted = m.balls.filter((b) => b.pocketed && b.id !== CUE_BALL && (grp === 'solid' ? b.id <= 7 : b.id >= 9)).length;
@@ -138,6 +142,18 @@ export function startApp(): void {
   }
 
   function groupLabel(slot: number): string {
+    if (mode === 'challenge' && challenge) {
+      const targets = new Set(challengeTargets(challenge));
+      const left = m.balls.filter((b) => !b.pocketed && targets.has(b.id)).length;
+      return `Shots: ${m.shots}/${challenge.parShots} · ${left} left`;
+    }
+    if (m.gameMode === '9ball' || m.gameMode === '6ball') {
+      const low = lowestBallId(m.balls);
+      return low !== null ? `${GAME_MODE_META[m.gameMode].short} · Target: ${low}` : GAME_MODE_META[m.gameMode].short;
+    }
+    if (m.gameMode === 'straight') {
+      return `Points: ${m.scores[slot]} / ${STRAIGHT_TARGET}`;
+    }
     const { group, potted } = scoreOf(slot);
     if (!group) return 'Open table: first to pocket decides';
     return `${group === 'solid' ? 'Solids' : 'Stripes'} · ${potted} of 7 down`;
@@ -148,32 +164,56 @@ export function startApp(): void {
   }
 
   function emoteButtons(): EmoteButton[] {
-    return emoteIds.map((id) => getEmote(id)).filter((e): e is NonNullable<ReturnType<typeof getEmote>> => !!e)
+    return emoteIds
+      .map((id) => getEmote(id))
+      .filter((e): e is NonNullable<ReturnType<typeof getEmote>> => !!e)
       .map((e) => ({ id: e.id, label: e.label, icon: e.icon }));
   }
 
   function refreshHud(): void {
     if (!started) {
       hud.setBar(!sfx.isMuted(), false, null);
+      hud.setFineControls(false, fineAim);
+      hud.setPot(null);
       hud.setEmotes([]);
       return;
     }
     const views: SeatView[] = seats.map((s, i) => ({
       name: s.name,
       look: s.look,
-      sub: mode === 'spectate' ? (i === 0 ? 'Big Lou' : 'Watching') : groupLabel(i),
+      sub: mode === 'spectate' ? (s.cpuTier ? CPU_PROFILES[s.cpuTier].title : 'CPU') : groupLabel(i),
       active: m.winner === null && m.turn === i,
-      pips: scoreOf(i),
+      pips: m.gameMode === '8ball' && mode !== 'challenge' ? scoreOf(i) : undefined,
     }));
     hud.setSeats(views);
-    const reaim = canAct() && !m.ballInHand && stage === 'strike';
-    hud.setBar(!sfx.isMuted(), true, `Camera: ${CAM_NAMES[currentCam()]}`, mode !== 'spectate', reaim);
+    if (mode === 'cpu' && activeWager > 0) {
+      const pay = wagerPayout(activeWager, activeWagerMult);
+      hud.setPot(`Pot: 🪙 ${activeWager} (Win +${pay.profit})`);
+    } else if (mode === 'challenge' && challenge) {
+      hud.setPot(`🏆 ${challenge.title} · +${challenge.chipReward}🪙`);
+    } else {
+      hud.setPot(null);
+    }
+
+    const canAimNow = canAct() && !m.ballInHand;
+    const reaim = canAimNow && stage === 'strike';
+    hud.setBar(
+      !sfx.isMuted(),
+      true,
+      `Camera: ${CAM_NAMES[currentCam()]}`,
+      mode !== 'spectate',
+      reaim,
+      canAimNow,
+      fineAim || shiftDown,
+      mode === 'challenge',
+    );
+    hud.setFineControls(canAimNow, fineAim || shiftDown);
     hud.setEmotes(mode === 'spectate' ? [] : emoteButtons());
     let hint = '';
     if (canAct()) {
       if (m.ballInHand) hint = 'Drag the cue ball onto the cloth.';
-      else if (stage === 'line') hint = 'Drag on the table to aim, then let go. Tap the floor to walk.';
-      else hint = 'Pull back and release to shoot (slide back to cancel, or tap Re-aim).';
+      else if (stage === 'line') hint = fineAim ? 'Fine Aim ON: drag gently or tap ◀/▶. Let go to lock.' : 'Drag on the table to aim, then let go.';
+      else hint = 'Pull back and release to shoot (◀/▶ nudges aim).';
     } else if (mode === 'spectate') {
       hint = 'Spectating. Tap Camera to change the view.';
     }
@@ -186,20 +226,35 @@ export function startApp(): void {
     placing = null;
     lining = false;
     stroke = null;
+    activeWager = 0;
+    challenge = null;
+    wager = clampWager(wager, getChips());
+    hud.hideBubble();
+    hud.setPot(null);
     hud.setPower(null);
+    hud.setFineControls(false, fineAim);
     hud.setBar(!sfx.isMuted(), false, null);
     hud.setEmotes([]);
     hud.setMessage('');
     hud.setSeats([]);
     hud.hideOver();
-    hud.showMenu({ status: menuStatus, searching });
+    hud.showMenu({
+      status: menuStatus,
+      searching,
+      gameMode,
+      cpuTier,
+      chips: getChips(),
+      wager,
+      completedChallenges: completedChallenges.size,
+      totalChallenges: CHALLENGES.length,
+    });
   }
 
-  function startGame(newMode: Mode, sts: Seat[], meSlot: number, seed: number): void {
+  function startGame(newMode: Mode, sts: Seat[], meSlot: number, seed: number, gm: GameMode = gameMode): void {
     mode = newMode;
     seats = sts;
     me = meSlot;
-    m = newMatch(seed, 0);
+    m = newMatch(seed, 0, gm);
     started = true;
     table = null;
     pendingSync = null;
@@ -215,18 +270,38 @@ export function startApp(): void {
     wasMoving = false;
     wanderT[0] = 1;
     wanderT[1] = 1;
+    turnIdleS = 0;
+    naggedThisTurn = false;
     camModes = mode === 'spectate' ? ['orbit', 'table', 'follow'] : ['follow', 'table'];
     camIdx = 0;
-    note = `${seats[0].name} breaks.`;
+    note = mode === 'challenge' && challenge ? challenge.description : `${seats[0].name} breaks (${GAME_MODE_META[gm].short}).`;
     scene.setSeats(seats.map((s) => s.look));
     hud.hideMenu();
     hud.hideOver();
+    hud.hideBubble();
+    refreshHud();
+
+    if (mode === 'cpu') {
+      const chipsBefore = getChips() + activeWager;
+      const high = activeWager > 0 && chipsBefore > 0 && activeWager >= chipsBefore * 0.25;
+      speakCpu(cpuTier, high ? 'highWager' : 'matchStart', 1);
+    } else if (mode === 'spectate') {
+      speakCpu(sts[0].cpuTier ?? 'regular', 'matchStart', 0);
+    }
+  }
+
+  function startChallenge(def: ChallengeDef): void {
+    challenge = def;
+    activeWager = 0;
+    startGame('challenge', [{ name: myName(), look: myLook() }], 0, 1, '8ball');
+    m.balls = challengeBalls(def);
+    m.shots = 0;
+    note = `${def.title}: ${def.description}`;
     refreshHud();
   }
 
   // ------------------------------------------------------------ shots
 
-  /** Strikes the cue ball (already placed, if it was in hand) and starts the animation. */
   function fire(vx: number, vy: number): void {
     shooter = m.turn;
     before = copyBalls(m.balls);
@@ -238,17 +313,45 @@ export function startApp(): void {
     acc = 0;
     stroke = null;
     stage = 'line';
+    turnIdleS = 0;
+    naggedThisTurn = false;
     sfx.clack(Math.min(1, Math.hypot(vx, vy) / MAX_SHOT_SPEED));
     refreshHud();
   }
 
-  /** The table has come to rest: judge the shot, update the match, and tell the other browser (online). */
   function finishShot(): void {
     const t = table;
     if (!t) return;
     table = null;
     const isBreak = m.shots === 0;
-    const v: Verdict = judge(before, t.events, m.groups, shooter);
+
+    if (mode === 'challenge' && challenge) {
+      m.balls = copyBalls(t.balls);
+      m.shots++;
+      const res = checkChallenge(challenge, before, m.balls, t.events, m.shots);
+      if (t.events.pocketed.some((id) => id !== CUE_BALL)) sfx.pocket();
+      if (t.events.pocketed.includes(CUE_BALL)) sfx.foul();
+      if (res.status === 'won') {
+        const first = markChallengeComplete(challenge.id);
+        completedChallenges = loadCompletedChallenges();
+        achievements.challengeClear();
+        if (first) winChips(challenge.chipReward);
+        sfx.win();
+        const sub = first ? `First-time clear: +${challenge.chipReward} chips!` : `Cleared in ${m.shots} shot${m.shots > 1 ? 's' : ''}!`;
+        const idx = CHALLENGES.findIndex((c) => c.id === challenge!.id);
+        const hasNext = idx >= 0 && idx + 1 < CHALLENGES.length;
+        hud.showOver(`🏆 ${challenge.title} Cleared!`, true, sub, hasNext ? 'Next Challenge' : undefined);
+      } else if (res.status === 'lost') {
+        sfx.lose();
+        hud.showOver('Challenge Failed', true, res.reason);
+      } else {
+        note = `${res.remaining} target${res.remaining > 1 ? 's' : ''} left · ${challenge.parShots - m.shots} shot${challenge.parShots - m.shots > 1 ? 's' : ''} remaining.`;
+      }
+      refreshHud();
+      return;
+    }
+
+    const v: Verdict = judge(before, t.events, m.groups, shooter, m.gameMode, m.scores);
     applyVerdict(m, t.balls, v);
     report(v, isBreak);
     if (mode === 'online' && shooter === me && online) online.send({ k: 'sync', match: snapshot(m) });
@@ -272,7 +375,8 @@ export function startApp(): void {
       if (v.scratch) achievements.scratch();
     }
     if (v.winner !== null) {
-      note = v.winner === shooter ? `${who} sinks the 8 ball!` : `${who} sinks the 8 ball too early.`;
+      const ballName = m.gameMode === '9ball' ? '9 ball' : m.gameMode === '6ball' ? '6 ball' : m.gameMode === 'straight' ? 'winning point' : '8 ball';
+      note = v.winner === shooter ? `${who} sinks the ${ballName}!` : `${who} fouls on the ${ballName}.`;
     } else if (v.foul) {
       note = `Foul (${v.reasons.join(', ')}). ${next} places the cue ball.`;
     } else if (v.continues) {
@@ -282,13 +386,34 @@ export function startApp(): void {
     } else {
       note = `No pot. ${next}'s shot.`;
     }
+
+    // Table talk & trash talk
+    if (v.winner === null) {
+      if (mode === 'cpu') {
+        if (shooter === 1) {
+          if (v.foul) speakCpu(cpuTier, 'cpuFoul', 1);
+          else if (v.ownPotted >= 2) speakCpu(cpuTier, 'cpuMultiPot', 1);
+          else if (v.ownPotted === 1) speakCpu(cpuTier, 'cpuPot', 1);
+          else speakCpu(cpuTier, 'cpuMiss', 1);
+        } else {
+          if (v.foul) speakCpu(cpuTier, 'playerFoul', 1);
+          else if (v.ownPotted > 0) speakCpu(cpuTier, 'playerPot', 1);
+          else speakCpu(cpuTier, 'playerMiss', 1);
+        }
+      } else if (mode === 'spectate') {
+        const tier = seats[shooter].cpuTier ?? 'regular';
+        if (v.foul) speakCpu(tier, 'cpuFoul', shooter);
+        else if (v.ownPotted >= 2) speakCpu(tier, 'cpuMultiPot', shooter);
+        else if (v.ownPotted === 1) speakCpu(tier, 'cpuPot', shooter);
+        else speakCpu(tier, 'cpuMiss', shooter);
+      }
+    }
   }
 
   function snapshot(src: Match): Match {
     return JSON.parse(JSON.stringify(src)) as Match;
   }
 
-  /** Takes the other browser's table as the truth (the online shooter's settled result). */
   function adopt(incoming: Match): void {
     m = snapshot(incoming);
     afterResult();
@@ -306,33 +431,56 @@ export function startApp(): void {
     const w = m.winner ?? 0;
     if (mode !== 'spectate') achievements.gameDone();
     let text: string;
+    let subtext: string | undefined;
+
     if (mode === 'spectate') {
-      text = `${seats[w].name} sinks the 8 ball.`;
+      text = `${seats[w].name} wins!`;
+      speakCpu(seats[w].cpuTier ?? 'regular', 'cpuWin', w);
     } else if (mode === 'cpu') {
-      text = w === 0 ? 'You sank the 8 ball!' : `${CPU_NAME} sinks the 8 ball.`;
-      if (w === 0) achievements.cpuWin();
+      const cpuName = CPU_PROFILES[cpuTier].name;
+      text = w === 0 ? `You defeated ${cpuName}!` : `${cpuName} wins the rack.`;
+      if (w === 0) {
+        achievements.cpuWin();
+        if (cpuTier === 'cracked') achievements.crackedWin();
+        if (activeWager > 0) {
+          const pay = wagerPayout(activeWager, activeWagerMult);
+          winChips(pay.totalReturn);
+          achievements.highRoller();
+          subtext = `Wager won: +${pay.profit} chips (returned ${pay.totalReturn} 🪙)!`;
+        }
+        speakCpu(cpuTier, 'playerWin', 1);
+      } else {
+        if (activeWager > 0) subtext = `Lost ${activeWager} chips on the table.`;
+        speakCpu(cpuTier, 'cpuWin', 1);
+      }
+      activeWager = 0;
     } else if (mode === 'online') {
-      text = w === me ? 'You sank the 8 ball!' : `${seats[w].name} sinks the 8 ball.`;
+      text = w === me ? 'You win!' : `${seats[w].name} wins!`;
       if (w === me) achievements.onlineWin();
     } else {
-      text = `${seats[w].name} sinks the 8 ball!`;
+      text = `${seats[w].name} wins!`;
     }
+
     const youWon = mode === 'local' ? true : mode === 'spectate' ? true : w === (mode === 'cpu' ? 0 : me);
     if (youWon) sfx.win();
     else sfx.lose();
-    hud.showOver(text, mode !== 'online');
+    hud.showOver(text, mode !== 'online', subtext);
   }
 
-  /** A CPU gnome's shot: the cue ball placed if it was in hand, then the shot Big Lou picks. */
   function cpuTakeShot(): void {
+    const tier = seats[m.turn]?.cpuTier ?? cpuTier;
     if (m.ballInHand) {
-      const spot = cpuPlaceSpot(m.balls, Math.random);
+      const spot = cpuPlaceSpot(m.balls, Math.random, { tier, group: m.groups[m.turn] ?? null, gameMode: m.gameMode });
       setCue(m.balls, spot.x, spot.y);
       m.ballInHand = false;
     }
     const cue = m.balls.find((b) => b.id === CUE_BALL);
     if (!cue) return;
-    const s = chooseCpuShot(m.balls, cue.x, cue.y, m.groups[m.turn], Math.random);
+    const s = chooseCpuShot(m.balls, cue.x, cue.y, m.groups[m.turn], Math.random, {
+      tier,
+      gameMode: m.gameMode,
+      isBreak: m.shots === 0,
+    });
     fire(s.vx, s.vy);
   }
 
@@ -371,7 +519,7 @@ export function startApp(): void {
     }));
     searching = false;
     menuStatus = '';
-    startGame('online', sts, slot, seed);
+    startGame('online', sts, slot, seed, '8ball');
     mode = 'online';
     me = slot;
     refreshHud();
@@ -405,23 +553,52 @@ export function startApp(): void {
     return link;
   }
 
-  // ------------------------------------------------------------ the screens
+  function launchCpuMatch(): void {
+    online?.leave();
+    online = null;
+    const bet = clampWager(wager, getChips());
+    activeWager = 0;
+    activeWagerMult = CPU_PROFILES[cpuTier].wagerMult;
+    if (bet > 0 && spendChips(bet)) {
+      activeWager = bet;
+    }
+    const profile = CPU_PROFILES[cpuTier];
+    startGame(
+      'cpu',
+      [
+        { name: myName(), look: myLook() },
+        { name: profile.name, look: profile.look, cpuTier },
+      ],
+      0,
+      seedNow(),
+      gameMode,
+    );
+  }
+
+  // ------------------------------------------------------------ HUD
 
   const hud: Hud = createHud(ui, {
-    onCpu: () => {
-      online?.leave();
-      online = null;
-      startGame('cpu', [{ name: myName(), look: myLook() }, { name: CPU_NAME, look: CPU_LOOK }], 0, seedNow());
-    },
+    onCpu: () => launchCpuMatch(),
     onLocal: () => {
       online?.leave();
       online = null;
-      startGame('local', [{ name: myName(), look: myLook() }, { name: 'Gnome Two', look: PASS_LOOK }], 0, seedNow());
+      activeWager = 0;
+      startGame('local', [{ name: myName(), look: myLook() }, { name: 'Gnome Two', look: PASS_LOOK }], 0, seedNow(), gameMode);
     },
     onSpectate: () => {
       online?.leave();
       online = null;
-      startGame('spectate', [{ name: CPU_NAME, look: CPU_LOOK }, { name: 'Gnome Two', look: SPECTATE_LOOK }], 0, seedNow());
+      activeWager = 0;
+      startGame(
+        'spectate',
+        [
+          { name: CPU_PROFILES.regular.name, look: CPU_PROFILES.regular.look, cpuTier: 'regular' },
+          { name: CPU_PROFILES.cracked.name, look: CPU_PROFILES.cracked.look, cpuTier: 'cracked' },
+        ],
+        0,
+        seedNow(),
+        gameMode,
+      );
     },
     onOnline: () => {
       searching = true;
@@ -458,7 +635,24 @@ export function startApp(): void {
     },
     onRematch: () => {
       if (mode === 'online') return;
-      startGame(mode, seats, 0, seedNow());
+      if (mode === 'challenge' && challenge) {
+        startChallenge(challenge);
+        return;
+      }
+      if (mode === 'cpu') {
+        launchCpuMatch();
+        return;
+      }
+      startGame(mode, seats, 0, seedNow(), gameMode);
+    },
+    onRetry: () => {
+      if (mode === 'challenge' && challenge) startChallenge(challenge);
+    },
+    onNextChallenge: () => {
+      if (!challenge) return;
+      const idx = CHALLENGES.findIndex((c) => c.id === challenge!.id);
+      const next = idx >= 0 ? CHALLENGES[idx + 1] : undefined;
+      if (next) startChallenge(next);
     },
     onSound: () => {
       sfx.toggle();
@@ -477,10 +671,48 @@ export function startApp(): void {
       hud.setPower(null);
       refreshHud();
     },
+    onFineToggle: () => {
+      fineAim = !fineAim;
+      refreshHud();
+    },
+    onNudge: (sign) => {
+      if (!canAct() || m.ballInHand) return;
+      dir = rotateDir(dir.dx, dir.dy, sign * NUDGE_STEP_RAD);
+    },
     onEmote: (id) => playMyEmote(id),
+    onSelectGameMode: (gm) => {
+      gameMode = gm;
+      if (!started) showMenu();
+    },
+    onSelectCpuTier: (t) => {
+      cpuTier = t;
+      if (!started) showMenu();
+    },
+    onWagerChange: (amount) => {
+      wager = clampWager(amount, getChips());
+      if (!started) showMenu();
+    },
+    onClaimFreeChips: () => {
+      claimFreeChips();
+      wager = clampWager(wager, getChips());
+      if (!started) showMenu();
+    },
+    onOpenChallenges: () => {
+      completedChallenges = loadCompletedChallenges();
+      hud.showChallenges(completedChallenges);
+    },
+    onStartChallenge: (id) => {
+      const def = CHALLENGES.find((c) => c.id === id);
+      if (def) startChallenge(def);
+    },
   });
 
-  // ------------------------------------------------------------ canvas input: a tap on the floor walks, the table shoots
+  onOakcountChange(() => {
+    wager = clampWager(wager, getChips());
+    if (!started && hud.menuOpen) showMenu();
+  });
+
+  // ------------------------------------------------------------ canvas input
 
   function fit(): void {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -491,14 +723,12 @@ export function startApp(): void {
 
   const cueNow = (): Ball | undefined => m.balls.find((b) => b.id === CUE_BALL);
 
-  /** Plays an emote on my gnome (the walking seat), and tells the other player online. */
   function playMyEmote(id: string): void {
     const seat = walkSeat();
     if (seat < 0 || !scene.playEmote(seat, id)) return;
     if (mode === 'online' && online) online.send({ k: 'emote', id });
   }
 
-  /** Walks my gnome to a floor point (world units). */
   function walkMe(x: number, z: number): void {
     const seat = walkSeat();
     const w = seat >= 0 ? scene.walker(seat) : null;
@@ -506,12 +736,15 @@ export function startApp(): void {
     walkTo(w, { x, z });
   }
 
+  const unlockAudio = (): void => banter.unlock();
+  window.addEventListener('pointerdown', unlockAudio, { once: true });
+  window.addEventListener('keydown', unlockAudio, { once: true });
+
   canvas.addEventListener('pointerdown', (e) => {
     if (e.button === 2) return;
     const onCloth = scene.pointToTable(e.clientX, e.clientY);
     const inStrikeZone = canAct() && !m.ballInHand && stage === 'strike' && !!onCloth && nearTable(onCloth[0], onCloth[1]);
     if (!onCloth || (!overTable(onCloth[0], onCloth[1]) && !inStrikeZone)) {
-      // Off the table: a tap on the floor walks my gnome there.
       const floor = scene.pointToFloor(e.clientX, e.clientY);
       if (floor && started) walkMe(floor.x, floor.z);
       refreshHud();
@@ -524,6 +757,7 @@ export function startApp(): void {
       placing = { x, y };
     } else if (stage === 'line') {
       lining = true;
+      lastDragVec = null;
       aimAt(x, y);
     } else {
       stroke = { sx: x, sy: y, maxPull: 0, pullX: x, pullY: y, nowPull: 0 };
@@ -550,7 +784,6 @@ export function startApp(): void {
     } else if (lining) {
       aimAt(x, y);
     } else if (stroke) {
-      // Pulling back is moving against the shot line: a positive pull.
       const pull = (x - stroke.sx) * -dir.dx + (y - stroke.sy) * -dir.dy;
       stroke.nowPull = pull;
       if (pull > stroke.maxPull) {
@@ -561,7 +794,6 @@ export function startApp(): void {
     }
   });
 
-  /** Lining up: the shot leaves the cue ball away from the pointer, so the line runs from the pointer through the cue. */
   function aimAt(x: number, y: number): void {
     const cue = cueNow();
     if (!cue) return;
@@ -569,7 +801,15 @@ export function startApp(): void {
     const dy = cue.y - y;
     const len = Math.hypot(dx, dy);
     if (len < 0.02) return;
-    dir = { dx: dx / len, dy: dy / len };
+    const ux = dx / len;
+    const uy = dy / len;
+    if ((fineAim || shiftDown) && lastDragVec) {
+      const dA = deltaAngle(lastDragVec.x, lastDragVec.y, ux, uy) * FINE_AIM_SCALE;
+      dir = rotateDir(dir.dx, dir.dy, dA);
+    } else {
+      dir = { dx: ux, dy: uy };
+    }
+    lastDragVec = { x: ux, y: uy };
   }
 
   const release = (e: PointerEvent): void => {
@@ -585,6 +825,7 @@ export function startApp(): void {
       }
     } else if (lining) {
       lining = false;
+      lastDragVec = null;
       stage = 'strike';
     } else if (stroke) {
       const s = stroke;
@@ -592,11 +833,8 @@ export function startApp(): void {
       const cue = cueNow();
       const maxPull = Math.min(s.maxPull, PULL_MAX);
       if (!cue || !canAct() || maxPull < MIN_PULL) {
-        // A tap, or no pull: return to lining up so you can re-aim.
         stage = 'line';
       } else {
-        // Either pull back and swipe forward, OR pull back and release (slingshot).
-        // Sliding back to zero without a forward swipe cancels the shot cleanly.
         const fwd = (x - s.pullX) * dir.dx + (y - s.pullY) * dir.dy;
         const releasePull = Math.min(s.nowPull, PULL_MAX);
         const usedPull = fwd >= MIN_FORWARD ? maxPull : releasePull >= MIN_PULL ? releasePull : 0;
@@ -613,26 +851,43 @@ export function startApp(): void {
   canvas.addEventListener('pointercancel', () => {
     placing = null;
     lining = false;
+    lastDragVec = null;
     stroke = null;
     hud.setPower(null);
     refreshHud();
   });
 
   window.addEventListener('keydown', (e) => {
+    if (e.key === 'Shift' && !shiftDown) {
+      shiftDown = true;
+      if (started) refreshHud();
+    }
     if (e.key === 'm' || e.key === 'M') {
       sfx.toggle();
       music.setOn(!sfx.isMuted());
       refreshHud();
+    } else if ((e.key === 'f' || e.key === 'F') && started && canAct() && !m.ballInHand) {
+      fineAim = !fineAim;
+      refreshHud();
+    } else if ((e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') && started && canAct() && !m.ballInHand) {
+      dir = rotateDir(dir.dx, dir.dy, -NUDGE_STEP_RAD);
+    } else if ((e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') && started && canAct() && !m.ballInHand) {
+      dir = rotateDir(dir.dx, dir.dy, NUDGE_STEP_RAD);
     } else if (e.key === 'Escape' && started && !hud.menuOpen) {
       showMenu();
     } else if (/^[1-4]$/.test(e.key) && started && mode !== 'spectate') {
-      // Keys 1-4 play the equipped emotes on desktop, as in Club Gnome.
       const id = emoteIds[Number(e.key) - 1];
       if (id) playMyEmote(id);
     }
   });
 
-  // My emotes: the unlocked loadout (the free ones until it loads).
+  window.addEventListener('keyup', (e) => {
+    if (e.key === 'Shift' && shiftDown) {
+      shiftDown = false;
+      if (started) refreshHud();
+    }
+  });
+
   void loadMyEmotes().then((ids) => {
     if (ids.length > 0) emoteIds = ids.map((e) => e.id);
     refreshHud();
@@ -642,7 +897,6 @@ export function startApp(): void {
 
   const maxSteps = Math.round(SETTLE_LIMIT_S / SUB_DT);
 
-  /** The other player's gnome eases toward the place it last reported. */
   function followRemote(dt: number): void {
     const seat = 1 - me;
     const w = scene.walker(seat);
@@ -665,7 +919,6 @@ export function startApp(): void {
     }
   }
 
-  /** My gnome's place goes to the other player while it walks, and once more when it stops. */
   function sendPose(now: number): void {
     if (mode !== 'online' || !online) return;
     const w = scene.walker(me);
@@ -677,7 +930,6 @@ export function startApp(): void {
     wasMoving = w.moving;
   }
 
-  /** CPU gnomes (Big Lou, and both gnomes when spectating) wander about, and walk to their end of the table for a shot. */
   function cpuWalk(dt: number): void {
     const seatsCpu = mode === 'spectate' ? [0, 1] : mode === 'cpu' ? [1] : [];
     for (const s of seatsCpu) {
@@ -718,12 +970,10 @@ export function startApp(): void {
       acc = 0;
     }
 
-    // Walking: step every walker that has a path, then the CPU's decisions, then the remote gnome.
-    for (let s = 0; s < 2; s++) {
+    for (let s = 0; s < seats.length; s++) {
       const w: Walker | null = scene.walker(s);
       if (w && (w.path.length > 0 || w.moving) && !(mode === 'online' && s !== me)) stepWalker(w, dt);
     }
-    // The two gnomes bump rather than pass through each other (a remote player's gnome is placed by its own feed).
     const gnomeA = scene.walker(0);
     const gnomeB = scene.walker(1);
     if (gnomeA && gnomeB) separateWalkers(gnomeA, gnomeB, mode === 'online' && me !== 0, mode === 'online' && me !== 1);
@@ -733,7 +983,16 @@ export function startApp(): void {
       sendPose(clock * 1000);
     }
 
-    // The CPU takes its shot once its gnome is standing at its end and the pause is over.
+    if (mode === 'cpu' && canAct()) {
+      turnIdleS += dt;
+      if (turnIdleS >= NAG_AFTER_S && !naggedThisTurn) {
+        naggedThisTurn = true;
+        speakCpu(cpuTier, 'nag', 1);
+      }
+    } else {
+      turnIdleS = 0;
+    }
+
     if (isCpuTurn()) {
       const w = scene.walker(m.turn);
       const at = w && isIdle(w) && Math.hypot(w.x - (m.turn === 0 ? -SEAT_X : SEAT_X), w.z) < 0.1;
@@ -751,17 +1010,15 @@ export function startApp(): void {
       cpuClock = -1;
     }
 
-    // The camera follows the gnome whose shot it is (pass and play), or mine.
     const followSeat = mode === 'spectate' ? 0 : walkSeat() >= 0 ? walkSeat() : me;
     scene.setCamera(currentCam(), followSeat);
 
-    // The live pull for the power meter and the stick.
     let pullRatio = 0;
     if (stroke && canAct()) {
       pullRatio = Math.max(0, Math.min(1, stroke.nowPull / PULL_MAX));
       hud.setPower(pullRatio);
     }
-    const aimView = canAct() ? { dx: dir.dx, dy: dir.dy, pull: pullRatio, locked: stage === 'strike' } : null;
+    const aimView = canAct() ? { dx: dir.dx, dy: dir.dy, pull: pullRatio, locked: stage === 'strike', fine: fineAim || shiftDown } : null;
     const placingView = placing ? { x: placing.x, y: placing.y, ok: canPlaceCue(m.balls, placing.x, placing.y) } : null;
     scene.update(
       {
@@ -775,10 +1032,25 @@ export function startApp(): void {
     requestAnimationFrame(frame);
   }
 
-  // #cpu starts a match against Big Lou at once (for demos and screenshots); #spectate watches two CPUs.
-  if (/[#&]cpu\b/.test(location.hash)) startGame('cpu', [{ name: myName(), look: myLook() }, { name: CPU_NAME, look: CPU_LOOK }], 0, 7);
-  else if (/[#&]spectate\b/.test(location.hash)) startGame('spectate', [{ name: CPU_NAME, look: CPU_LOOK }, { name: 'Gnome Two', look: SPECTATE_LOOK }], 0, 7);
-  else showMenu();
+  if (/[#&]cpu\b/.test(location.hash)) {
+    startGame('cpu', [{ name: myName(), look: myLook() }, { name: CPU_PROFILES.regular.name, look: CPU_PROFILES.regular.look, cpuTier: 'regular' }], 0, 7, '8ball');
+  } else if (/[#&]spectate\b/.test(location.hash)) {
+    startGame(
+      'spectate',
+      [
+        { name: CPU_PROFILES.regular.name, look: CPU_PROFILES.regular.look, cpuTier: 'regular' },
+        { name: CPU_PROFILES.cracked.name, look: CPU_PROFILES.cracked.look, cpuTier: 'cracked' },
+      ],
+      0,
+      7,
+      '8ball',
+    );
+  } else if (/[#&]challenge\b/.test(location.hash)) {
+    showMenu();
+    hud.showChallenges(completedChallenges);
+  } else {
+    showMenu();
+  }
   requestAnimationFrame(frame);
 }
 

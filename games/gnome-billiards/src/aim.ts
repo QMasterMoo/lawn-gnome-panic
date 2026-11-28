@@ -65,3 +65,23 @@ export function backRoom(balls: readonly Ball[], cx: number, cy: number, ux: num
   }
   return Math.max(0, room);
 }
+
+/** Drag sensitivity multiplier when Fine Aim is active (5.5x finer control). */
+export const FINE_AIM_SCALE = 0.18;
+/** Micro-nudge step in radians (0.2 degrees per tap). */
+export const NUDGE_STEP_RAD = (0.2 * Math.PI) / 180;
+
+/** Rotates direction (dx, dy) by `radians` and returns a unit vector. */
+export function rotateDir(dx: number, dy: number, radians: number): { dx: number; dy: number } {
+  const c = Math.cos(radians);
+  const s = Math.sin(radians);
+  const rx = dx * c - dy * s;
+  const ry = dx * s + dy * c;
+  const len = Math.hypot(rx, ry) || 1;
+  return { dx: rx / len, dy: ry / len };
+}
+
+/** Signed smallest angle in (-PI, PI] from (ax, ay) to (bx, by). */
+export function deltaAngle(ax: number, ay: number, bx: number, by: number): number {
+  return Math.atan2(ax * by - ay * bx, ax * bx + ay * by);
+}

@@ -33,8 +33,8 @@ export type CameraMode = 'table' | 'follow' | 'orbit';
 
 export interface SceneFrame {
   balls: readonly Ball[];
-  /** The shot being lined up: its direction in table units (unit length), how far the cue is pulled, 0..1, and whether aim is locked. */
-  aim: { dx: number; dy: number; pull: number; locked?: boolean } | null;
+  /** The shot being lined up: its direction in table units (unit length), how far the cue is pulled, 0..1, whether aim is locked, and whether fine aim is active. */
+  aim: { dx: number; dy: number; pull: number; locked?: boolean; fine?: boolean } | null;
   /** Ball in hand: the spot under the pointer and whether it is legal. */
   placing: { x: number; y: number; ok: boolean } | null;
   /** Whose shot it is (0 or 1), or -1 while the table is moving. */
@@ -493,8 +493,8 @@ if (!inCut) discard;`,
     this.ghostTableGroup.visible = showAim;
     this.cutout.uCutActive.value = showAim ? 1 : 0;
     if (showAim && f.aim && cue) {
-      const { dx, dy, pull, locked } = f.aim;
-      this.aimMat.color.setHex(locked ? 0xffd54f : 0xffffff);
+      const { dx, dy, pull, locked, fine } = f.aim;
+      this.aimMat.color.setHex(locked ? 0xffd54f : fine ? 0x5ef2ff : 0xffffff);
       const line = aimLine(f.balls, cue.x, cue.y, dx, dy);
       const [sx, sz] = toWorld(cue.x, cue.y);
       const [ex, ez] = toWorld(line.ex, line.ey);
@@ -510,7 +510,7 @@ if (!inCut) discard;`,
           const nx = hx - gx;
           const nz = hz - gz;
           const nlen = Math.hypot(nx, nz) || 1;
-          const len = 0.35;
+          const len = fine ? 0.85 : 0.5;
           this.targetGeo.setFromPoints([
             new THREE.Vector3(hx, TOP, hz),
             new THREE.Vector3(hx + (nx / nlen) * len, TOP, hz + (nz / nlen) * len),
