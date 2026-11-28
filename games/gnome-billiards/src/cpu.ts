@@ -132,10 +132,11 @@ function makeCutSpeed(distCue: number, distObj: number, cosCut: number, powerBoo
   return Math.min(MAX_SHOT_SPEED, Math.max(0.45, raw));
 }
 
-function hasEasyFollowUp(balls: readonly Ball[], group: Group | null, gameMode: GameMode): boolean {
+function shapeScore(balls: readonly Ball[], group: Group | null, gameMode: GameMode): number {
   const cue = balls.find((b) => b.id === CUE_BALL);
-  if (!cue || cue.pocketed) return false;
+  if (!cue || cue.pocketed) return 0;
   const targetIds = new Set(legalTargetIds(balls, group, gameMode));
+  let best = 0;
   for (const t of balls) {
     if (t.pocketed || !targetIds.has(t.id)) continue;
     for (const p of POCKETS) {
@@ -150,13 +151,14 @@ function hasEasyFollowUp(balls: readonly Ball[], group: Group | null, gameMode: 
       const D = Math.hypot(dx, dy);
       if (D === 0) continue;
       const cosCut = (dx / D) * (ux / L) + (dy / D) * (uy / L);
-      if (cosCut < 0.45) continue;
+      if (cosCut < 0.4) continue;
       if (clearPath(balls, cue.x, cue.y, gx, gy, [CUE_BALL, t.id]) && clearPath(balls, t.x, t.y, p.x, p.y, [CUE_BALL, t.id])) {
-        return true;
+        const s = 40 + cosCut * 45 - (D + L) * 8;
+        if (s > best) best = s;
       }
     }
   }
-  return false;
+  return Math.max(0, best);
 }
 
 /** Places the cue ball after a foul. Shark and Cracked line up a dead-straight pot when one is open. */
@@ -242,33 +244,35 @@ export function chooseCpuShot(
 
   const candidates: CandidateShot[] = [];
 
-  // 1. Direct cut shots
-  for (const t of targets) {
-    for (const p of POCKETS) {
-      const ux = p.x - t.x;
-      const uy = p.y - t.y;
-      const L = Math.hypot(ux, uy);
-      if (L === 0) continue;
-      const nx = ux / L;
-      const ny = uy / L;
-      const gx = t.x - nx * 2 * BALL_R;
-      const gy = t.y - ny * 2 * BALL_R;
-      const dx = gx - cueX;
-      const dy = gy - cueY;
-      const D = Math.hypot(dx, dy);
-      if (D === 0) continue;
-      const cosCut = (dx / D) * nx + (dy / D) * ny;
-      if (cosCut < 0.18) continue;
-      if (!clearPath(balls, cueX, cueY, gx, gy, [CUE_BALL, t.id])) continue;
-      if (!clearPath(balls, t.x, t.y, p.x, p.y, [CUE_BALL, t.id])) continue;
-      const speed = makeCutSpeed(D, L, cosCut, profile.powerBoost);
-      const heurScore = cosCut * 2.2 - (D + L) * 0.6;
-      candidates.push({ dx: dx / D, dy: dy / D, speed, heurScore });
+  // 1. Direct cut shots (skipped in Bank Pool unless fallback is needed)
+  if (gameMode !== 'bank') {
+    for (const t of targets) {
+      for (const p of POCKETS) {
+        const ux = p.x - t.x;
+        const uy = p.y - t.y;
+        const L = Math.hypot(ux, uy);
+        if (L === 0) continue;
+        const nx = ux / L;
+        const ny = uy / L;
+        const gx = t.x - nx * 2 * BALL_R;
+        const gy = t.y - ny * 2 * BALL_R;
+        const dx = gx - cueX;
+        const dy = gy - cueY;
+        const D = Math.hypot(dx, dy);
+        if (D === 0) continue;
+        const cosCut = (dx / D) * nx + (dy / D) * ny;
+        if (cosCut < 0.18) continue;
+        if (!clearPath(balls, cueX, cueY, gx, gy, [CUE_BALL, t.id])) continue;
+        if (!clearPath(balls, t.x, t.y, p.x, p.y, [CUE_BALL, t.id])) continue;
+        const speed = makeCutSpeed(D, L, cosCut, profile.powerBoost);
+        const heurScore = cosCut * 2.2 - (D + L) * 0.6;
+        candidates.push({ dx: dx / D, dy: dy / D, speed, heurScore });
+      }
     }
   }
 
-  // 2. 1-rail bank shots (Shark & Cracked)
-  if (profile.useBanks) {
+  // 2. 1-rail bank shots (Shark, Cracked, or anyone in Bank Pool)
+  if (profile.useBanks || gameMode === 'bank') {
     const mirrors: Array<(px: number, py: number) => { mx: number; my: number }> = [
       (px, py) => ({ mx: px, my: 2 * BALL_R - py }),
       (px, py) => ({ mx: px, my: 2 * (TABLE_H - BALL_R) - py }),
@@ -337,6 +341,24 @@ export function chooseCpuShot(
     }
   }
 
+  // 3b. Snooker / cluster fallback candidates for Cracked when no direct/bank/combo shot is open
+  if (candidates.length === 0 && tier === 'cracked') {
+    for (const t of targets.slice(0, 4)) {
+      const kicks: Array<[number, number]> = [
+        [t.x, t.y],
+        [t.x, 2 * BALL_R - t.y],
+        [t.x, 2 * (TABLE_H - BALL_R) - t.y],
+      ];
+      for (const [tx, ty] of kicks) {
+        const ax = tx - cueX;
+        const ay = ty - cueY;
+        const len = Math.hypot(ax, ay) || 1;
+        candidates.push({ dx: ax / len, dy: ay / len, speed: Math.min(MAX_SHOT_SPEED, 1.5), heurScore: 0.1 });
+        candidates.push({ dx: ax / len, dy: ay / len, speed: MAX_SHOT_SPEED, heurScore: 0.05 });
+      }
+    }
+  }
+
   candidates.sort((a, b) => b.heurScore - a.heurScore);
 
   // 4. Physics verification for Shark & Cracked
@@ -365,8 +387,8 @@ export function chooseCpuShot(
           const oppPotted = v.potted.length - v.ownPotted;
           score -= oppPotted * 60;
         }
-        if (tier === 'cracked' && v.continues && hasEasyFollowUp(simTable.balls, v.groups[0], gameMode)) {
-          score += 55;
+        if (tier === 'cracked' && v.continues) {
+          score += shapeScore(simTable.balls, v.groups[0], gameMode);
         }
       }
       if (!bestSim || score > bestSim.score) {

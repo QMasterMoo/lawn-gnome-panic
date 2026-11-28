@@ -1,6 +1,8 @@
-// The DOM interface over the table: seats, pot, speech bubble, fine-aim controls, message line, emotes, menu,
-// challenge selector, power meter, and game-over card. Everything lives inside #bil-root appended to #ui.
+// The DOM interface over the table: seats, pot, seat-anchored speech bubbles, fine-aim controls, message line,
+// emotes + quips, menu, challenge selector, power meter, and game-over card. Lives inside #bil-root appended to #ui.
 import type { GnomeLook } from '@lawn/gnome';
+import { COARSE_NUDGE_RAD, FINE_NUDGE_RAD } from './aim';
+import { PLAYER_QUIPS } from './banter';
 import { CHALLENGES } from './challenges';
 import { CPU_PROFILES, type CpuTier } from './cpu';
 import { GAME_MODE_META, type GameMode } from './rules';
@@ -11,20 +13,21 @@ export interface SeatView {
   look: GnomeLook;
   sub: string;
   active: boolean;
-  /** The seat's balls: 7 pips, one per ball of its group, filled once that ball is pocketed. group null = open table. */
-  pips?: { group: 'solid' | 'stripe' | null; potted: number };
+  /** The seat's balls/points pips. */
+  pips?: { group: 'solid' | 'stripe' | null; potted: number; total?: number };
 }
 
 const PIP_COLOR = { solid: '#f2c94c', stripe: '#5b9bf0' } as const;
 
 function pipsHtml(p: NonNullable<SeatView['pips']>): string {
-  const color = p.group ? PIP_COLOR[p.group] : '#888';
+  const color = p.group ? PIP_COLOR[p.group] : '#7ed957';
+  const total = p.total ?? 7;
   let out = '';
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < total; i++) {
     const on = i < p.potted;
     out += `<span class="pip${on ? ' on' : ''}" style="${on ? `background:${color};` : ''}"></span>`;
   }
-  return `<div class="pips" aria-label="${p.potted} of 7 down">${out}</div>`;
+  return `<div class="pips" aria-label="${p.potted} of ${total}">${out}</div>`;
 }
 
 export interface MenuView {
@@ -55,12 +58,14 @@ export interface HudHandlers {
   onRematch(): void;
   onRetry(): void;
   onNextChallenge(): void;
+  onDoubleOrNothing(): void;
   onSound(): void;
   onCamera(): void;
   onReaim(): void;
   onFineToggle(): void;
-  onNudge(sign: -1 | 1): void;
+  onNudge(rad: number): void;
   onEmote(id: string): void;
+  onQuip(id: string): void;
   onSelectGameMode(mode: GameMode): void;
   onSelectCpuTier(tier: CpuTier): void;
   onWagerChange(amount: number): void;
@@ -85,7 +90,7 @@ export function gnomeFaceHtml(look: GnomeLook): string {
   );
 }
 
-const GAME_MODES: GameMode[] = ['8ball', '9ball', 'straight', '6ball'];
+const GAME_MODES: GameMode[] = ['8ball', '9ball', 'straight', '6ball', 'bank'];
 const CPU_TIERS: CpuTier[] = ['casual', 'regular', 'shark', 'cracked'];
 
 export function createHud(ui: HTMLElement, h: HudHandlers) {
@@ -105,11 +110,11 @@ export function createHud(ui: HTMLElement, h: HudHandlers) {
   root.addEventListener('pointerdown', (e) => {
     const el = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
     if (!el) return;
-    if (el.dataset.act === 'nudge-l' || el.dataset.act === 'nudge-r') {
-      const sign: -1 | 1 = el.dataset.act === 'nudge-l' ? -1 : 1;
-      h.onNudge(sign);
+    if (el.dataset.act === 'nudge' && el.dataset.rad !== undefined) {
+      const rad = Number(el.dataset.rad);
+      h.onNudge(rad);
       stopNudge();
-      nudgeTimer = window.setInterval(() => h.onNudge(sign), 75);
+      nudgeTimer = window.setInterval(() => h.onNudge(rad), 75);
     }
   });
   window.addEventListener('pointerup', stopNudge);
@@ -138,6 +143,7 @@ export function createHud(ui: HTMLElement, h: HudHandlers) {
     else if (act === 'rematch') h.onRematch();
     else if (act === 'retry') h.onRetry();
     else if (act === 'next-challenge') h.onNextChallenge();
+    else if (act === 'double-wager') h.onDoubleOrNothing();
     else if (act === 'sound') h.onSound();
     else if (act === 'camera') h.onCamera();
     else if (act === 'reaim') h.onReaim();
@@ -146,6 +152,9 @@ export function createHud(ui: HTMLElement, h: HudHandlers) {
     else if (act === 'emote' && el.dataset.id) {
       toggleEmotes(false);
       h.onEmote(el.dataset.id);
+    } else if (act === 'quip' && el.dataset.id) {
+      toggleEmotes(false);
+      h.onQuip(el.dataset.id);
     } else if (act === 'gmode' && el.dataset.mode) {
       h.onSelectGameMode(el.dataset.mode as GameMode);
     } else if (act === 'ctier' && el.dataset.tier) {
@@ -213,8 +222,9 @@ export function createHud(ui: HTMLElement, h: HudHandlers) {
       potEl.textContent = text;
       potEl.style.display = 'block';
     },
-    showBubble(speaker: string, text: string, accent = '#ffd54f'): void {
+    showBubble(speaker: string, text: string, accent = '#ffd54f', side?: 'left' | 'right'): void {
       if (bubbleTimer !== null) window.clearTimeout(bubbleTimer);
+      bubbleEl.className = `bil-bubble${side ? ` ${side}` : ''}`;
       bubbleEl.style.borderColor = accent;
       bubbleEl.innerHTML = `<div class="sp" style="color:${esc(accent)}">${esc(speaker)}</div><div>"${esc(text)}"</div>`;
       bubbleEl.style.display = 'block';
@@ -246,18 +256,28 @@ export function createHud(ui: HTMLElement, h: HudHandlers) {
       }
       fineRow.style.display = 'flex';
       fineRow.innerHTML =
-        `<button class="bil-btn" data-act="nudge-l" aria-label="Nudge aim left" style="pointer-events:auto">◀</button>` +
-        `<div class="bil-fine-pill">${fineOn ? '🎯 Fine Aim ON' : 'Aim Nudge (±0.2°)'}</div>` +
-        `<button class="bil-btn" data-act="nudge-r" aria-label="Nudge aim right" style="pointer-events:auto">▶</button>`;
+        `<button class="bil-btn" data-act="nudge" data-rad="${-COARSE_NUDGE_RAD}" aria-label="Quick nudge left" style="pointer-events:auto">◀◀</button>` +
+        `<button class="bil-btn" data-act="nudge" data-rad="${-FINE_NUDGE_RAD}" aria-label="Fine nudge left" style="pointer-events:auto">◀</button>` +
+        `<div class="bil-fine-pill">${fineOn ? '🎯 Fine 0.1°' : 'Nudge 0.1°/0.5°'}</div>` +
+        `<button class="bil-btn" data-act="nudge" data-rad="${FINE_NUDGE_RAD}" aria-label="Fine nudge right" style="pointer-events:auto">▶</button>` +
+        `<button class="bil-btn" data-act="nudge" data-rad="${COARSE_NUDGE_RAD}" aria-label="Quick nudge right" style="pointer-events:auto">▶▶</button>`;
     },
-    setEmotes(list: EmoteButton[]): void {
-      emotes.innerHTML = list
+    setEmotes(list: EmoteButton[], includeQuips = false): void {
+      const emoteHtml = list
         .map(
           (e) =>
             `<button class="bil-btn bil-emote" data-act="emote" data-id="${esc(e.id)}" title="${esc(e.label)}" style="pointer-events:auto">${esc(e.icon)} ${esc(e.label)}</button>`,
         )
         .join('');
-      emoteCount = list.length;
+      const quipHtml = includeQuips
+        ? `<div class="bil-quips">` +
+          PLAYER_QUIPS.map(
+            (q) => `<button class="bil-btn bil-quip" data-act="quip" data-id="${esc(q.id)}" style="pointer-events:auto">${esc(q.label)}</button>`,
+          ).join('') +
+          `</div>`
+        : '';
+      emotes.innerHTML = emoteHtml + quipHtml;
+      emoteCount = list.length + (includeQuips ? PLAYER_QUIPS.length : 0);
       toggleEmotes(emotesOpen);
     },
     setMessage(text: string): void {
@@ -275,7 +295,7 @@ export function createHud(ui: HTMLElement, h: HudHandlers) {
     ): void {
       bar.innerHTML =
         `<button class="bil-btn" data-act="sound" style="pointer-events:auto">${soundOn ? '🔊' : '🔇'}</button>` +
-        (emoteButton ? `<button class="bil-btn" data-act="emotes" aria-label="Emotes" style="pointer-events:auto">😀</button>` : ``) +
+        (emoteButton ? `<button class="bil-btn" data-act="emotes" aria-label="Emotes and Table Talk" style="pointer-events:auto">😀</button>` : ``) +
         (fineButton
           ? `<button class="bil-btn${fineOn ? ' active' : ''}" data-act="fine" style="pointer-events:auto">🎯 Fine</button>`
           : ``) +
@@ -283,6 +303,25 @@ export function createHud(ui: HTMLElement, h: HudHandlers) {
         (retryButton ? `<button class="bil-btn" data-act="retry" style="pointer-events:auto">↺ Retry</button>` : ``) +
         (camLabel ? `<button class="bil-btn" data-act="camera" style="pointer-events:auto">${esc(camLabel)}</button>` : ``) +
         (inGame ? `<button class="bil-btn" data-act="menu" style="pointer-events:auto">☰ Menu</button>` : ``);
+    },
+    /** Updates the wager slider label, presets, and CPU play button in place without rebuilding the menu DOM. */
+    updateWager(wager: number, chips: number, mult: number, cpuName: string): void {
+      const slider = overlay.querySelector<HTMLInputElement>('#bil-wager-slider');
+      const cap = maxWager(chips);
+      if (slider) {
+        slider.max = String(cap);
+        slider.value = String(wager);
+        slider.disabled = cap === 0;
+      }
+      const payout = wagerPayout(wager, mult);
+      const txt = overlay.querySelector<HTMLElement>('#bil-wager-text');
+      if (txt) txt.textContent = wager > 0 ? `Bet ${wager} → +${payout.profit}` : 'Friendly (0)';
+      const cpuBtn = overlay.querySelector<HTMLElement>('[data-act="cpu"]');
+      if (cpuBtn) cpuBtn.textContent = `Play vs ${cpuName}${wager > 0 ? ` (🪙 ${wager})` : ''}`;
+      overlay.querySelectorAll<HTMLElement>('[data-act="wager-val"]').forEach((btn) => {
+        const v = Number(btn.dataset.val);
+        btn.classList.toggle('on', (v === 0 && wager === 0) || (v > 0 && v === wager));
+      });
     },
     showMenu(v: MenuView): void {
       menuOpen = true;
@@ -299,7 +338,7 @@ export function createHud(ui: HTMLElement, h: HudHandlers) {
         `<h1>Gnome Billiards</h1>` +
         `<p>${esc(GAME_MODE_META[v.gameMode].desc)}</p>` +
         `<div class="bil-sec"><div class="bil-sec-title"><span>Game Mode</span><span>${esc(GAME_MODE_META[v.gameMode].label)}</span></div>` +
-        `<div class="bil-pills four">` +
+        `<div class="bil-pills five">` +
         GAME_MODES.map(
           (gm) =>
             `<button class="bil-pill${v.gameMode === gm ? ' on' : ''}" data-act="gmode" data-mode="${gm}">${esc(GAME_MODE_META[gm].short)}</button>`,
@@ -312,9 +351,9 @@ export function createHud(ui: HTMLElement, h: HudHandlers) {
           return `<button class="bil-pill${t === 'cracked' ? ' cracked' : ''}${v.cpuTier === t ? ' on' : ''}" data-act="ctier" data-tier="${t}"><span>${esc(p.name)}</span><small>${esc(p.badge)}</small></button>`;
         }).join('') +
         `</div></div>` +
-        `<div class="bil-sec"><div class="bil-sec-title"><span>Wager (up to 50%)</span><span>🪙 ${v.chips} chips${v.chips === 0 ? ' <button class="bil-btn" data-act="claim-chips" style="min-height:28px;padding:0 8px;font-size:11px;margin-left:4px">+100 Free</button>' : ''}</span></div>` +
+        `<div class="bil-sec"><div class="bil-sec-title"><span>Wager (up to 50%)</span><span>🪙 ${v.chips} chips${v.chips < 100 ? ' <button class="bil-btn" data-act="claim-chips" style="min-height:28px;padding:0 8px;font-size:11px;margin-left:4px">+100 Free</button>' : ''}</span></div>` +
         `<div class="bil-wager-row"><input id="bil-wager-slider" type="range" min="0" max="${cap}" value="${v.wager}" ${cap === 0 ? 'disabled' : ''} />` +
-        `<span style="min-width:110px;text-align:right;font-size:12px;font-weight:700">${v.wager > 0 ? `Bet ${v.wager} → +${payout.profit}` : 'Friendly (0)'}</span></div>` +
+        `<span id="bil-wager-text" style="min-width:110px;text-align:right;font-size:12px;font-weight:700">${v.wager > 0 ? `Bet ${v.wager} → +${payout.profit}` : 'Friendly (0)'}</span></div>` +
         `<div class="bil-wager-presets">` +
         `<button class="bil-pill${v.wager === 0 ? ' on' : ''}" data-act="wager-val" data-val="0">Free</button>` +
         `<button class="bil-pill${v.wager > 0 && v.wager === p10 ? ' on' : ''}" data-act="wager-val" data-val="${p10}" ${cap === 0 ? 'disabled' : ''}>10%</button>` +
@@ -363,7 +402,7 @@ export function createHud(ui: HTMLElement, h: HudHandlers) {
       menuOpen = false;
       overlay.innerHTML = '';
     },
-    showOver(text: string, canRematch: boolean, subtext?: string, nextLabel?: string): void {
+    showOver(text: string, canRematch: boolean, subtext?: string, nextLabel?: string, doubleLabel?: string): void {
       overOpen = true;
       overlay.innerHTML =
         `<div class="bil-overlay" style="pointer-events:auto"><div class="bil-card">` +
@@ -371,7 +410,8 @@ export function createHud(ui: HTMLElement, h: HudHandlers) {
         (subtext ? `<p>${esc(subtext)}</p>` : '') +
         `<div class="row">` +
         (nextLabel ? `<button class="bil-btn primary" data-act="next-challenge">${esc(nextLabel)}</button>` : '') +
-        (canRematch ? `<button class="bil-btn${nextLabel ? '' : ' primary'}" data-act="rematch">Rack 'em again</button>` : '') +
+        (doubleLabel ? `<button class="bil-btn primary" data-act="double-wager">${esc(doubleLabel)}</button>` : '') +
+        (canRematch ? `<button class="bil-btn${nextLabel || doubleLabel ? '' : ' primary'}" data-act="rematch">Rack 'em again</button>` : '') +
         `<button class="bil-btn" data-act="menu">Back to the menu</button>` +
         `</div></div></div>`;
     },

@@ -1,4 +1,4 @@
-// Challenge Mode: 8 handcrafted trick-shot and run-out puzzles for Gnome Billiards.
+// Challenge Mode: 10 handcrafted, physics-verified trick-shot and run-out puzzles for Gnome Billiards.
 import { BALL_R, CUE_BALL, TABLE_H, TABLE_W } from './config';
 import type { Ball, ShotEvents } from './physics';
 
@@ -14,6 +14,10 @@ export interface ChallengeDef {
   balls: readonly { id: number; x: number; y: number }[];
   /** Specific object ball IDs that must be pocketed; if omitted, all object balls in `balls` must be pocketed. */
   targetIds?: readonly number[];
+  /** Object ball IDs that must NOT be pocketed (pocketing one fails immediately). */
+  avoidIds?: readonly number[];
+  /** When true, at least one target ball must hit a cushion before pocketing. */
+  requireBank?: boolean;
   /** When true (default), scratching fails immediately. */
   requireClean?: boolean;
 }
@@ -33,9 +37,9 @@ export const CHALLENGES: readonly ChallengeDef[] = [
   },
   {
     id: 'long-cut',
-    title: 'Long Distance',
+    title: 'Long-Distance Sniper',
     difficulty: 'Easy',
-    description: 'Thread a full-table shot from the left rail. Try Fine Aim (🎯) for precision.',
+    description: 'Thread a full-table shot from the left rail. Try 🎯 Fine Aim or Aim Zoom!',
     parShots: 1,
     chipReward: 40,
     balls: [
@@ -46,7 +50,7 @@ export const CHALLENGES: readonly ChallengeDef[] = [
   {
     id: 'two-ball-run',
     title: 'Two-Step',
-    difficulty: 'Medium',
+    difficulty: 'Easy',
     description: 'Clear both object balls in 2 shots with no scratches.',
     parShots: 2,
     chipReward: 50,
@@ -58,25 +62,67 @@ export const CHALLENGES: readonly ChallengeDef[] = [
   },
   {
     id: 'combo-strike',
-    title: 'Domino Effect',
+    title: 'Domino Combo',
     difficulty: 'Medium',
     description: 'Carom the 5-ball into the 9-ball to sink the 9 in a single shot!',
     parShots: 1,
     chipReward: 60,
     targetIds: [9],
     balls: [
-      { id: CUE_BALL, x: 0.7, y: 0.45 },
-      { id: 5, x: 1.35, y: 0.35 },
-      { id: 9, x: 1.84, y: 0.14 },
+      { id: CUE_BALL, x: 0.95, y: 0.5 },
+      { id: 5, x: 1.55, y: 0.34 },
+      { id: 9, x: 1.86, y: 0.14 },
+    ],
+  },
+  {
+    id: 'danger-zone',
+    title: 'Thread the Needle',
+    difficulty: 'Medium',
+    description: 'Sink the 1-ball in 1 shot without knocking the 8-ball into any pocket!',
+    parShots: 1,
+    chipReward: 70,
+    targetIds: [1],
+    avoidIds: [8],
+    balls: [
+      { id: CUE_BALL, x: 0.8, y: 0.55 },
+      { id: 1, x: 1.6, y: 0.24 },
+      { id: 8, x: 1.72, y: 0.34 },
+    ],
+  },
+  {
+    id: 'rail-bank',
+    title: 'Cross-Table Bank',
+    difficulty: 'Medium',
+    description: 'Bank the 8-ball off the top rail into the bottom side pocket in 1 shot!',
+    parShots: 1,
+    chipReward: 90,
+    targetIds: [8],
+    requireBank: true,
+    balls: [
+      { id: CUE_BALL, x: 0.62, y: 0.75 },
+      { id: 8, x: 0.75, y: 0.25 },
+    ],
+  },
+  {
+    id: 'double-drop',
+    title: 'Two Birds, One Cue',
+    difficulty: 'Hard',
+    description: 'Pocket both the 1-ball and 2-ball into the top-right corner in a single shot!',
+    parShots: 1,
+    chipReward: 100,
+    balls: [
+      { id: CUE_BALL, x: 1.45, y: 0.45 },
+      { id: 2, x: 1.87, y: 0.13 },
+      { id: 1, x: 1.91, y: 0.09 },
     ],
   },
   {
     id: 'three-ball-sweep',
     title: 'Three-Ball Sweep',
-    difficulty: 'Medium',
-    description: 'Three balls across the felt. Sink them all in 3 shots.',
+    difficulty: 'Hard',
+    description: 'Three balls spread across the felt. Sink them all in 3 shots.',
     parShots: 3,
-    chipReward: 75,
+    chipReward: 110,
     balls: [
       { id: CUE_BALL, x: 0.4, y: 0.5 },
       { id: 1, x: 0.95, y: 0.22 },
@@ -85,26 +131,12 @@ export const CHALLENGES: readonly ChallengeDef[] = [
     ],
   },
   {
-    id: 'rail-bank',
-    title: 'Cross-Table Bank',
-    difficulty: 'Hard',
-    description: 'The 2-ball blocks the direct pocket. Bank the 8-ball off the bottom rail into the top side!',
-    parShots: 1,
-    chipReward: 90,
-    targetIds: [8],
-    balls: [
-      { id: CUE_BALL, x: 0.98, y: 0.34 },
-      { id: 8, x: 1.0, y: 0.68 },
-      { id: 2, x: 1.0, y: 0.18 },
-    ],
-  },
-  {
     id: 'cluster-bust',
-    title: 'Tight Cluster',
+    title: 'Cluster Breaker',
     difficulty: 'Hard',
     description: 'Break apart the 4-ball cluster and clear the table in 3 shots.',
     parShots: 3,
-    chipReward: 110,
+    chipReward: 125,
     balls: [
       { id: CUE_BALL, x: 0.45, y: 0.5 },
       { id: 1, x: 1.4, y: 0.5 },
@@ -149,8 +181,23 @@ export function checkChallenge(
 ): { status: 'playing' | 'won' | 'lost'; reason?: string; remaining: number } {
   const targets = new Set(challengeTargets(def));
   const remaining = after.filter((b) => !b.pocketed && targets.has(b.id)).length;
+
   if ((def.requireClean ?? true) && ev.pocketed.includes(CUE_BALL)) {
     return { status: 'lost', reason: 'Scratched! Cue ball went in.', remaining };
+  }
+  if (def.avoidIds) {
+    for (const id of def.avoidIds) {
+      if (ev.pocketed.includes(id)) {
+        return { status: 'lost', reason: `Pocketed forbidden ball #${id}!`, remaining };
+      }
+    }
+  }
+  if (def.requireBank) {
+    for (const id of ev.pocketed) {
+      if (targets.has(id) && (ev.cushionHits?.[id] ?? 0) < 1) {
+        return { status: 'lost', reason: 'Must bank off a rail first!', remaining };
+      }
+    }
   }
   if (remaining === 0) {
     return { status: 'won', reason: 'Challenge cleared!', remaining: 0 };

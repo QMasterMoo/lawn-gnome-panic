@@ -59,8 +59,8 @@ describe('CPU against CPU', () => {
     }
   });
 
-  it('finishes 9-ball, 6-ball, and straight pool games cleanly', () => {
-    for (const mode of ['9ball', '6ball', 'straight'] as const) {
+  it('finishes 9-ball, 6-ball, straight, and bank pool games cleanly', () => {
+    for (const mode of ['9ball', '6ball', 'straight', 'bank'] as const) {
       const r = playGame(101, ['regular', 'shark'], mode);
       expect(r.m.winner, `${mode} did not finish`).not.toBeNull();
     }

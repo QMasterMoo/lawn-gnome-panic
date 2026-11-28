@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CUE_BALL, EIGHT_BALL } from './config';
 import type { Ball, ShotEvents } from './physics';
-import { groupOf, judge, lowestBallId, rack, STRAIGHT_TARGET } from './rules';
+import { BANK_TARGET, groupOf, judge, lowestBallId, rack, STRAIGHT_TARGET } from './rules';
 
 const live = (ids: number[]): Ball[] => ids.map((id, i) => ({ id, x: 0.1 + i * 0.05, y: 0.5, vx: 0, vy: 0, pocketed: false }));
 const ev = (firstHit: number | null, pocketed: number[] = []): ShotEvents => ({ firstHit, pocketed });
@@ -123,6 +123,22 @@ describe('9-ball, 6-ball, and straight pool rules', () => {
     expect(vScratch.scores).toEqual([1, 0]);
 
     const vWin = judge(before, ev(1, [1, 2]), [null, null], 0, 'straight', [STRAIGHT_TARGET - 2, 3]);
+    expect(vWin.winner).toBe(0);
+  });
+
+  it('bank pool scores +1 for banked pots, respots non-banked pots, and wins at 5', () => {
+    const before = [...live([1, 2, 3]), { id: CUE_BALL, x: 0.5, y: 0.5, vx: 0, vy: 0, pocketed: false }];
+    const vBank = judge(before, { firstHit: 1, pocketed: [1], cushionHits: { 1: 1 } }, [null, null], 0, 'bank', [0, 0]);
+    expect(vBank.foul).toBe(false);
+    expect(vBank.continues).toBe(true);
+    expect(vBank.scores).toEqual([1, 0]);
+
+    const vNoBank = judge(before, { firstHit: 2, pocketed: [2], cushionHits: {} }, [null, null], 0, 'bank', [1, 0]);
+    expect(vNoBank.continues).toBe(false);
+    expect(vNoBank.respotIds).toEqual([2]);
+    expect(vNoBank.scores).toEqual([1, 0]);
+
+    const vWin = judge(before, { firstHit: 3, pocketed: [3], cushionHits: { 3: 1 } }, [null, null], 0, 'bank', [BANK_TARGET - 1, 2]);
     expect(vWin.winner).toBe(0);
   });
 });

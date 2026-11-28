@@ -3,15 +3,17 @@ import { BALL_R, CUE_BALL, EIGHT_BALL, TABLE_H, TABLE_W } from './config';
 import { copyBalls, POCKETS, type Ball, type ShotEvents } from './physics';
 
 export type Group = 'solid' | 'stripe';
-export type GameMode = '8ball' | '9ball' | 'straight' | '6ball';
+export type GameMode = '8ball' | '9ball' | 'straight' | '6ball' | 'bank';
 
 export const STRAIGHT_TARGET = 8;
+export const BANK_TARGET = 5;
 
 export const GAME_MODE_META: Record<GameMode, { label: string; short: string; desc: string }> = {
   '8ball': { label: '8-Ball', short: '8-Ball', desc: 'Classic solids vs stripes. Clear your group, then sink the 8.' },
   '9ball': { label: '9-Ball', short: '9-Ball', desc: 'Hit the lowest ball first. Sink the 9 legally to win!' },
   straight: { label: 'Straight Pool', short: 'Straight', desc: 'Any ball counts (+1 pt, scratch -1). First to 8 wins.' },
   '6ball': { label: '6-Ball Blitz', short: '6-Ball', desc: 'Fast 6-ball rotation. Lowest ball first, sink the 6 to win.' },
+  bank: { label: 'Bank Pool', short: 'Bank', desc: 'Balls must hit a cushion before pocketing (+1 pt). First to 5 wins!' },
 };
 
 export interface Match {
@@ -90,7 +92,7 @@ export function rack(seed: number, gameMode: GameMode = '8ball'): Ball[] {
   const ballStep = 2 * BALL_R * 1.003;
   const balls: Ball[] = [{ id: CUE_BALL, x: TABLE_W * 0.25, y: cy, vx: 0, vy: 0, pocketed: false }];
 
-  if (gameMode === '9ball') {
+  if (gameMode === '9ball' || gameMode === 'bank') {
     const ids = [2, 3, 4, 5, 6, 7, 8];
     shuffle(ids, rnd);
     const counts = [1, 2, 3, 2, 1];
@@ -171,7 +173,7 @@ export function legalTargetIds(balls: readonly Ball[], group: Group | null, game
     const low = lowestBallId(balls);
     return low !== null ? [low] : [];
   }
-  if (gameMode === 'straight') {
+  if (gameMode === 'straight' || gameMode === 'bank') {
     return live.map((b) => b.id);
   }
   // 8-ball
@@ -242,6 +244,50 @@ export function judge(
       ownPotted: foul ? 0 : objPotted.length,
       reasons,
       respotIds,
+    };
+  }
+
+  if (gameMode === 'bank') {
+    if (scratch) reasons.push('scratch');
+    if (ev.firstHit === null) reasons.push('no ball hit');
+    const foul = reasons.length > 0;
+    const nextScores: [number, number] = [scores[0], scores[1]];
+    const respotIds: number[] = [];
+    let banked = 0;
+    for (const id of objPotted) {
+      if (!foul && (ev.cushionHits?.[id] ?? 0) >= 1) {
+        banked++;
+      } else {
+        respotIds.push(id);
+      }
+    }
+    nextScores[shooter] += banked;
+    if (respotIds.length > 0 && !foul && banked === 0) {
+      reasons.push('no rail bank (respotted)');
+    }
+    let winner: number | null = null;
+    if (nextScores[shooter] >= BANK_TARGET) {
+      winner = shooter;
+    } else {
+      const liveAfter = before.filter((b) => !b.pocketed && b.id !== CUE_BALL && !objPotted.includes(b.id)).length + respotIds.length;
+      if (liveAfter <= 0) {
+        winner = nextScores[shooter] >= nextScores[opp] ? shooter : opp;
+      }
+    }
+    const continues = winner === null && !foul && banked > 0;
+    return {
+      winner,
+      groups: groupsOut,
+      nextTurn: continues ? shooter : opp,
+      continues,
+      ballInHand: winner === null && foul,
+      foul,
+      scratch,
+      potted: objPotted,
+      ownPotted: banked,
+      reasons,
+      scores: nextScores,
+      respotIds: respotIds.length > 0 ? respotIds : undefined,
     };
   }
 

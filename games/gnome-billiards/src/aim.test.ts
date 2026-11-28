@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BALL_R, CUE_BALL, TABLE_W } from './config';
-import { backRoom, deltaAngle, rotateDir } from './aim';
+import { aimTargetRay, backRoom, deltaAngle, rotateDir } from './aim';
 import type { Ball } from './physics';
 
 const cue = (x: number, y: number): Ball => ({ id: CUE_BALL, x, y, vx: 0, vy: 0, pocketed: false });
@@ -48,5 +48,19 @@ describe('fine aim math', () => {
     const a2 = -Math.PI + 0.1;
     expect(deltaAngle(Math.cos(a1), Math.sin(a1), Math.cos(a2), Math.sin(a2))).toBeCloseTo(0.2, 8);
     expect(deltaAngle(Math.cos(a2), Math.sin(a2), Math.cos(a1), Math.sin(a1))).toBeCloseTo(-0.2, 8);
+  });
+
+  it('aimTargetRay detects pocketed lines and 1-rail bounces', () => {
+    const balls = [cue(1.15, 0.5), ball(1, 1.68, 0.2)];
+    const u = Math.hypot(2.0 - 1.68, 0.0 - 0.2);
+    const gx = 1.68 - ((2.0 - 1.68) / u) * 2 * BALL_R;
+    const gy = 0.2 - ((0.0 - 0.2) / u) * 2 * BALL_R;
+    const pocketRay = aimTargetRay(balls, 1, gx, gy, 1.2);
+    expect(pocketRay.pocketed).toBe(true);
+
+    const bankBalls = [cue(0.7, 0.4), ball(2, 0.7, 0.7)];
+    const bankRay = aimTargetRay(bankBalls, 2, 0.7, 0.7 - 2 * BALL_R, 1.0);
+    expect(bankRay.pocketed).toBe(false);
+    expect(bankRay.bounce).toBeDefined();
   });
 });

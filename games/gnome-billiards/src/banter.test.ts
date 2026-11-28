@@ -16,6 +16,9 @@ const TOPICS: BanterTopic[] = [
   'playerWin',
   'nag',
   'highWager',
+  'bankShot',
+  'matchPoint',
+  'comeback',
 ];
 
 describe('CPU banter', () => {

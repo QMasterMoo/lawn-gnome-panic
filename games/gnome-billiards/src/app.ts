@@ -1,24 +1,25 @@
-// Gnome Billiards: the game controller. Ties together table physics, 8-ball/9-ball/Straight/6-ball rules,
-// multi-tier CPUs with table talk, fine-grain aiming, chip wagering, challenge mode, online link, and 3D scene.
+// Gnome Billiards: the game controller. Ties together table physics, 8-ball/9-ball/Straight/6-ball/Bank Pool rules,
+// multi-tier CPUs with table talk & pre-shot cue animation, fine-grain aiming + Aim Zoom, chip wagering, challenge mode,
+// online link, and 3D scene.
 import { getMyGnome, GNORMAN_LOOK, resolveLook, type GnomeLook } from '@lawn/gnome';
 import { DEFAULT_LOADOUT, getEmote, isEmoteId, loadMyEmotes } from '@lawn/emotes';
 import type { PlayerInfo } from '@lawn/mp/protocol';
 import { claimFreeChips, getChips, onOakcountChange, spendChips, winChips } from '@lawn/oakcount';
 import { createBilliardsAchievements } from './achievements';
-import { deltaAngle, FINE_AIM_SCALE, NUDGE_STEP_RAD, rotateDir } from './aim';
-import { createBanterVoice, pickBanter, type BanterTopic } from './banter';
+import { deltaAngle, FINE_AIM_SCALE, FINE_NUDGE_RAD, NUDGE_STEP_RAD, rotateDir } from './aim';
+import { createBanterVoice, pickBanter, PLAYER_QUIPS, type BanterTopic } from './banter';
 import { CHALLENGES, challengeBalls, challengeTargets, checkChallenge, loadCompletedChallenges, markChallengeComplete, type ChallengeDef } from './challenges';
 import { CPU_THINK_S, CUE_BALL, MAX_SHOT_SPEED, PULL_MAX, SETTLE_LIMIT_S, SUB_DT, TABLE_H, TABLE_W } from './config';
-import { chooseCpuShot, CPU_PROFILES, cpuPlaceSpot, type CpuTier } from './cpu';
+import { chooseCpuShot, CPU_PROFILES, cpuPlaceSpot, type CpuShot, type CpuTier } from './cpu';
 import { isIdle, RAIL_HX, RAIL_HZ, separateWalkers, stepWalker, walkTo, type Walker } from './gnomes';
 import { createHud, type EmoteButton, type Hud, type SeatView } from './hud';
 import { initPoolMusic } from './music';
 import { openOnline, type BilMsg, type OnlineLink } from './net';
 import { beginShot, canPlaceCue, copyBalls, isMoving, setCue, stepOnce, type Ball, type Table } from './physics';
-import { applyVerdict, GAME_MODE_META, judge, lowestBallId, newMatch, STRAIGHT_TARGET, type GameMode, type Match, type Verdict } from './rules';
+import { applyVerdict, BANK_TARGET, GAME_MODE_META, judge, lowestBallId, newMatch, STRAIGHT_TARGET, type GameMode, type Match, type Verdict } from './rules';
 import { BilliardsScene, SEAT_X, type CameraMode } from './scene';
 import { sfx } from './sfx';
-import { clampWager, wagerPayout } from './wager';
+import { clampWager, maxWager, wagerPayout } from './wager';
 
 type Mode = 'cpu' | 'local' | 'online' | 'spectate' | 'challenge';
 interface Seat {
@@ -34,7 +35,7 @@ const SPECTATE_THINK_S = 0.7;
 const NAG_AFTER_S = 18;
 
 const PASS_LOOK: GnomeLook = { ...GNORMAN_LOOK, hat: 0x2e8a5a, beard: null, freckles: true };
-const CAM_NAMES: Record<CameraMode, string> = { follow: 'Follow', table: 'Table', orbit: 'Orbit' };
+const CAM_NAMES: Record<CameraMode, string> = { follow: 'Follow', aim: 'Aim Zoom', table: 'Table', orbit: 'Orbit' };
 
 function overTable(x: number, y: number): boolean {
   return Math.abs(x - TABLE_W / 2) <= RAIL_HX && Math.abs(y - TABLE_H / 2) <= RAIL_HZ;
@@ -59,6 +60,7 @@ export function startApp(): void {
   let wager = 0;
   let activeWager = 0;
   let activeWagerMult = 1;
+  let lastWonWager = 0;
   let challenge: ChallengeDef | null = null;
   let completedChallenges = loadCompletedChallenges();
 
@@ -73,6 +75,7 @@ export function startApp(): void {
   let reported = false;
   let note = '';
   let cpuClock = -1;
+  let pendingCpuShot: CpuShot | null = null;
   let placedAt: { x: number; y: number } | null = null;
   let placing: { x: number; y: number } | null = null;
   let online: OnlineLink | null = null;
@@ -91,7 +94,7 @@ export function startApp(): void {
   let stroke: { sx: number; sy: number; maxPull: number; pullX: number; pullY: number; nowPull: number } | null = null;
 
   let camIdx = 0;
-  let camModes: CameraMode[] = ['follow', 'table'];
+  let camModes: CameraMode[] = ['follow', 'aim', 'table'];
   let emoteIds: string[] = [...DEFAULT_LOADOUT];
   let remotePose: { x: number; z: number; yaw: number } | null = null;
   let poseSentAt = 0;
@@ -100,6 +103,7 @@ export function startApp(): void {
   let turnIdleS = 0;
   let naggedThisTurn = false;
   let lastBanter = '';
+  let replyTimer: number | null = null;
 
   const myName = (): string => getMyGnome()?.name ?? 'You';
   const myLook = (): GnomeLook => getMyGnome()?.look ?? GNORMAN_LOOK;
@@ -129,16 +133,33 @@ export function startApp(): void {
     lastBanter = line;
     const speaker = seats[seatIdx]?.name ?? CPU_PROFILES[tier].name;
     const accent = tier === 'cracked' ? '#ffd54f' : tier === 'shark' ? '#ff6e91' : '#9ad8ff';
-    hud.showBubble(speaker, line, accent);
+    const side: 'left' | 'right' = seatIdx === 0 ? 'left' : 'right';
+    hud.showBubble(speaker, line, accent, side);
     banter.say(line, tier);
   }
 
-  function scoreOf(slot: number): { group: 'solid' | 'stripe' | null; potted: number } {
-    if (m.gameMode !== '8ball') return { group: null, potted: 0 };
-    const grp = m.groups[slot] ?? null;
-    if (!grp) return { group: null, potted: 0 };
-    const potted = m.balls.filter((b) => b.pocketed && b.id !== CUE_BALL && (grp === 'solid' ? b.id <= 7 : b.id >= 9)).length;
-    return { group: grp, potted };
+  function isMatchPoint(slot: number): boolean {
+    if (m.gameMode === 'straight') return m.scores[slot] === STRAIGHT_TARGET - 1;
+    if (m.gameMode === 'bank') return m.scores[slot] === BANK_TARGET - 1;
+    if (m.gameMode === '9ball' || m.gameMode === '6ball') {
+      return lowestBallId(m.balls) === (m.gameMode === '9ball' ? 9 : 6);
+    }
+    const grp = m.groups[slot];
+    if (!grp) return false;
+    return m.balls.filter((b) => !b.pocketed && b.id !== CUE_BALL && (grp === 'solid' ? b.id <= 7 : b.id >= 9)).length === 0;
+  }
+
+  function pipsFor(slot: number): SeatView['pips'] | undefined {
+    if (mode === 'challenge') return undefined;
+    if (m.gameMode === 'straight') return { group: null, potted: m.scores[slot], total: STRAIGHT_TARGET };
+    if (m.gameMode === 'bank') return { group: null, potted: m.scores[slot], total: BANK_TARGET };
+    if (m.gameMode === '8ball') {
+      const grp = m.groups[slot] ?? null;
+      if (!grp) return { group: null, potted: 0, total: 7 };
+      const potted = m.balls.filter((b) => b.pocketed && b.id !== CUE_BALL && (grp === 'solid' ? b.id <= 7 : b.id >= 9)).length;
+      return { group: grp, potted, total: 7 };
+    }
+    return undefined;
   }
 
   function groupLabel(slot: number): string {
@@ -154,9 +175,12 @@ export function startApp(): void {
     if (m.gameMode === 'straight') {
       return `Points: ${m.scores[slot]} / ${STRAIGHT_TARGET}`;
     }
-    const { group, potted } = scoreOf(slot);
-    if (!group) return 'Open table: first to pocket decides';
-    return `${group === 'solid' ? 'Solids' : 'Stripes'} · ${potted} of 7 down`;
+    if (m.gameMode === 'bank') {
+      return `Banks: ${m.scores[slot]} / ${BANK_TARGET}`;
+    }
+    const p = pipsFor(slot);
+    if (!p || !p.group) return 'Open table: first to pocket decides';
+    return `${p.group === 'solid' ? 'Solids' : 'Stripes'} · ${p.potted} of 7 down`;
   }
 
   function currentCam(): CameraMode {
@@ -181,16 +205,19 @@ export function startApp(): void {
     const views: SeatView[] = seats.map((s, i) => ({
       name: s.name,
       look: s.look,
-      sub: mode === 'spectate' ? (s.cpuTier ? CPU_PROFILES[s.cpuTier].title : 'CPU') : groupLabel(i),
+      sub: mode === 'spectate' ? `${CPU_PROFILES[s.cpuTier ?? 'regular'].title} · ${groupLabel(i)}` : groupLabel(i),
       active: m.winner === null && m.turn === i,
-      pips: m.gameMode === '8ball' && mode !== 'challenge' ? scoreOf(i) : undefined,
+      pips: pipsFor(i),
     }));
     hud.setSeats(views);
     if (mode === 'cpu' && activeWager > 0) {
       const pay = wagerPayout(activeWager, activeWagerMult);
       hud.setPot(`Pot: 🪙 ${activeWager} (Win +${pay.profit})`);
     } else if (mode === 'challenge' && challenge) {
-      hud.setPot(`🏆 ${challenge.title} · +${challenge.chipReward}🪙`);
+      const tags: string[] = [`🏆 ${challenge.title}`, `+${challenge.chipReward}🪙`];
+      if (challenge.avoidIds?.length) tags.push(`Avoid #${challenge.avoidIds.join(', #')}`);
+      if (challenge.requireBank) tags.push('Bank Required!');
+      hud.setPot(tags.join(' · '));
     } else {
       hud.setPot(null);
     }
@@ -208,11 +235,11 @@ export function startApp(): void {
       mode === 'challenge',
     );
     hud.setFineControls(canAimNow, fineAim || shiftDown);
-    hud.setEmotes(mode === 'spectate' ? [] : emoteButtons());
+    hud.setEmotes(mode === 'spectate' ? [] : emoteButtons(), mode === 'cpu');
     let hint = '';
     if (canAct()) {
       if (m.ballInHand) hint = 'Drag the cue ball onto the cloth.';
-      else if (stage === 'line') hint = fineAim ? 'Fine Aim ON: drag gently or tap ◀/▶. Let go to lock.' : 'Drag on the table to aim, then let go.';
+      else if (stage === 'line') hint = fineAim ? 'Fine Aim ON: drag gently, scroll wheel, or tap ◀/▶. Let go to lock.' : 'Drag on the table to aim, then let go.';
       else hint = 'Pull back and release to shoot (◀/▶ nudges aim).';
     } else if (mode === 'spectate') {
       hint = 'Spectating. Tap Camera to change the view.';
@@ -226,6 +253,11 @@ export function startApp(): void {
     placing = null;
     lining = false;
     stroke = null;
+    pendingCpuShot = null;
+    if (replyTimer !== null) {
+      window.clearTimeout(replyTimer);
+      replyTimer = null;
+    }
     activeWager = 0;
     challenge = null;
     wager = clampWager(wager, getChips());
@@ -260,6 +292,7 @@ export function startApp(): void {
     pendingSync = null;
     reported = false;
     cpuClock = -1;
+    pendingCpuShot = null;
     placedAt = null;
     placing = null;
     lining = false;
@@ -272,7 +305,11 @@ export function startApp(): void {
     wanderT[1] = 1;
     turnIdleS = 0;
     naggedThisTurn = false;
-    camModes = mode === 'spectate' ? ['orbit', 'table', 'follow'] : ['follow', 'table'];
+    if (replyTimer !== null) {
+      window.clearTimeout(replyTimer);
+      replyTimer = null;
+    }
+    camModes = mode === 'spectate' ? ['orbit', 'table', 'follow'] : ['follow', 'aim', 'table'];
     camIdx = 0;
     note = mode === 'challenge' && challenge ? challenge.description : `${seats[0].name} breaks (${GAME_MODE_META[gm].short}).`;
     scene.setSeats(seats.map((s) => s.look));
@@ -309,6 +346,7 @@ export function startApp(): void {
       online.send({ k: 'shot', vx, vy, cx: placedAt?.x, cy: placedAt?.y });
     }
     placedAt = null;
+    pendingCpuShot = null;
     table = beginShot(m.balls, vx, vy);
     acc = 0;
     stroke = null;
@@ -351,9 +389,10 @@ export function startApp(): void {
       return;
     }
 
+    const hadBankPot = t.events.pocketed.some((id) => id !== CUE_BALL && (t.events.cushionHits?.[id] ?? 0) >= 1);
     const v: Verdict = judge(before, t.events, m.groups, shooter, m.gameMode, m.scores);
     applyVerdict(m, t.balls, v);
-    report(v, isBreak);
+    report(v, isBreak, hadBankPot);
     if (mode === 'online' && shooter === me && online) online.send({ k: 'sync', match: snapshot(m) });
     if (pendingSync) {
       const incoming = pendingSync;
@@ -364,7 +403,7 @@ export function startApp(): void {
     }
   }
 
-  function report(v: Verdict, isBreak: boolean): void {
+  function report(v: Verdict, isBreak: boolean, hadBankPot: boolean): void {
     const who = seats[shooter].name;
     const next = seats[v.nextTurn]?.name ?? '';
     if (v.potted.length > 0) sfx.pocket();
@@ -375,7 +414,8 @@ export function startApp(): void {
       if (v.scratch) achievements.scratch();
     }
     if (v.winner !== null) {
-      const ballName = m.gameMode === '9ball' ? '9 ball' : m.gameMode === '6ball' ? '6 ball' : m.gameMode === 'straight' ? 'winning point' : '8 ball';
+      const ballName =
+        m.gameMode === '9ball' ? '9 ball' : m.gameMode === '6ball' ? '6 ball' : m.gameMode === 'straight' ? 'winning point' : m.gameMode === 'bank' ? 'winning bank' : '8 ball';
       note = v.winner === shooter ? `${who} sinks the ${ballName}!` : `${who} fouls on the ${ballName}.`;
     } else if (v.foul) {
       note = `Foul (${v.reasons.join(', ')}). ${next} places the cue ball.`;
@@ -387,25 +427,29 @@ export function startApp(): void {
       note = `No pot. ${next}'s shot.`;
     }
 
-    // Table talk & trash talk
     if (v.winner === null) {
       if (mode === 'cpu') {
         if (shooter === 1) {
           if (v.foul) speakCpu(cpuTier, 'cpuFoul', 1);
+          else if (hadBankPot && v.ownPotted > 0) speakCpu(cpuTier, 'bankShot', 1);
           else if (v.ownPotted >= 2) speakCpu(cpuTier, 'cpuMultiPot', 1);
-          else if (v.ownPotted === 1) speakCpu(cpuTier, 'cpuPot', 1);
+          else if (v.ownPotted === 1) speakCpu(cpuTier, isMatchPoint(1) ? 'matchPoint' : 'cpuPot', 1);
           else speakCpu(cpuTier, 'cpuMiss', 1);
         } else {
           if (v.foul) speakCpu(cpuTier, 'playerFoul', 1);
-          else if (v.ownPotted > 0) speakCpu(cpuTier, 'playerPot', 1);
+          else if (hadBankPot && v.ownPotted > 0) speakCpu(cpuTier, 'bankShot', 1);
+          else if (v.ownPotted > 0) speakCpu(cpuTier, isMatchPoint(0) ? 'matchPoint' : 'playerPot', 1);
           else speakCpu(cpuTier, 'playerMiss', 1);
         }
       } else if (mode === 'spectate') {
-        const tier = seats[shooter].cpuTier ?? 'regular';
-        if (v.foul) speakCpu(tier, 'cpuFoul', shooter);
-        else if (v.ownPotted >= 2) speakCpu(tier, 'cpuMultiPot', shooter);
-        else if (v.ownPotted === 1) speakCpu(tier, 'cpuPot', shooter);
-        else speakCpu(tier, 'cpuMiss', shooter);
+        const opp = 1 - shooter;
+        const sTier = seats[shooter].cpuTier ?? 'regular';
+        const oTier = seats[opp].cpuTier ?? 'regular';
+        if (v.foul) speakCpu(oTier, 'playerFoul', opp);
+        else if (hadBankPot && v.ownPotted > 0) speakCpu(sTier, 'bankShot', shooter);
+        else if (v.ownPotted >= 2) speakCpu(sTier, 'cpuMultiPot', shooter);
+        else if (v.ownPotted === 1) speakCpu(sTier, 'cpuPot', shooter);
+        else speakCpu(oTier, 'playerMiss', opp);
       }
     }
   }
@@ -415,7 +459,10 @@ export function startApp(): void {
   }
 
   function adopt(incoming: Match): void {
-    m = snapshot(incoming);
+    const raw = snapshot(incoming) as Match & { gameMode?: GameMode; scores?: [number, number] };
+    raw.gameMode ??= '8ball';
+    raw.scores ??= [0, 0];
+    m = raw;
     afterResult();
   }
 
@@ -432,6 +479,7 @@ export function startApp(): void {
     if (mode !== 'spectate') achievements.gameDone();
     let text: string;
     let subtext: string | undefined;
+    let doubleLabel: string | undefined;
 
     if (mode === 'spectate') {
       text = `${seats[w].name} wins!`;
@@ -447,9 +495,15 @@ export function startApp(): void {
           winChips(pay.totalReturn);
           achievements.highRoller();
           subtext = `Wager won: +${pay.profit} chips (returned ${pay.totalReturn} 🪙)!`;
+          lastWonWager = activeWager;
+          const nextBet = clampWager(lastWonWager * 2, getChips());
+          if (nextBet > 0) doubleLabel = `🔥 Double or Nothing (🪙 ${nextBet})`;
+        } else {
+          lastWonWager = 0;
         }
         speakCpu(cpuTier, 'playerWin', 1);
       } else {
+        lastWonWager = 0;
         if (activeWager > 0) subtext = `Lost ${activeWager} chips on the table.`;
         speakCpu(cpuTier, 'cpuWin', 1);
       }
@@ -464,10 +518,10 @@ export function startApp(): void {
     const youWon = mode === 'local' ? true : mode === 'spectate' ? true : w === (mode === 'cpu' ? 0 : me);
     if (youWon) sfx.win();
     else sfx.lose();
-    hud.showOver(text, mode !== 'online', subtext);
+    hud.showOver(text, mode !== 'online', subtext, undefined, doubleLabel);
   }
 
-  function cpuTakeShot(): void {
+  function prepareCpuShot(): void {
     const tier = seats[m.turn]?.cpuTier ?? cpuTier;
     if (m.ballInHand) {
       const spot = cpuPlaceSpot(m.balls, Math.random, { tier, group: m.groups[m.turn] ?? null, gameMode: m.gameMode });
@@ -476,12 +530,11 @@ export function startApp(): void {
     }
     const cue = m.balls.find((b) => b.id === CUE_BALL);
     if (!cue) return;
-    const s = chooseCpuShot(m.balls, cue.x, cue.y, m.groups[m.turn], Math.random, {
+    pendingCpuShot = chooseCpuShot(m.balls, cue.x, cue.y, m.groups[m.turn], Math.random, {
       tier,
       gameMode: m.gameMode,
       isBreak: m.shots === 0,
     });
-    fire(s.vx, s.vy);
   }
 
   // ------------------------------------------------------------ online
@@ -553,10 +606,10 @@ export function startApp(): void {
     return link;
   }
 
-  function launchCpuMatch(): void {
+  function launchCpuMatch(betOverride?: number): void {
     online?.leave();
     online = null;
-    const bet = clampWager(wager, getChips());
+    const bet = clampWager(betOverride ?? wager, getChips());
     activeWager = 0;
     activeWagerMult = CPU_PROFILES[cpuTier].wagerMult;
     if (bet > 0 && spendChips(bet)) {
@@ -654,6 +707,11 @@ export function startApp(): void {
       const next = idx >= 0 ? CHALLENGES[idx + 1] : undefined;
       if (next) startChallenge(next);
     },
+    onDoubleOrNothing: () => {
+      const nextBet = clampWager(lastWonWager * 2, getChips());
+      wager = nextBet;
+      launchCpuMatch(nextBet);
+    },
     onSound: () => {
       sfx.toggle();
       music.setOn(!sfx.isMuted());
@@ -675,11 +733,21 @@ export function startApp(): void {
       fineAim = !fineAim;
       refreshHud();
     },
-    onNudge: (sign) => {
+    onNudge: (rad) => {
       if (!canAct() || m.ballInHand) return;
-      dir = rotateDir(dir.dx, dir.dy, sign * NUDGE_STEP_RAD);
+      dir = rotateDir(dir.dx, dir.dy, rad);
     },
     onEmote: (id) => playMyEmote(id),
+    onQuip: (id) => {
+      const q = PLAYER_QUIPS.find((x) => x.id === id);
+      if (!q || !started || mode !== 'cpu') return;
+      hud.showBubble(myName(), q.text, '#7ed957', 'left');
+      if (replyTimer !== null) window.clearTimeout(replyTimer);
+      replyTimer = window.setTimeout(() => {
+        replyTimer = null;
+        if (started && mode === 'cpu') speakCpu(cpuTier, 'comeback', 1);
+      }, 850);
+    },
     onSelectGameMode: (gm) => {
       gameMode = gm;
       if (!started) showMenu();
@@ -690,7 +758,10 @@ export function startApp(): void {
     },
     onWagerChange: (amount) => {
       wager = clampWager(amount, getChips());
-      if (!started) showMenu();
+      if (!started) {
+        const cpu = CPU_PROFILES[cpuTier];
+        hud.updateWager(wager, getChips(), cpu.wagerMult, cpu.name);
+      }
     },
     onClaimFreeChips: () => {
       claimFreeChips();
@@ -709,7 +780,10 @@ export function startApp(): void {
 
   onOakcountChange(() => {
     wager = clampWager(wager, getChips());
-    if (!started && hud.menuOpen) showMenu();
+    if (!started && hud.menuOpen) {
+      const cpu = CPU_PROFILES[cpuTier];
+      hud.updateWager(wager, getChips(), cpu.wagerMult, cpu.name);
+    }
   });
 
   // ------------------------------------------------------------ canvas input
@@ -740,6 +814,17 @@ export function startApp(): void {
   window.addEventListener('pointerdown', unlockAudio, { once: true });
   window.addEventListener('keydown', unlockAudio, { once: true });
 
+  canvas.addEventListener(
+    'wheel',
+    (e) => {
+      if (!started || !canAct() || m.ballInHand) return;
+      e.preventDefault();
+      const step = fineAim || shiftDown ? FINE_NUDGE_RAD : NUDGE_STEP_RAD;
+      dir = rotateDir(dir.dx, dir.dy, Math.sign(e.deltaY) * step);
+    },
+    { passive: false },
+  );
+
   canvas.addEventListener('pointerdown', (e) => {
     if (e.button === 2) return;
     const onCloth = scene.pointToTable(e.clientX, e.clientY);
@@ -758,7 +843,17 @@ export function startApp(): void {
     } else if (stage === 'line') {
       lining = true;
       lastDragVec = null;
-      aimAt(x, y);
+      if (fineAim || shiftDown) {
+        const cue = cueNow();
+        if (cue) {
+          const dx = cue.x - x;
+          const dy = cue.y - y;
+          const len = Math.hypot(dx, dy);
+          if (len >= 0.02) lastDragVec = { x: dx / len, y: dy / len };
+        }
+      } else {
+        aimAt(x, y);
+      }
     } else {
       stroke = { sx: x, sy: y, maxPull: 0, pullX: x, pullY: y, nowPull: 0 };
     }
@@ -870,9 +965,9 @@ export function startApp(): void {
       fineAim = !fineAim;
       refreshHud();
     } else if ((e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') && started && canAct() && !m.ballInHand) {
-      dir = rotateDir(dir.dx, dir.dy, -NUDGE_STEP_RAD);
+      dir = rotateDir(dir.dx, dir.dy, -(fineAim || shiftDown ? FINE_NUDGE_RAD : NUDGE_STEP_RAD));
     } else if ((e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') && started && canAct() && !m.ballInHand) {
-      dir = rotateDir(dir.dx, dir.dy, NUDGE_STEP_RAD);
+      dir = rotateDir(dir.dx, dir.dy, fineAim || shiftDown ? FINE_NUDGE_RAD : NUDGE_STEP_RAD);
     } else if (e.key === 'Escape' && started && !hud.menuOpen) {
       showMenu();
     } else if (/^[1-4]$/.test(e.key) && started && mode !== 'spectate') {
@@ -993,21 +1088,32 @@ export function startApp(): void {
       turnIdleS = 0;
     }
 
+    let cpuAimView: { dx: number; dy: number; pull: number } | null = null;
     if (isCpuTurn()) {
       const w = scene.walker(m.turn);
       const at = w && isIdle(w) && Math.hypot(w.x - (m.turn === 0 ? -SEAT_X : SEAT_X), w.z) < 0.1;
       if (at) {
-        if (cpuClock < 0) cpuClock = mode === 'spectate' ? SPECTATE_THINK_S : CPU_THINK_S;
+        if (cpuClock < 0) {
+          cpuClock = mode === 'spectate' ? SPECTATE_THINK_S : CPU_THINK_S;
+          prepareCpuShot();
+        }
         cpuClock -= dt;
+        if (pendingCpuShot) {
+          const sp = Math.hypot(pendingCpuShot.vx, pendingCpuShot.vy) || 1;
+          const pull = cpuClock < 0.4 ? Math.min(1, ((0.4 - Math.max(0, cpuClock)) / 0.4) * (sp / MAX_SHOT_SPEED)) : 0;
+          cpuAimView = { dx: pendingCpuShot.vx / sp, dy: pendingCpuShot.vy / sp, pull };
+        }
         if (cpuClock <= 0) {
           cpuClock = -1;
-          cpuTakeShot();
+          if (pendingCpuShot) fire(pendingCpuShot.vx, pendingCpuShot.vy);
         }
       } else {
         cpuClock = -1;
+        pendingCpuShot = null;
       }
     } else {
       cpuClock = -1;
+      pendingCpuShot = null;
     }
 
     const followSeat = mode === 'spectate' ? 0 : walkSeat() >= 0 ? walkSeat() : me;
@@ -1024,6 +1130,7 @@ export function startApp(): void {
       {
         balls: table ? table.balls : m.balls,
         aim: aimView,
+        cpuAim: cpuAimView,
         placing: placingView,
         activeSeat: table || !started || m.winner !== null ? -1 : m.turn,
       },

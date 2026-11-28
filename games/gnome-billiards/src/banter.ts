@@ -14,7 +14,17 @@ export type BanterTopic =
   | 'cpuWin'
   | 'playerWin'
   | 'nag'
-  | 'highWager';
+  | 'highWager'
+  | 'bankShot'
+  | 'matchPoint'
+  | 'comeback';
+
+export const PLAYER_QUIPS: readonly { id: string; label: string; text: string }[] = [
+  { id: 'watch', label: '💬 Watch this', text: 'Watch how a real gnome shoots.' },
+  { id: 'luck', label: '💬 Pure luck', text: 'Pure luck! Do it again.' },
+  { id: 'chalk', label: '💬 Need chalk?', text: 'Might want to chalk that cue.' },
+  { id: 'easy', label: '💬 Too easy', text: 'Too easy. Ready to rack again?' },
+];
 
 export const CPU_VOICES: Record<CpuTier, VoiceSpec> = {
   casual: { hz: 112, speed: 0.95, wave: 'triangle', wobble: 0.25 },
@@ -97,6 +107,21 @@ const LINES: Record<CpuTier, Record<BanterTopic, string[]>> = {
       'Easy now, {player}, {wager} chips is half my rent!',
       'Let’s play for {wager} chips then. Gulp.',
     ],
+    bankShot: [
+      'Whoa! Off the rail and in?!',
+      'Banked it! Somebody check the cushions!',
+      'Rail magic! I didn’t even know that worked.',
+    ],
+    matchPoint: [
+      'One ball left! Don’t look at my sweating beard.',
+      'Match point! Everybody hold your breath!',
+      'This is it, {player} — final ball!',
+    ],
+    comeback: [
+      'Hey! Trash talk is above my pay grade, {player}!',
+      'Oh yeah? Wait ’til you see my next lucky bounce!',
+      'Talk all you want, my ale is still colder than yours!',
+    ],
   },
   regular: {
     matchStart: [
@@ -170,6 +195,21 @@ const LINES: Record<CpuTier, Record<BanterTopic, string[]>> = {
       'Putting {wager} chips on my felt? I like your nerve.',
       'Big Lou never turns down {wager} chips.',
       'Playing heavy for {wager} chips. Let’s dance.',
+    ],
+    bankShot: [
+      'Clean bank! Now that’s Gnomecino pool.',
+      'Off the rubber and straight home.',
+      'Bank shot! Respect the cushion.',
+    ],
+    matchPoint: [
+      'On the hill, {player}. One clean shot decides it.',
+      'Final ball. Don’t choke now.',
+      'One left. Let’s see your nerve.',
+    ],
+    comeback: [
+      'Keep yapping, {player}, and I’ll bounce you past the velvet rope.',
+      'Big talk for a gnome with a crooked cue.',
+      'Save your breath for the rack, {player}.',
     ],
   },
   shark: {
@@ -245,6 +285,21 @@ const LINES: Record<CpuTier, Record<BanterTopic, string[]>> = {
       'Betting {wager} chips against a Shark? Brave. Foolish, too.',
       '{wager} chips in the pot. Let’s make it hurt.',
     ],
+    bankShot: [
+      'A bank shot! Stylish, darling.',
+      'Kissed the rail like it owed us chips.',
+      'Geometry with flair. Lovely.',
+    ],
+    matchPoint: [
+      'Final ball. Try not to blink, {player}.',
+      'Match point. My favourite moment.',
+      'One ball from the payout.',
+    ],
+    comeback: [
+      'Adorable. Let’s see if your cue speaks half as loud, {player}.',
+      'Chalk is cheap, {player}. Skill isn’t.',
+      'Careful, darling. You’re talking to a Shark.',
+    ],
   },
   cracked: {
     matchStart: [
@@ -318,6 +373,21 @@ const LINES: Record<CpuTier, Record<BanterTopic, string[]>> = {
       'You’re wagering {wager} chips? I’ll spend them wisely.',
       'High stakes: {wager} chips. Zero mercy.',
       '{wager} chips on the felt. Prepare for precision.',
+    ],
+    bankShot: [
+      'Incidence equals reflection. Simple.',
+      'The cushion obeyed.',
+      'Calculated bank. Next.',
+    ],
+    matchPoint: [
+      'Final ball. Inevitability approaches, {player}.',
+      'One ball remaining. Zero margin.',
+      'Endgame.',
+    ],
+    comeback: [
+      'Words don’t pocket balls, {player}.',
+      'Noise is irrelevant. Only angles matter.',
+      'You’re talking while I’m solving the table.',
     ],
   },
 };
